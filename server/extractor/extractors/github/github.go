@@ -156,7 +156,7 @@ func extractRepo(d *sdk.Document) sdk.ExtractResult {
 		return sdk.ExtractFallback(err)
 	}
 
-	info := parseRepoPage(doc, d.HTML)
+	info := parseRepoPage(doc)
 	if info == nil {
 		return sdk.ExtractFallback(nil)
 	}
@@ -219,7 +219,7 @@ func previewRepo(d *sdk.Document) sdk.PreviewResult {
 		return sdk.PreviewFallback(err)
 	}
 
-	info := parseRepoPage(doc, d.HTML)
+	info := parseRepoPage(doc)
 	if info == nil {
 		return sdk.PreviewFallback(nil)
 	}
@@ -278,7 +278,7 @@ var starsRe = regexp.MustCompile(`^([\d,]+)\s+users?\s+starred\s+this\s+reposito
 
 // parseRepoPage extracts repository metadata from the parsed goquery document.
 // Returns nil if the page does not appear to be a repository overview page.
-func parseRepoPage(doc *goquery.Document, rawHTML string) *repoInfo {
+func parseRepoPage(doc *goquery.Document) *repoInfo {
 	info := &repoInfo{}
 
 	// Description: the sidebar "about" paragraph (class varies by page version).
