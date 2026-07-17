@@ -422,24 +422,25 @@ func extractIssue(d *sdk.Document) sdk.ExtractResult {
 		d.Metadata["repo"] = repo
 	}
 
-	if title := doc.Find(`bdi[data-testid="issue-title"]`).Text(); title != "" {
-		d.Metadata["title"] = title
-		fmt.Fprintf(&b, "title: %s\n\n", title)
+	info := parseIssue(doc)
+	if info == nil {
+		return types.ExtractorContinue, nil
+	}
+
+	if info.title != "" {
+		d.Metadata["title"] = info.title
+		fmt.Fprintf(&b, "title: %s\n\n", info.title)
 	}
 	if dateOpened := doc.Find(`[data-testid="issue-body"] relative-time`).AttrOr("datetime", ""); dateOpened != "" {
 		d.Metadata["date"] = dateOpened
 	}
 
-	if body := doc.Find(`#issue-body-viewer`).Text(); body != "" {
-		fmt.Fprintf(&b, "body: %s\n\n", body)
+	if info.body != "" {
+		fmt.Fprintf(&b, "body: %s\n\n", info.body)
 	}
 
-	var commentBodies []string
-	doc.Find(`[data-testid="issue-viewer-comments-container"] [data-testid="markdown-body"]`).Each(func(_ int, s *goquery.Selection) {
-		commentBodies = append(commentBodies, strings.TrimSpace(s.Text()))
-	})
-	if len(commentBodies) > 0 {
-		fmt.Fprintf(&b, "comments: %s\n", strings.Join(commentBodies, ", "))
+	if len(info.commentBodies) > 0 {
+		fmt.Fprintf(&b, "comments: %s\n", strings.Join(info.commentBodies, ", "))
 	}
 
 	d.Text = strings.TrimSpace(b.String())
@@ -447,6 +448,29 @@ func extractIssue(d *sdk.Document) sdk.ExtractResult {
 		return sdk.ExtractFallback(fmt.Errorf("no content found"))
 	}
 	return sdk.Extracted()
+}
+
+type issueInfo struct {
+	title         string
+	body          string
+	commentBodies []string
+}
+
+func parseIssue(doc *goquery.Document) *issueInfo {
+	info := &issueInfo{}
+
+	if title := doc.Find(`bdi[data-testid="issue-title"]`).Text(); title != "" {
+		info.title = title
+	}
+	if body := doc.Find(`#issue-body-viewer`).Text(); body != "" {
+		info.body = body
+	}
+
+	doc.Find(`[data-testid="issue-viewer-comments-container"] [data-testid="markdown-body"]`).Each(func(_ int, s *goquery.Selection) {
+		info.commentBodies = append(info.commentBodies, strings.TrimSpace(s.Text()))
+	})
+
+	return info
 }
 
 func extractIssues(d *sdk.Document) sdk.ExtractResult {
