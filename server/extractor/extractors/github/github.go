@@ -424,7 +424,7 @@ func extractIssue(d *sdk.Document) sdk.ExtractResult {
 
 	info := parseIssue(doc)
 	if info == nil {
-		return types.ExtractorContinue, nil
+		return sdk.ExtractFallback(nil)
 	}
 
 	if info.title != "" {
@@ -448,6 +448,36 @@ func extractIssue(d *sdk.Document) sdk.ExtractResult {
 		return sdk.ExtractFallback(fmt.Errorf("no content found"))
 	}
 	return sdk.Extracted()
+}
+
+func previewIssue(d *sdk.Document) sdk.PreviewResult {
+	doc, err := goquery.NewDocumentFromReader(strings.NewReader(d.HTML))
+	if err != nil {
+		return sdk.PreviewFallback(err)
+	}
+
+	info := parseIssue(doc)
+	if info == nil {
+		return sdk.PreviewFallback(nil)
+	}
+
+	var b strings.Builder
+
+	fmt.Println(info.title)
+	fmt.Println(info.body)
+	if info.title != "" {
+		fmt.Fprintf(&b, "<h1>%s</h1>", info.title)
+	}
+
+	if info.body != "" {
+		fmt.Fprintf(&b, "<hr>%s", info.body)
+	}
+
+	if len(info.commentBodies) > 0 {
+		fmt.Fprintf(&b, "<hr>%s", strings.Join(info.commentBodies, "<br><br>"))
+	}
+
+	return sdk.Previewed(sdk.PreviewResponse{Content: b.String()})
 }
 
 type issueInfo struct {
@@ -560,10 +590,6 @@ func extractPull(d *sdk.Document) sdk.ExtractResult {
 	}
 
 	return sdk.Extracted()
-}
-
-func previewIssue(d *sdk.Document) sdk.PreviewResult {
-	return sdk.PreviewFallback(nil)
 }
 
 func previewIssues(d *sdk.Document) sdk.PreviewResult {
