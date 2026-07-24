@@ -94,4 +94,4 @@ async function sendPDFData(
   return fetchAPI(url, { body: { document: doc, pdf: pdfBase64 }, customHeaders });
 }
 
-export { fetchAPI, fetchFavicon, sendPageData, sendResult, sendPDFData };
+export { fetchAPI, sendPageData, sendResult, sendPDFData };

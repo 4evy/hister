@@ -248,7 +248,7 @@ func init() {
 			Method:       POST,
 			CSRFRequired: true,
 			Handler:      serveAdd,
-			Description:  "Index a document. Accepts either application/x-www-form-urlencoded or application/json. Greasemonkey form submissions always return 204 so browser form submissions keep the current page open.",
+			Description:  "Index a document. Accepts either application/x-www-form-urlencoded or application/json.",
 			Args: []*EndpointArg{
 				{
 					Name:        "url",
@@ -267,36 +267,6 @@ func init() {
 					Type:        "string",
 					Required:    false,
 					Description: "Plain-text content",
-				},
-				{
-					Name:        "html",
-					Type:        "string",
-					Required:    false,
-					Description: "Raw HTML source (text is extracted server-side)",
-				},
-				{
-					Name:        "favicon",
-					Type:        "string",
-					Required:    false,
-					Description: "Base64-encoded favicon data URI",
-				},
-				{
-					Name:        "label",
-					Type:        "string",
-					Required:    false,
-					Description: "User-defined label for the document",
-				},
-				{
-					Name:        accessTokenField,
-					Type:        "string",
-					Required:    false,
-					Description: "Configured access token for authenticated form submissions",
-				},
-				{
-					Name:        formClientField,
-					Type:        "string",
-					Required:    false,
-					Description: "Set to greasemonkey to receive an empty 204 response for every outcome",
 				},
 			},
 			JSONSchema: []*JSONSchemaField{
@@ -364,24 +334,6 @@ func init() {
 					Type:        "string",
 					Required:    false,
 					Description: "Plain-text content",
-				},
-				{
-					Name:        "html",
-					Type:        "string",
-					Required:    false,
-					Description: "Raw HTML source (text is extracted server-side)",
-				},
-				{
-					Name:        "favicon",
-					Type:        "string",
-					Required:    false,
-					Description: "Base64-encoded favicon data URI",
-				},
-				{
-					Name:        "label",
-					Type:        "string",
-					Required:    false,
-					Description: "User-defined label for the document",
 				},
 			},
 			JSONSchema: []*JSONSchemaField{

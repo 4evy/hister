@@ -33,6 +33,11 @@ func (e *HTTPError) Error() string {
 	return e.Message
 }
 
+// HTTPStatusCode returns the response status associated with the error.
+func (e *HTTPError) HTTPStatusCode() int {
+	return e.StatusCode
+}
+
 type Option func(*Client)
 
 func WithHTTPClient(hc *http.Client) Option {

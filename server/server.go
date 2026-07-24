@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"bytes"
 	"crypto/rand"
-	"crypto/subtle"
 	"encoding/base64"
 	"encoding/gob"
 	"encoding/json"
@@ -44,16 +43,13 @@ import (
 var Version = "unknown"
 
 var (
-	appSubFS           iofs.FS
-	staticFileServer   http.Handler
-	sessionStore       *sessions.CookieStore
-	errCSRFMismatch    = errors.New("CSRF token mismatch")
-	storeName          = "hister"
-	tokName            = "csrf_token"
-	accessTokenField   = "access_token"
-	formClientField    = "hister_client"
-	greasemonkeyClient = "greasemonkey"
-	staticTextFiles    map[string][]byte
+	appSubFS         iofs.FS
+	staticFileServer http.Handler
+	sessionStore     *sessions.CookieStore
+	errCSRFMismatch  = errors.New("CSRF token mismatch")
+	storeName        = "hister"
+	tokName          = "csrf_token"
+	staticTextFiles  map[string][]byte
 )
 
 type historyItem struct {
@@ -107,7 +103,6 @@ type webContext struct {
 	IsAdmin       bool
 	Authenticated bool
 	userRules     *config.Rules
-	formTokenAuth bool
 }
 
 func (c *webContext) effectiveRules() *config.Rules {
@@ -222,9 +217,6 @@ func registerEndpoints(cfg *config.Config) http.Handler {
 				h = withUserAuth(h)
 			}
 		}
-		if e.Method == POST && e.Path == "/api/add" {
-			h = withGreasemonkeyNoContent(h)
-		}
 		mux.HandleFunc(e.Pattern(), createHandler(cfg, h))
 	}
 	if cfg.App.LogLevel == "debug" {
@@ -328,33 +320,7 @@ func requestAccessToken(c *webContext) string {
 	return tok
 }
 
-func requestFormAccessToken(c *webContext) string {
-	if c.Request.Method != http.MethodPost || c.Request.URL.Path != "/api/add" {
-		return ""
-	}
-	contentType, _, err := mime.ParseMediaType(c.Request.Header.Get("Content-Type"))
-	if err != nil || contentType != "application/x-www-form-urlencoded" {
-		return ""
-	}
-	if err := c.Request.ParseForm(); err != nil {
-		return ""
-	}
-	return c.Request.PostForm.Get(accessTokenField)
-}
-
-func accessTokensMatch(got, want string) bool {
-	if got == "" || want == "" {
-		return false
-	}
-	return subtle.ConstantTimeCompare([]byte(got), []byte(want)) == 1
-}
-
 func populateTokenContext(c *webContext) {
-	if tok := requestFormAccessToken(c); accessTokensMatch(tok, c.Config.App.AccessToken) {
-		c.Authenticated = true
-		c.formTokenAuth = true
-		return
-	}
 	session, err := sessionStore.Get(c.Request, storeName)
 	if err == nil && session != nil {
 		if t, ok := session.Values["access_token"].(string); ok && t == c.Config.App.AccessToken {
@@ -369,10 +335,6 @@ func populateTokenContext(c *webContext) {
 
 func withTokenAuth(handler endpointHandler) endpointHandler {
 	return func(c *webContext) {
-		if c.formTokenAuth {
-			handler(c)
-			return
-		}
 		session, err := sessionStore.Get(c.Request, storeName)
 		if err != nil && session == nil {
 			serve403(c)
@@ -399,26 +361,7 @@ func withTokenAuth(handler endpointHandler) endpointHandler {
 	}
 }
 
-func populateUserFromToken(c *webContext, tok string) bool {
-	u, err := model.GetUserByToken(tok)
-	if err != nil {
-		return false
-	}
-	c.UserID = u.ID
-	c.Username = u.Username
-	c.IsAdmin = u.IsAdmin
-	c.Authenticated = true
-	if rules, err := u.ParseRules(); err == nil {
-		c.userRules = rules
-	}
-	return true
-}
-
 func populateUserContext(c *webContext) {
-	if tok := requestFormAccessToken(c); tok != "" && populateUserFromToken(c, tok) {
-		c.formTokenAuth = true
-		return
-	}
 	session, err := sessionStore.Get(c.Request, storeName)
 	if err != nil && session == nil {
 		return
@@ -432,8 +375,16 @@ func populateUserContext(c *webContext) {
 	}
 	if c.UserID == 0 {
 		tok := requestAccessToken(c)
-		if tok != "" && populateUserFromToken(c, tok) {
-			return
+		if tok != "" {
+			if u, err := model.GetUserByToken(tok); err == nil {
+				c.UserID = u.ID
+				c.Username = u.Username
+				c.IsAdmin = u.IsAdmin
+				c.Authenticated = true
+				if rules, err := u.ParseRules(); err == nil {
+					c.userRules = rules
+				}
+			}
 		}
 		return
 	}
@@ -518,12 +469,6 @@ func submittedDocumentUserID(c *webContext) uint {
 
 func withCSRF(handler endpointHandler) endpointHandler {
 	return func(c *webContext) {
-		// A valid, explicitly supplied form token is not an ambient browser
-		// credential and therefore provides its own CSRF protection.
-		if c.formTokenAuth {
-			handler(c)
-			return
-		}
 		// Allow requests coming from the command line
 		if c.Request.Header.Get("Origin") == "hister://" {
 			handler(c)
@@ -582,65 +527,6 @@ func withCSRF(handler endpointHandler) endpointHandler {
 		c.csrf = tok
 		c.Response.Header().Add("X-CSRF-Token", tok)
 		handler(c)
-	}
-}
-
-type greasemonkeyResponseWriter struct {
-	http.ResponseWriter
-	statusCode int
-}
-
-func (w *greasemonkeyResponseWriter) WriteHeader(statusCode int) {
-	if w.statusCode == 0 {
-		w.statusCode = statusCode
-	}
-}
-
-func (w *greasemonkeyResponseWriter) Write(p []byte) (int, error) {
-	if w.statusCode == 0 {
-		w.statusCode = http.StatusOK
-	}
-	return len(p), nil
-}
-
-func isGreasemonkeySubmission(r *http.Request) bool {
-	if r.Method != http.MethodPost || r.URL.Path != "/api/add" {
-		return false
-	}
-	contentType, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
-	if err != nil || contentType != "application/x-www-form-urlencoded" {
-		return false
-	}
-	if err := r.ParseForm(); err != nil {
-		return false
-	}
-	return r.PostForm.Get(formClientField) == greasemonkeyClient
-}
-
-func withGreasemonkeyNoContent(handler endpointHandler) endpointHandler {
-	return func(c *webContext) {
-		if !isGreasemonkeySubmission(c.Request) {
-			handler(c)
-			return
-		}
-
-		response := c.Response
-		writer := &greasemonkeyResponseWriter{ResponseWriter: response}
-		c.Response = writer
-		defer func() {
-			c.Response = response
-		}()
-
-		handler(c)
-
-		if writer.statusCode == 0 {
-			writer.statusCode = http.StatusOK
-		}
-		response.Header().Del("Content-Encoding")
-		response.Header().Del("Content-Length")
-		response.Header().Del("Content-Type")
-		log.Debug().Int("status", writer.statusCode).Msg("replaced Greasemonkey response with no content")
-		response.WriteHeader(http.StatusNoContent)
 	}
 }
 
@@ -1178,27 +1064,6 @@ func serveVersions(c *webContext) {
 	c.JSON(versions)
 }
 
-func decodeAddDocument(r *http.Request) (*document.Document, error) {
-	d := &document.Document{}
-	if strings.Contains(r.Header.Get("Content-Type"), "json") {
-		if err := json.NewDecoder(r.Body).Decode(d); err != nil {
-			return nil, err
-		}
-	} else {
-		if err := r.ParseForm(); err != nil {
-			return nil, err
-		}
-		f := r.PostForm
-		d.URL = f.Get("url")
-		d.Title = f.Get("title")
-		d.Text = f.Get("text")
-		d.HTML = f.Get("html")
-		d.Favicon = f.Get("favicon")
-		d.Label = f.Get("label")
-	}
-	return d, nil
-}
-
 func serveAdd(c *webContext) {
 	m := c.Request.Method
 	if m == http.MethodGet {
@@ -1209,10 +1074,21 @@ func serveAdd(c *webContext) {
 		serve500(c)
 		return
 	}
-	d, err := decodeAddDocument(c.Request)
-	if err != nil {
-		serve500(c)
-		return
+	d := &document.Document{}
+	if strings.Contains(c.Request.Header.Get("Content-Type"), "json") {
+		if err := json.NewDecoder(c.Request.Body).Decode(d); err != nil {
+			serve500(c)
+			return
+		}
+	} else {
+		if err := c.Request.ParseForm(); err != nil {
+			serve500(c)
+			return
+		}
+		f := c.Request.PostForm
+		d.URL = f.Get("url")
+		d.Title = f.Get("title")
+		d.Text = f.Get("text")
 	}
 	if !c.effectiveRules().IsSkip(d.URL) && !c.Config.IsSameHost(d.URL) {
 		d.UserID = submittedDocumentUserID(c)
@@ -1221,7 +1097,7 @@ func serveAdd(c *webContext) {
 		if rules.IsVersioning(d.URL) {
 			existingDoc = indexer.GetByURLAndUser(d.URL, d.UserID)
 		}
-		err = indexer.Add(d)
+		err := indexer.Add(d)
 		if err != nil {
 			if errors.Is(err, document.ErrSensitiveContent) {
 				log.Warn().Str("URL", d.URL).Msg("rejected document: sensitive content")

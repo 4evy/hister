@@ -1,4 +1,10 @@
-import { type PageData, extractPageData } from './page-data';
+type PageData = {
+  title: string;
+  text: string;
+  url: string;
+  html: string;
+  faviconURL: string;
+};
 
 type Result = {
   title: string;
@@ -64,6 +70,27 @@ class DuckDuckGoExtractor implements ResultExtractor {
 }
 
 let resultExtractors: ResultExtractor[] = [new GoogleExtractor(), new DuckDuckGoExtractor()];
+
+function getURL() {
+  return window.location.href.replace(window.location.hash, '');
+}
+
+function extractPageData(): PageData {
+  const url = getURL();
+  let faviconURL = '';
+  try {
+    const faviconHref = document.querySelector("link[rel~='icon']")?.getAttribute('href');
+    faviconURL = new URL(faviconHref || '/favicon.ico', url).href;
+  } catch {}
+
+  return {
+    text: document.body?.innerText ?? '',
+    title: document.querySelector('title')?.innerText ?? document.title,
+    url,
+    html: document.documentElement?.innerHTML ?? '',
+    faviconURL,
+  };
+}
 
 function registerResultExtractor(w: Window, cb: ExtractorCallback) {
   for (let ex of resultExtractors) {
