@@ -494,28 +494,51 @@ func initIndex() {
 	if err := indexer.Init(cfg); err != nil {
 		exit(1, "Indexer initialization error: "+err.Error())
 	}
-	v, err := model.GetIndexerVersion()
+	v, err := indexer.GetVersion()
 	if err != nil {
 		exit(1, "Failed to retrieve indexer version: "+err.Error())
 	}
+	storedFingerprint, err := indexer.GetAnalyzerFingerprint()
+	if err != nil {
+		exit(1, "Failed to retrieve analyzer configuration fingerprint: "+err.Error())
+	}
+	if v == -1 || storedFingerprint == "" {
+		legacyMetadata, err := model.GetLegacyIndexerMetadata()
+		if err != nil {
+			exit(1, "Failed to retrieve legacy index metadata: "+err.Error())
+		}
+		if legacyMetadata != nil {
+			if v == -1 {
+				v = legacyMetadata.Version
+				if err := indexer.SetVersion(v); err != nil {
+					exit(1, "Failed to migrate indexer version: "+err.Error())
+				}
+			}
+			if storedFingerprint == "" && legacyMetadata.AnalyzerFingerprint != "" {
+				storedFingerprint = legacyMetadata.AnalyzerFingerprint
+				if err := indexer.SetAnalyzerFingerprint(storedFingerprint); err != nil {
+					exit(1, "Failed to migrate analyzer configuration fingerprint: "+err.Error())
+				}
+			}
+		}
+	}
+	activeFingerprint := indexer.AnalyzerFingerprint(cfg.Indexer.DetectLanguages, cfg.Indexer.KeepStopwords)
+	if storedFingerprint == "" {
+		storedFingerprint = initialAnalyzerFingerprint(v, cfg.Indexer.DetectLanguages, cfg.Indexer.KeepStopwords)
+		if err := indexer.SetAnalyzerFingerprint(storedFingerprint); err != nil {
+			exit(1, "Failed to store analyzer configuration fingerprint: "+err.Error())
+		}
+	}
 	if v == -1 {
-		// Fresh installation — record current version, no reindex needed.
-		if err := model.SetIndexerVersion(indexer.Version); err != nil {
+		// Fresh installation: record the current version after the analyzer
+		// fingerprint so a partially written index retains the safe legacy
+		// analyzer fallback.
+		v = indexer.Version
+		if err := indexer.SetVersion(v); err != nil {
 			exit(1, "Failed to set indexer version: "+err.Error())
 		}
 	} else if indexer.Version > v {
 		log.Warn().Msg(cliWarningStyle.Render("There is a new indexer version. Run `hister reindex` to update your index."))
-	}
-	activeFingerprint := indexer.AnalyzerFingerprint(cfg.Indexer.DetectLanguages, cfg.Indexer.KeepStopwords)
-	storedFingerprint, err := model.GetAnalyzerFingerprint()
-	if err != nil {
-		exit(1, "Failed to retrieve analyzer configuration fingerprint: "+err.Error())
-	}
-	if storedFingerprint == "" {
-		storedFingerprint = initialAnalyzerFingerprint(v, cfg.Indexer.DetectLanguages, cfg.Indexer.KeepStopwords)
-		if err := model.SetAnalyzerFingerprint(storedFingerprint); err != nil {
-			exit(1, "Failed to store analyzer configuration fingerprint: "+err.Error())
-		}
 	}
 	if storedFingerprint != activeFingerprint {
 		log.Warn().Msg(cliWarningStyle.Render("The analyzer configuration differs from the indexed configuration. Run `hister reindex` to update your index."))

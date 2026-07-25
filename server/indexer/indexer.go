@@ -12,6 +12,7 @@ import (
 	"regexp"
 	"runtime"
 	"slices"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -64,6 +65,8 @@ const (
 	defaultIndexerName = "index.db"
 	langIndexerName    = "index_%s.db"
 	updatedBackfillKey = "hister.updated_backfill_complete"
+	indexVersionKey    = "hister.index_version"
+	analyzerConfigKey  = "hister.analyzer_fingerprint"
 )
 
 type Query struct {
@@ -366,6 +369,148 @@ func Init(cfg *config.Config) error {
 	return nil
 }
 
+func currentIndexer() (*indexer, error) {
+	if i == nil {
+		return nil, errors.New("indexer is not initialized")
+	}
+	if i.indexers[defaultIndexerName] == nil {
+		return nil, errors.New("default index is not initialized")
+	}
+	return i, nil
+}
+
+func GetVersion() (int, error) {
+	indexer, err := currentIndexer()
+	if err != nil {
+		return -1, err
+	}
+	return indexer.getVersion()
+}
+
+func (i *indexer) getVersion() (int, error) {
+	version := -1
+	for name, idx := range i.indexers {
+		value, err := idx.GetInternal([]byte(indexVersionKey))
+		if err != nil {
+			return -1, fmt.Errorf("read index version from %s: %w", name, err)
+		}
+		if len(value) == 0 {
+			return -1, nil
+		}
+		subIndexVersion, err := strconv.Atoi(string(value))
+		if err != nil {
+			return -1, fmt.Errorf("parse index version %q from %s: %w", value, name, err)
+		}
+		if version == -1 || subIndexVersion < version {
+			version = subIndexVersion
+		}
+	}
+	return version, nil
+}
+
+func SetVersion(version int) error {
+	indexer, err := currentIndexer()
+	if err != nil {
+		return err
+	}
+	return indexer.setVersion(version)
+}
+
+func (i *indexer) setVersion(version int) error {
+	value := []byte(strconv.Itoa(version))
+	for name, idx := range i.indexers {
+		if err := idx.SetInternal([]byte(indexVersionKey), value); err != nil {
+			return fmt.Errorf("store index version in %s: %w", name, err)
+		}
+	}
+	return nil
+}
+
+func GetAnalyzerFingerprint() (string, error) {
+	indexer, err := currentIndexer()
+	if err != nil {
+		return "", err
+	}
+	return indexer.getAnalyzerFingerprint()
+}
+
+func (i *indexer) getAnalyzerFingerprint() (string, error) {
+	fingerprint := ""
+	fingerprintIndex := ""
+	for name, idx := range i.indexers {
+		value, err := idx.GetInternal([]byte(analyzerConfigKey))
+		if err != nil {
+			return "", fmt.Errorf("read analyzer configuration fingerprint from %s: %w", name, err)
+		}
+		if len(value) == 0 {
+			return "", nil
+		}
+		if fingerprint == "" {
+			fingerprint = string(value)
+			fingerprintIndex = name
+			continue
+		}
+		if fingerprint != string(value) {
+			return "", fmt.Errorf(
+				"analyzer configuration fingerprints differ between %s and %s",
+				fingerprintIndex,
+				name,
+			)
+		}
+	}
+	return fingerprint, nil
+}
+
+func SetAnalyzerFingerprint(fingerprint string) error {
+	indexer, err := currentIndexer()
+	if err != nil {
+		return err
+	}
+	return indexer.setAnalyzerFingerprint(fingerprint)
+}
+
+func (i *indexer) setAnalyzerFingerprint(fingerprint string) error {
+	value := []byte(fingerprint)
+	for name, idx := range i.indexers {
+		if err := idx.SetInternal([]byte(analyzerConfigKey), value); err != nil {
+			return fmt.Errorf("store analyzer configuration fingerprint in %s: %w", name, err)
+		}
+	}
+	return nil
+}
+
+func (i *indexer) setMetadata(version int, fingerprint string) error {
+	if err := i.setAnalyzerFingerprint(fingerprint); err != nil {
+		return err
+	}
+	return i.setVersion(version)
+}
+
+func copyIndexMetadata(source, target bleve.Index) error {
+	fingerprint, err := source.GetInternal([]byte(analyzerConfigKey))
+	if err != nil {
+		return fmt.Errorf("read analyzer configuration fingerprint: %w", err)
+	}
+	if len(fingerprint) == 0 {
+		return errors.New("source index has no analyzer configuration fingerprint")
+	}
+	if err := target.SetInternal([]byte(analyzerConfigKey), fingerprint); err != nil {
+		return fmt.Errorf("store analyzer configuration fingerprint: %w", err)
+	}
+
+	version, err := source.GetInternal([]byte(indexVersionKey))
+	if err != nil {
+		return fmt.Errorf("read index version: %w", err)
+	}
+	if len(version) == 0 {
+		return errors.New("source index has no version")
+	}
+	if err := target.SetInternal([]byte(indexVersionKey), version); err != nil {
+		return fmt.Errorf("store index version: %w", err)
+	}
+	return nil
+}
+
 func initializeIndexer(basePath string, detectLanguages, keepStopwords bool) (*indexer, error) {
 	if _, err := os.Stat(basePath); errors.Is(err, os.ErrNotExist) {
 		if err := os.MkdirAll(basePath, os.ModePerm); err != nil {
@@ -373,6 +518,7 @@ func initializeIndexer(basePath string, detectLanguages, keepStopwords bool) (*i
 		}
 	}
 	idxPath := filepath.Join(basePath, defaultIndexerName)
+	created := false
 	idx, err := bleve.OpenUsing(idxPath, bleveRuntimeConfig())
 	if err != nil {
 		if err.Error() == "timeout" {
@@ -383,6 +529,7 @@ func initializeIndexer(basePath string, detectLanguages, keepStopwords bool) (*i
 		if err != nil {
 			return nil, err
 		}
+		created = true
 	}
 	idx.SetName(defaultIndexerName)
 	embedCtx, embedCancel := context.WithCancel(context.Background())
@@ -432,6 +579,17 @@ func initializeIndexer(basePath string, detectLanguages, keepStopwords bool) (*i
 	}
 	if err := i.backfillUpdatedTimestamps(); err != nil {
 		return nil, err
+	}
+	if created {
+		if err := idx.SetInternal(
+			[]byte(analyzerConfigKey),
+			[]byte(AnalyzerFingerprint(detectLanguages, keepStopwords)),
+		); err != nil {
+			return nil, fmt.Errorf("store initial analyzer configuration fingerprint: %w", err)
+		}
+		if err := idx.SetInternal([]byte(indexVersionKey), []byte(strconv.Itoa(Version))); err != nil {
+			return nil, fmt.Errorf("store initial index version: %w", err)
+		}
 	}
 	initialized = true
 	return i, nil
@@ -691,6 +849,12 @@ func Reindex(basePath string, rules *config.Rules, skipSensitiveChecks bool, det
 			sortKey = res.Hits[n-1].Sort
 			log.Info().Msg(fmt.Sprintf("Reindexed [%d/%d]", processed, total))
 		}
+	}
+	if err := tmpIdx.setMetadata(
+		Version,
+		AnalyzerFingerprint(detectLanguages, keepStopwords),
+	); err != nil {
+		return abortReindex(fmt.Errorf("store replacement index metadata: %w", err))
 	}
 	closeExtraSources()
 	idx.vectorStore = nil // prevent Close() from closing the store we're still using
@@ -1238,11 +1402,17 @@ func indexNameForLanguage(lang string) string {
 
 func (i *indexer) addIndexer(name, lang string) error {
 	mapping := createMapping(lang, i.keepStopwords)
-	idx, err := bleve.NewUsing(filepath.Join(i.dir, name), mapping, bleve.Config.DefaultIndexType, bleve.Config.DefaultMemKVStore, bleveRuntimeConfig())
+	indexPath := filepath.Join(i.dir, name)
+	idx, err := bleve.NewUsing(indexPath, mapping, bleve.Config.DefaultIndexType, bleve.Config.DefaultMemKVStore, bleveRuntimeConfig())
 	if err != nil {
 		return err
 	}
 	idx.SetName(name)
+	if err := copyIndexMetadata(i.indexers[defaultIndexerName], idx); err != nil {
+		closeErr := idx.Close()
+		removeErr := os.RemoveAll(indexPath)
+		return errors.Join(err, closeErr, removeErr)
+	}
 	i.indexers[name] = idx
 	i.idx.Add(idx)
 	return nil

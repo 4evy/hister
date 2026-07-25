@@ -7,36 +7,41 @@ import (
 	"github.com/asciimoo/hister/server/testutil"
 )
 
-func TestAnalyzerFingerprintPersistence(t *testing.T) {
+func TestLegacyIndexerMetadata(t *testing.T) {
 	testutil.InitModel(t)
-	if err := model.SetIndexerVersion(8); err != nil {
-		t.Fatal(err)
-	}
-	if err := model.SetAnalyzerFingerprint("first"); err != nil {
-		t.Fatal(err)
-	}
-	fingerprint, err := model.GetAnalyzerFingerprint()
+
+	metadata, err := model.GetLegacyIndexerMetadata()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if fingerprint != "first" {
-		t.Fatalf("fingerprint = %q, want %q", fingerprint, "first")
+	if metadata != nil {
+		t.Fatalf("legacy metadata = %#v, want nil", metadata)
 	}
-	if err := model.SetAnalyzerFingerprint("second"); err != nil {
+
+	if err := model.DB.Exec(`
+		CREATE TABLE indexer_versions (
+			version INTEGER,
+			analyzer_fingerprint TEXT
+		)
+	`).Error; err != nil {
 		t.Fatal(err)
 	}
-	fingerprint, err = model.GetAnalyzerFingerprint()
+	if err := model.DB.Exec(
+		"INSERT INTO indexer_versions (version, analyzer_fingerprint) VALUES (?, ?)",
+		8,
+		"fingerprint",
+	).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	metadata, err = model.GetLegacyIndexerMetadata()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if fingerprint != "second" {
-		t.Fatalf("fingerprint = %q, want %q", fingerprint, "second")
+	if metadata == nil {
+		t.Fatal("legacy metadata is nil")
 	}
-	version, err := model.GetIndexerVersion()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if version != 8 {
-		t.Fatalf("indexer version = %d, want 8", version)
+	if metadata.Version != 8 || metadata.AnalyzerFingerprint != "fingerprint" {
+		t.Fatalf("legacy metadata = %#v", metadata)
 	}
 }

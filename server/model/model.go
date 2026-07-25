@@ -78,7 +78,6 @@ func automigrate() error {
 		&History{},
 		&Link{},
 		&HistoryLink{},
-		&IndexerVersion{},
 		&User{},
 		&CrawlJob{},
 		&CrawlURL{},
@@ -101,51 +100,27 @@ type CommonFields struct {
 	DeletedAt *time.Time `json:"deleted_at"`
 }
 
-type IndexerVersion struct {
+type LegacyIndexerMetadata struct {
 	Version             int    `json:"version"`
 	AnalyzerFingerprint string `json:"analyzer_fingerprint"`
 }
 
-func GetIndexerVersion() (int, error) {
-	var r IndexerVersion
-	if err := DB.Model(&IndexerVersion{}).First(&r).Error; err != nil {
-		// No record yet — fresh installation; report as -1 so callers can
-		// distinguish "never set" from version 0.
-		return -1, nil
-	}
-	return r.Version, nil
+func (LegacyIndexerMetadata) TableName() string {
+	return "indexer_versions"
 }
 
-func SetIndexerVersion(v int) error {
-	var r IndexerVersion
-	if err := DB.Model(&IndexerVersion{}).First(&r).Error; err != nil {
-		r = IndexerVersion{Version: v}
-		return DB.Create(&r).Error
+// GetLegacyIndexerMetadata reads index metadata written by versions that kept
+// it in SQL. New installations do not create this table.
+func GetLegacyIndexerMetadata() (*LegacyIndexerMetadata, error) {
+	if !DB.Migrator().HasTable(&LegacyIndexerMetadata{}) {
+		return nil, nil
 	}
-	return DB.Model(&IndexerVersion{}).Where("version != ?", v).Update("version", v).Error
-}
-
-func GetAnalyzerFingerprint() (string, error) {
-	var r IndexerVersion
-	if err := DB.Model(&IndexerVersion{}).First(&r).Error; err != nil {
+	var metadata LegacyIndexerMetadata
+	if err := DB.Model(&LegacyIndexerMetadata{}).First(&metadata).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return "", nil
+			return nil, nil
 		}
-		return "", err
+		return nil, err
 	}
-	return r.AnalyzerFingerprint, nil
-}
-
-func SetAnalyzerFingerprint(fingerprint string) error {
-	var r IndexerVersion
-	if err := DB.Model(&IndexerVersion{}).First(&r).Error; err != nil {
-		if !errors.Is(err, gorm.ErrRecordNotFound) {
-			return err
-		}
-		r = IndexerVersion{AnalyzerFingerprint: fingerprint}
-		return DB.Create(&r).Error
-	}
-	return DB.Model(&IndexerVersion{}).
-		Where("analyzer_fingerprint != ? OR analyzer_fingerprint IS NULL", fingerprint).
-		Update("analyzer_fingerprint", fingerprint).Error
+	return &metadata, nil
 }
