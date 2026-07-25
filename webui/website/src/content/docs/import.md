@@ -6,6 +6,11 @@ title: 'Importing Documents'
 
 The `hister import` command collects related import tools under one command. Every import sends documents to a running Hister server.
 
+> Hister v0.16.0 uses the standalone `hister import-browser` command. To import
+> browser history with that release, replace `hister import browser` in the
+> examples below with `hister import-browser`. The unified import command is
+> available in rolling builds and stable releases newer than v0.16.0.
+
 ## Available Import Sources
 
 | Command                                     | Source                                     | Default label |
