@@ -494,15 +494,12 @@ func initIndex() {
 	if err := indexer.Init(cfg); err != nil {
 		exit(1, "Indexer initialization error: "+err.Error())
 	}
-	v, err := indexer.GetVersion()
+	v, storedFingerprint, err := indexer.GetMetadata()
 	if err != nil {
-		exit(1, "Failed to retrieve indexer version: "+err.Error())
+		exit(1, "Failed to retrieve index metadata: "+err.Error())
 	}
-	storedFingerprint, err := indexer.GetAnalyzerFingerprint()
-	if err != nil {
-		exit(1, "Failed to retrieve analyzer configuration fingerprint: "+err.Error())
-	}
-	if v == -1 || storedFingerprint == "" {
+	metadataMissing := v == -1 || storedFingerprint == ""
+	if metadataMissing {
 		legacyMetadata, err := model.GetLegacyIndexerMetadata()
 		if err != nil {
 			exit(1, "Failed to retrieve legacy index metadata: "+err.Error())
@@ -510,34 +507,25 @@ func initIndex() {
 		if legacyMetadata != nil {
 			if v == -1 {
 				v = legacyMetadata.Version
-				if err := indexer.SetVersion(v); err != nil {
-					exit(1, "Failed to migrate indexer version: "+err.Error())
-				}
 			}
 			if storedFingerprint == "" && legacyMetadata.AnalyzerFingerprint != "" {
 				storedFingerprint = legacyMetadata.AnalyzerFingerprint
-				if err := indexer.SetAnalyzerFingerprint(storedFingerprint); err != nil {
-					exit(1, "Failed to migrate analyzer configuration fingerprint: "+err.Error())
-				}
 			}
 		}
 	}
 	activeFingerprint := indexer.AnalyzerFingerprint(cfg.Indexer.DetectLanguages, cfg.Indexer.KeepStopwords)
 	if storedFingerprint == "" {
 		storedFingerprint = initialAnalyzerFingerprint(v, cfg.Indexer.DetectLanguages, cfg.Indexer.KeepStopwords)
-		if err := indexer.SetAnalyzerFingerprint(storedFingerprint); err != nil {
-			exit(1, "Failed to store analyzer configuration fingerprint: "+err.Error())
-		}
 	}
 	if v == -1 {
-		// Fresh installation: record the current version after the analyzer
-		// fingerprint so a partially written index retains the safe legacy
-		// analyzer fallback.
 		v = indexer.Version
-		if err := indexer.SetVersion(v); err != nil {
-			exit(1, "Failed to set indexer version: "+err.Error())
+	}
+	if metadataMissing {
+		if err := indexer.SetMetadata(v, storedFingerprint); err != nil {
+			exit(1, "Failed to store index metadata: "+err.Error())
 		}
-	} else if indexer.Version > v {
+	}
+	if indexer.Version > v {
 		log.Warn().Msg(cliWarningStyle.Render("There is a new indexer version. Run `hister reindex` to update your index."))
 	}
 	if storedFingerprint != activeFingerprint {

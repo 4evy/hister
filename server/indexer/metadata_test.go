@@ -5,7 +5,6 @@ package indexer
 import (
 	"os"
 	"path/filepath"
-	"strconv"
 	"testing"
 
 	"github.com/asciimoo/hister/config"
@@ -15,6 +14,20 @@ import (
 	"github.com/blevesearch/bleve/v2"
 )
 
+func requireIndexMetadata(t *testing.T, idx bleve.Index, want indexMetadata) {
+	t.Helper()
+	got, complete, err := readIndexMetadata(idx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !complete {
+		t.Fatalf("index metadata = %#v, want complete metadata", got)
+	}
+	if got != want {
+		t.Fatalf("index metadata = %#v, want %#v", got, want)
+	}
+}
+
 func TestIndexMetadataPersistence(t *testing.T) {
 	cfg := testutil.Config(t)
 	idx, err := initializeIndexer(cfg.FullPath(""), true, true)
@@ -23,26 +36,19 @@ func TestIndexMetadataPersistence(t *testing.T) {
 	}
 	i = idx
 
-	version, err := GetVersion()
+	version, fingerprint, err := GetMetadata()
 	if err != nil {
 		t.Fatal(err)
 	}
 	if version != Version {
 		t.Fatalf("version = %d, want %d", version, Version)
 	}
-	fingerprint, err := GetAnalyzerFingerprint()
-	if err != nil {
-		t.Fatal(err)
-	}
 	wantFingerprint := AnalyzerFingerprint(true, true)
 	if fingerprint != wantFingerprint {
 		t.Fatalf("fingerprint = %q, want %q", fingerprint, wantFingerprint)
 	}
 
-	if err := SetVersion(Version - 1); err != nil {
-		t.Fatal(err)
-	}
-	if err := SetAnalyzerFingerprint("custom"); err != nil {
+	if err := SetMetadata(Version-1, "custom"); err != nil {
 		t.Fatal(err)
 	}
 	idx.Close()
@@ -54,23 +60,19 @@ func TestIndexMetadataPersistence(t *testing.T) {
 	i = idx
 	defer idx.Close()
 
-	version, err = GetVersion()
+	version, fingerprint, err = GetMetadata()
 	if err != nil {
 		t.Fatal(err)
 	}
 	if version != Version-1 {
 		t.Fatalf("reopened version = %d, want %d", version, Version-1)
 	}
-	fingerprint, err = GetAnalyzerFingerprint()
-	if err != nil {
-		t.Fatal(err)
-	}
 	if fingerprint != "custom" {
 		t.Fatalf("reopened fingerprint = %q, want custom", fingerprint)
 	}
 }
 
-func TestGetVersionRejectsInvalidInternalValue(t *testing.T) {
+func TestGetMetadataRejectsInvalidInternalValue(t *testing.T) {
 	cfg := testutil.Config(t)
 	idx, err := initializeIndexer(cfg.FullPath(""), false, false)
 	if err != nil {
@@ -82,19 +84,80 @@ func TestGetVersionRejectsInvalidInternalValue(t *testing.T) {
 	if err := idx.indexers[defaultIndexerName].DeleteInternal([]byte(indexVersionKey)); err != nil {
 		t.Fatal(err)
 	}
-	version, err := GetVersion()
+	version, fingerprint, err := GetMetadata()
 	if err != nil {
 		t.Fatal(err)
 	}
 	if version != -1 {
 		t.Fatalf("missing version = %d, want -1", version)
 	}
+	if fingerprint != AnalyzerFingerprint(false, false) {
+		t.Fatalf("fingerprint = %q, want the stored fingerprint", fingerprint)
+	}
 
 	if err := idx.indexers[defaultIndexerName].SetInternal([]byte(indexVersionKey), []byte("invalid")); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := GetVersion(); err == nil {
-		t.Fatal("GetVersion accepted an invalid internal value")
+	if _, _, err := GetMetadata(); err == nil {
+		t.Fatal("GetMetadata accepted an invalid internal value")
+	}
+}
+
+func TestGetMetadataValidatesAllSubIndexes(t *testing.T) {
+	cfg := testutil.Config(t)
+	idx, err := initializeIndexer(cfg.FullPath(""), true, false)
+	if err != nil {
+		t.Fatalf("initialize indexer: %v", err)
+	}
+	i = idx
+	defer idx.Close()
+
+	languageIndexName := indexNameForLanguage("en")
+	if err := idx.addIndexer(languageIndexName, "en"); err != nil {
+		t.Fatalf("add language index: %v", err)
+	}
+	languageIndex := idx.indexers[languageIndexName]
+	fingerprint := AnalyzerFingerprint(true, false)
+	if err := writeIndexMetadata(languageIndex, indexMetadata{
+		Version:             Version - 1,
+		AnalyzerFingerprint: fingerprint,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	version, gotFingerprint, err := GetMetadata()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if version != Version-1 {
+		t.Fatalf("version = %d, want oldest version %d", version, Version-1)
+	}
+	if gotFingerprint != fingerprint {
+		t.Fatalf("fingerprint = %q, want %q", gotFingerprint, fingerprint)
+	}
+
+	if err := languageIndex.DeleteInternal([]byte(indexVersionKey)); err != nil {
+		t.Fatal(err)
+	}
+	version, gotFingerprint, err = GetMetadata()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if version != -1 {
+		t.Fatalf("version with incomplete subindex metadata = %d, want -1", version)
+	}
+	if gotFingerprint != fingerprint {
+		t.Fatalf("fingerprint = %q, want %q", gotFingerprint, fingerprint)
+	}
+
+	if err := writeIndexMetadata(languageIndex, indexMetadata{
+		Version:             Version,
+		AnalyzerFingerprint: "different",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := GetMetadata(); err == nil {
+		t.Fatal("GetMetadata accepted inconsistent analyzer fingerprints")
 	}
 }
 
@@ -111,34 +174,14 @@ func TestLanguageIndexMetadataIsSelfContained(t *testing.T) {
 		idx.Close()
 		t.Fatalf("add language index: %v", err)
 	}
-	if err := SetVersion(Version - 1); err != nil {
-		idx.Close()
-		t.Fatal(err)
-	}
-	if err := SetAnalyzerFingerprint("custom"); err != nil {
+	wantMetadata := indexMetadata{Version: Version - 1, AnalyzerFingerprint: "custom"}
+	if err := SetMetadata(wantMetadata.Version, wantMetadata.AnalyzerFingerprint); err != nil {
 		idx.Close()
 		t.Fatal(err)
 	}
 
-	for name, subIndex := range idx.indexers {
-		version, err := subIndex.GetInternal([]byte(indexVersionKey))
-		if err != nil {
-			idx.Close()
-			t.Fatalf("read version from %s: %v", name, err)
-		}
-		if got, want := string(version), strconv.Itoa(Version-1); got != want {
-			idx.Close()
-			t.Fatalf("version in %s = %q, want %q", name, got, want)
-		}
-		fingerprint, err := subIndex.GetInternal([]byte(analyzerConfigKey))
-		if err != nil {
-			idx.Close()
-			t.Fatalf("read fingerprint from %s: %v", name, err)
-		}
-		if string(fingerprint) != "custom" {
-			idx.Close()
-			t.Fatalf("fingerprint in %s = %q, want custom", name, fingerprint)
-		}
+	for _, subIndex := range idx.indexers {
+		requireIndexMetadata(t, subIndex, wantMetadata)
 	}
 	idx.Close()
 
@@ -156,20 +199,7 @@ func TestLanguageIndexMetadataIsSelfContained(t *testing.T) {
 		}
 	}()
 
-	version, err := copiedIndex.GetInternal([]byte(indexVersionKey))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got, want := string(version), strconv.Itoa(Version-1); got != want {
-		t.Fatalf("copied language index version = %q, want %q", got, want)
-	}
-	fingerprint, err := copiedIndex.GetInternal([]byte(analyzerConfigKey))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if string(fingerprint) != "custom" {
-		t.Fatalf("copied language index fingerprint = %q, want custom", fingerprint)
-	}
+	requireIndexMetadata(t, copiedIndex, wantMetadata)
 }
 
 func TestReindexStoresReplacementIndexMetadata(t *testing.T) {
@@ -189,11 +219,7 @@ func TestReindexStoresReplacementIndexMetadata(t *testing.T) {
 		idx.Close()
 		t.Fatalf("save English document: %v", err)
 	}
-	if err := SetVersion(Version - 1); err != nil {
-		idx.Close()
-		t.Fatal(err)
-	}
-	if err := SetAnalyzerFingerprint("old"); err != nil {
+	if err := SetMetadata(Version-1, "old"); err != nil {
 		idx.Close()
 		t.Fatal(err)
 	}
@@ -210,16 +236,12 @@ func TestReindexStoresReplacementIndexMetadata(t *testing.T) {
 	}
 	defer i.Close()
 
-	version, err := GetVersion()
+	version, fingerprint, err := GetMetadata()
 	if err != nil {
 		t.Fatal(err)
 	}
 	if version != Version {
 		t.Fatalf("version = %d, want %d", version, Version)
-	}
-	fingerprint, err := GetAnalyzerFingerprint()
-	if err != nil {
-		t.Fatal(err)
 	}
 	wantFingerprint := AnalyzerFingerprint(true, true)
 	if fingerprint != wantFingerprint {
@@ -230,25 +252,8 @@ func TestReindexStoresReplacementIndexMetadata(t *testing.T) {
 	if _, exists := i.indexers[languageIndexName]; !exists {
 		t.Fatalf("replacement language index %s was not created", languageIndexName)
 	}
-	for name, subIndex := range i.indexers {
-		storedVersion, err := subIndex.GetInternal([]byte(indexVersionKey))
-		if err != nil {
-			t.Fatalf("read replacement version from %s: %v", name, err)
-		}
-		if got, want := string(storedVersion), strconv.Itoa(Version); got != want {
-			t.Fatalf("replacement version in %s = %q, want %q", name, got, want)
-		}
-		storedFingerprint, err := subIndex.GetInternal([]byte(analyzerConfigKey))
-		if err != nil {
-			t.Fatalf("read replacement fingerprint from %s: %v", name, err)
-		}
-		if string(storedFingerprint) != wantFingerprint {
-			t.Fatalf(
-				"replacement fingerprint in %s = %q, want %q",
-				name,
-				storedFingerprint,
-				wantFingerprint,
-			)
-		}
+	wantMetadata := indexMetadata{Version: Version, AnalyzerFingerprint: wantFingerprint}
+	for _, subIndex := range i.indexers {
+		requireIndexMetadata(t, subIndex, wantMetadata)
 	}
 }
