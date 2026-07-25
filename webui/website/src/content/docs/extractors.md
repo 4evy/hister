@@ -302,7 +302,9 @@ excluded).
 Handles Mastodon instance pages by splitting them into individual toot documents.
 Each toot found on the page is indexed as a separate document with its own URL
 and author, allowing individual posts to appear in search results. The original
-aggregator page is not indexed.
+aggregator page is not indexed. Links for remote toots are rewritten to point
+directly to the account's original server instead of the instance displaying
+the federated copy.
 
 Detection is heuristic: the extractor checks for a `"repository":"mastodon/mastodon"`
 marker in the page HTML, or for a `type: toot` metadata flag set by a previous
