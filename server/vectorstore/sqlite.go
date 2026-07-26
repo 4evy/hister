@@ -5,15 +5,19 @@ package vectorstore
 import (
 	"database/sql"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"math"
 	"path/filepath"
+	"strings"
 
 	"github.com/asciimoo/hister/config"
 	"github.com/asciimoo/hister/server/vectorstore/sqlitevec"
 
 	"github.com/rs/zerolog/log"
 )
+
+const sqliteVectorSchemaVersion = 1
 
 type sqliteVectorStore struct {
 	db         *sql.DB
@@ -47,8 +51,24 @@ func (s *sqliteVectorStore) Init() error {
 	}
 	log.Info().Str("version", version).Msg("sqlite-vec loaded")
 
+	tx, err := s.db.Begin()
+	if err != nil {
+		return fmt.Errorf("begin vector database initialization: %w", err)
+	}
+	defer func() {
+		_ = tx.Rollback()
+	}()
+
+	var schemaVersion int
+	if err := tx.QueryRow(`PRAGMA user_version`).Scan(&schemaVersion); err != nil {
+		return fmt.Errorf("read vector database schema version: %w", err)
+	}
+	if schemaVersion > sqliteVectorSchemaVersion {
+		return fmt.Errorf("vector database schema version %d is newer than supported version %d", schemaVersion, sqliteVectorSchemaVersion)
+	}
+
 	// Regular table for chunk metadata (text content, doc association).
-	if _, err := s.db.Exec(`CREATE TABLE IF NOT EXISTS chunk_meta (
+	if _, err := tx.Exec(`CREATE TABLE IF NOT EXISTS chunk_meta (
 		chunk_key TEXT PRIMARY KEY,
 		doc_id TEXT NOT NULL,
 		chunk_idx INTEGER NOT NULL,
@@ -57,20 +77,94 @@ func (s *sqliteVectorStore) Init() error {
 	)`); err != nil {
 		return fmt.Errorf("create chunk_meta table: %w", err)
 	}
-	if _, err := s.db.Exec(`CREATE INDEX IF NOT EXISTS idx_chunk_meta_doc ON chunk_meta(doc_id)`); err != nil {
+	if _, err := tx.Exec(`CREATE INDEX IF NOT EXISTS idx_chunk_meta_doc ON chunk_meta(doc_id)`); err != nil {
 		return fmt.Errorf("create chunk_meta doc_id index: %w", err)
 	}
 
-	// Vec0 virtual table for vector similarity search.
-	stmt := fmt.Sprintf(`CREATE VIRTUAL TABLE IF NOT EXISTS embeddings USING vec0(
+	migratedVectors, err := s.initEmbeddingsTable(tx)
+	if err != nil {
+		return err
+	}
+	if _, err := tx.Exec(fmt.Sprintf(`PRAGMA user_version = %d`, sqliteVectorSchemaVersion)); err != nil {
+		return fmt.Errorf("write vector database schema version: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit vector database initialization: %w", err)
+	}
+	if migratedVectors >= 0 {
+		log.Info().Int64("vectors", migratedVectors).Msg("migrated SQLite vector store to cosine distance; review semantic_search.similarity_threshold if it was customized")
+	}
+	return nil
+}
+
+func (s *sqliteVectorStore) createEmbeddingsTable(tx *sql.Tx) error {
+	stmt := fmt.Sprintf(`CREATE VIRTUAL TABLE embeddings USING vec0(
 		user_id INTEGER PARTITION KEY,
 		chunk_key TEXT PRIMARY KEY,
-		embedding FLOAT[%d]
+		embedding FLOAT[%d] distance_metric=cosine
 	)`, s.dimensions)
-	if _, err := s.db.Exec(stmt); err != nil {
+	if _, err := tx.Exec(stmt); err != nil {
 		return fmt.Errorf("create embeddings table: %w", err)
 	}
 	return nil
+}
+
+func (s *sqliteVectorStore) initEmbeddingsTable(tx *sql.Tx) (int64, error) {
+	var schema string
+	err := tx.QueryRow(`SELECT sql FROM sqlite_schema WHERE type = 'table' AND name = 'embeddings'`).Scan(&schema)
+	if errors.Is(err, sql.ErrNoRows) {
+		return -1, s.createEmbeddingsTable(tx)
+	}
+	if err != nil {
+		return -1, fmt.Errorf("read embeddings table schema: %w", err)
+	}
+
+	normalizedSchema := strings.Join(strings.Fields(strings.ToLower(schema)), "")
+	if !strings.Contains(normalizedSchema, "usingvec0(") {
+		return -1, errors.New("existing embeddings table is not a vec0 virtual table")
+	}
+	if strings.Contains(normalizedSchema, "distance_metric=cosine") {
+		return -1, nil
+	}
+
+	if _, err := tx.Exec(`CREATE TEMP TABLE embeddings_cosine_migration (
+		user_id INTEGER NOT NULL,
+		chunk_key TEXT PRIMARY KEY,
+		embedding BLOB NOT NULL
+	)`); err != nil {
+		return -1, fmt.Errorf("create embeddings migration table: %w", err)
+	}
+	copyResult, err := tx.Exec(`INSERT INTO embeddings_cosine_migration(user_id, chunk_key, embedding)
+		SELECT user_id, chunk_key, embedding FROM embeddings`)
+	if err != nil {
+		return -1, fmt.Errorf("copy embeddings for cosine migration: %w", err)
+	}
+	migratedVectors, err := copyResult.RowsAffected()
+	if err != nil {
+		return -1, fmt.Errorf("count embeddings for cosine migration: %w", err)
+	}
+	if _, err := tx.Exec(`DROP TABLE embeddings`); err != nil {
+		return -1, fmt.Errorf("drop L2 embeddings table: %w", err)
+	}
+	if err := s.createEmbeddingsTable(tx); err != nil {
+		return -1, err
+	}
+	restoreResult, err := tx.Exec(`INSERT INTO embeddings(user_id, chunk_key, embedding)
+		SELECT user_id, chunk_key, embedding FROM embeddings_cosine_migration`)
+	if err != nil {
+		return -1, fmt.Errorf("restore embeddings after cosine migration: %w", err)
+	}
+	restoredVectors, err := restoreResult.RowsAffected()
+	if err != nil {
+		return -1, fmt.Errorf("count restored embeddings after cosine migration: %w", err)
+	}
+	if restoredVectors != migratedVectors {
+		return -1, fmt.Errorf("restore embeddings after cosine migration: copied %d vectors but restored %d", migratedVectors, restoredVectors)
+	}
+	if _, err := tx.Exec(`DROP TABLE embeddings_cosine_migration`); err != nil {
+		return -1, fmt.Errorf("drop embeddings migration table: %w", err)
+	}
+	return migratedVectors, nil
 }
 
 func chunkKey(docID string, chunkIdx int) string {
