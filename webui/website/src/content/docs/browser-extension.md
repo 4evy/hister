@@ -4,6 +4,31 @@ draft: false
 title: 'Browser Extension'
 ---
 
+<script>
+  import ConfigReference from '$lib/ConfigReference.svelte';
+
+  const connectionOptions = [
+    {
+      name: 'Server URL',
+      type: 'string',
+      defaultValue: 'http://127.0.0.1:4433/',
+      description: 'Full URL of the Hister server, including its scheme and port.',
+    },
+    {
+      name: 'Custom Headers',
+      type: 'map[string]string',
+      defaultValue: '(none)',
+      description: 'Additional HTTP headers included with every request. Use them for reverse proxy authentication or other server requirements.',
+    },
+    {
+      name: 'Submit as public documents',
+      type: 'bool',
+      defaultValue: 'Off',
+      description: 'Stores newly indexed pages as public documents with user ID zero. This setting appears after authentication.',
+    },
+  ];
+</script>
+
 The Hister browser extension is the primary way to automatically index your browsing history. It runs silently in the background, sending page content to your Hister server as you browse.
 
 ## Installation
@@ -122,11 +147,7 @@ To open it directly, right click on the extension icon and select "Options", or 
 
 ### Connection Settings
 
-| Setting                        | Default                  | Description                                                                                                                                                      |
-| ------------------------------ | ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Server URL**                 | `http://127.0.0.1:4433/` | The full URL of your Hister server, including scheme and port.                                                                                                   |
-| **Custom Headers**             | _(none)_                 | Additional HTTP headers included with every request. Useful for reverse-proxy authentication (e.g., `Authorization: Basic …`). Each header is a name/value pair. |
-| **Submit as public documents** | Off                      | Store newly indexed pages as public documents with user id `0`. This setting appears after the extension is authenticated.                                       |
+<ConfigReference items={connectionOptions} />
 
 Click **Save Settings** to apply. The extension validates the connection by calling `GET /api/config` before saving; an invalid URL will show an error instead.
 
