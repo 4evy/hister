@@ -26,6 +26,12 @@
   color: var(--text-primary);
 }
 
+.content h2,
+.content h3,
+.content h4 {
+  scroll-margin-top: 5rem;
+}
+
 .content h1 {
   font-size: 2.5rem;
   letter-spacing: -0.03em;

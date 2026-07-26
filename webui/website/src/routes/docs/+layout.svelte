@@ -1,5 +1,8 @@
 <script lang="ts">
   import { page } from '$app/state';
+  import BookOpenIcon from '@lucide/svelte/icons/book-open';
+  import ChevronDownIcon from '@lucide/svelte/icons/chevron-down';
+  import DocsNavigation from '$lib/DocsNavigation.svelte';
 
   let { children, data } = $props();
 
@@ -7,6 +10,13 @@
 
   const currentDoc = $derived(
     !isIndex ? data.docs.find((d) => page.url.pathname === `/docs/${d.slug}`) : null,
+  );
+  const currentCategory = $derived(
+    !isIndex
+      ? data.categories.find((category) =>
+          category.docs.some((doc) => doc.slug === currentDoc?.slug),
+        )
+      : null,
   );
 </script>
 
@@ -36,34 +46,44 @@
     </div>
   </header>
 
-  <!-- Sidebar + Content -->
+  <div class="border-brutal-border sticky top-0 z-30 border-b-[3px] bg-brutal-bg md:hidden">
+    <details class="group">
+      <summary
+        class="flex cursor-pointer list-none items-center gap-3 px-6 py-3.5 [&::-webkit-details-marker]:hidden"
+      >
+        <BookOpenIcon aria-hidden="true" size={19} class="shrink-0 text-hister-indigo" />
+        <span class="min-w-0 flex-1">
+          <span
+            class="font-space block text-[9px] font-bold tracking-[1.5px] text-(--text-secondary) uppercase"
+            >{currentCategory?.name ?? 'Documentation'}</span
+          >
+          <span class="font-inter block truncate text-sm font-semibold text-(--text-primary)"
+            >{currentDoc?.title}</span
+          >
+        </span>
+        <span
+          class="font-space text-[9px] font-bold tracking-[1.25px] text-(--text-secondary) uppercase"
+          >Browse</span
+        >
+        <ChevronDownIcon
+          aria-hidden="true"
+          size={18}
+          class="shrink-0 transition-transform group-open:rotate-180"
+        />
+      </summary>
+      <div
+        class="border-brutal-border max-h-[70vh] overflow-y-auto border-t-[2px] bg-(--page-bg) p-4"
+      >
+        <DocsNavigation categories={data.categories} currentSlug={currentDoc?.slug ?? ''} />
+      </div>
+    </details>
+  </div>
+
   <div class="mx-auto flex max-w-7xl flex-col gap-10 px-6 py-10 md:flex-row md:px-12">
-    <aside class="hidden shrink-0 md:block md:w-56">
-      <nav aria-label="Documentation" class="flex flex-col gap-5 md:sticky md:top-24">
-        {#each data.categories as category}
-          <div class="flex flex-col gap-1">
-            <div class="mb-1 flex items-center gap-2">
-              <div class="h-2 w-2 bg-hister-{category.color}"></div>
-              <span
-                class="font-space text-[10px] font-bold tracking-[2px] text-(--text-secondary) uppercase"
-                >{category.name}</span
-              >
-            </div>
-            {#each category.docs as doc}
-              <a
-                href="/docs/{doc.slug}"
-                aria-current={page.url.pathname === `/docs/${doc.slug}` ? 'page' : undefined}
-                class="font-inter border-l-[3px] px-3 py-2 text-sm no-underline transition-colors {page
-                  .url.pathname === `/docs/${doc.slug}`
-                  ? 'border-hister-indigo bg-hister-indigo/5 font-semibold text-(--text-primary)'
-                  : 'hover:border-brutal-border border-transparent text-(--text-secondary) hover:text-(--text-primary)'}"
-              >
-                {doc.title}
-              </a>
-            {/each}
-          </div>
-        {/each}
-      </nav>
+    <aside class="hidden w-64 shrink-0 md:block">
+      <div class="sticky top-6 max-h-[calc(100vh-3rem)] overflow-y-auto pr-2 pb-4">
+        <DocsNavigation categories={data.categories} currentSlug={currentDoc?.slug ?? ''} />
+      </div>
     </aside>
 
     <div class="min-w-0 flex-1">

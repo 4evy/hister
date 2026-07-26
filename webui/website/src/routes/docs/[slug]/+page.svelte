@@ -1,6 +1,8 @@
 <script lang="ts">
   import ArrowLeft from '@lucide/svelte/icons/arrow-left';
   import ArrowRight from '@lucide/svelte/icons/arrow-right';
+  import ChevronDownIcon from '@lucide/svelte/icons/chevron-down';
+  import ListIcon from '@lucide/svelte/icons/list';
   import { Button, Separator } from '@hister/components';
   import ImageLightbox from '$lib/ImageLightbox.svelte';
   import Seo from '$lib/Seo.svelte';
@@ -15,6 +17,11 @@
 
   let toc = $state<TocEntry[]>([]);
   let activeId = $state('');
+  const activeEntry = $derived(toc.find((entry) => entry.id === activeId) ?? toc[0]);
+
+  function closePageNavigation(event: MouseEvent) {
+    (event.currentTarget as HTMLElement).closest('details')?.removeAttribute('open');
+  }
 
   $effect(() => {
     // Track data.content as a dependency so this re-runs when navigating between docs
@@ -25,11 +32,13 @@
     if (!article) return;
 
     const headings = article.querySelectorAll('h2, h3');
-    toc = Array.from(headings).map((h) => ({
+    const nextToc = Array.from(headings).map((h) => ({
       id: h.id,
       text: h.textContent ?? '',
       level: h.tagName === 'H2' ? 2 : 3,
     }));
+    toc = nextToc;
+    activeId = nextToc[0]?.id ?? '';
 
     const observer = new IntersectionObserver(
       (entries) => {
@@ -55,18 +64,65 @@
 
 <div class="flex gap-10">
   <article class="min-w-0 flex-1" data-doc-content>
+    {#if toc.length > 0}
+      <details class="group border-brutal-border mb-8 border-[3px] bg-brutal-card xl:hidden">
+        <summary
+          class="flex cursor-pointer list-none items-center gap-3 px-4 py-3 [&::-webkit-details-marker]:hidden"
+        >
+          <ListIcon aria-hidden="true" size={18} class="shrink-0 text-hister-indigo" />
+          <span class="min-w-0 flex-1">
+            <span
+              class="font-space block text-[9px] font-bold tracking-[1.5px] text-(--text-secondary) uppercase"
+              >On this page</span
+            >
+            <span class="font-inter block truncate text-sm font-semibold text-(--text-primary)"
+              >{activeEntry?.text}</span
+            >
+          </span>
+          <ChevronDownIcon
+            aria-hidden="true"
+            size={18}
+            class="shrink-0 transition-transform group-open:rotate-180"
+          />
+        </summary>
+        <nav
+          aria-label="On this page"
+          class="border-brutal-border max-h-[50vh] overflow-y-auto border-t-[2px] p-2"
+        >
+          {#each toc as entry}
+            <a
+              href="#{entry.id}"
+              aria-current={activeId === entry.id ? 'location' : undefined}
+              onclick={closePageNavigation}
+              class="font-inter block border-l-[3px] py-2 text-sm no-underline transition-colors {entry.level ===
+              3
+                ? 'pl-6'
+                : 'pl-3'} {activeId === entry.id
+                ? 'border-hister-indigo bg-hister-indigo/10 font-semibold text-(--text-primary)'
+                : 'border-transparent text-(--text-secondary) hover:bg-(--muted-surface) hover:text-(--text-primary)'}"
+            >
+              {entry.text}
+            </a>
+          {/each}
+        </nav>
+      </details>
+    {/if}
+
     <div class="content doc-content">
       <data.content />
     </div>
 
     <!-- Prev / Next -->
     <Separator class="bg-brutal-border mt-12 h-0.75" />
-    <nav aria-label="Documentation pagination" class="flex items-center justify-between gap-4 pt-8">
+    <nav
+      aria-label="Documentation pagination"
+      class="flex flex-col items-stretch justify-between gap-4 pt-8 sm:flex-row sm:items-center"
+    >
       {#if data.prev}
         <Button
           variant="ghost"
           href="/docs/{data.prev.slug}"
-          class="group flex h-auto items-center gap-3 rounded-none px-2 py-2 text-(--text-secondary) no-underline transition-colors hover:text-(--text-primary)"
+          class="group flex h-auto w-full items-center justify-start gap-3 rounded-none px-2 py-2 text-(--text-secondary) no-underline transition-colors hover:text-(--text-primary) sm:w-auto"
         >
           <ArrowLeft size={18} class="transition-transform group-hover:-translate-x-1" />
           <div class="flex flex-col items-start">
@@ -85,7 +141,7 @@
         <Button
           variant="ghost"
           href="/docs/{data.next.slug}"
-          class="group flex h-auto items-center gap-3 rounded-none px-2 py-2 text-right text-(--text-secondary) no-underline transition-colors hover:text-(--text-primary)"
+          class="group flex h-auto w-full items-center justify-end gap-3 rounded-none px-2 py-2 text-right text-(--text-secondary) no-underline transition-colors hover:text-(--text-primary) sm:w-auto"
         >
           <div class="flex flex-col items-end">
             <span
@@ -104,8 +160,11 @@
 
   <!-- TOC Sidebar (xl only) -->
   {#if toc.length > 0}
-    <aside class="hidden w-48 shrink-0 xl:block">
-      <nav aria-label="On this page" class="sticky top-24 flex flex-col gap-0.5">
+    <aside class="hidden w-52 shrink-0 xl:block">
+      <nav
+        aria-label="On this page"
+        class="sticky top-6 flex max-h-[calc(100vh-3rem)] flex-col gap-0.5 overflow-y-auto pb-4"
+      >
         <span
           class="font-space mb-3 text-[10px] font-bold tracking-[2px] text-(--text-secondary) uppercase"
           >On This Page</span
