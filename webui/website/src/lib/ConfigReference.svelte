@@ -1,11 +1,13 @@
 <script lang="ts">
   import { Badge } from '@hister/components/ui/badge';
   import * as Card from '@hister/components/ui/card';
+  import AlertTriangleIcon from '@lucide/svelte/icons/triangle-alert';
 
   interface ConfigReferenceItem {
     name: string;
     type: string;
-    defaultValue: string;
+    defaultValue?: string;
+    requirement?: string;
     description: string;
   }
 
@@ -45,7 +47,7 @@
       </Card.Content>
 
       <Card.Footer
-        class="bg-brutal-card border-border-brand-muted grid grid-cols-1 items-stretch gap-0 border-t-2 p-0 sm:grid-cols-[max-content_minmax(0,1fr)] md:p-0"
+        class="bg-brutal-card border-border-brand-muted flex flex-col items-stretch border-t-2 p-0 sm:flex-row md:p-0"
       >
         <div class="flex min-w-0 items-baseline gap-2 px-4 py-2">
           <span
@@ -57,18 +59,33 @@
             >{item.type}</code
           >
         </div>
-        <div
-          class="border-border-brand-muted flex min-w-0 items-baseline gap-2 border-t-2 px-4 py-2 sm:border-t-0 sm:border-l-2"
-        >
-          <span
-            class="font-space shrink-0 text-[9px] font-bold tracking-[1.25px] text-(--text-secondary) uppercase"
-            >Default</span
+        {#if item.defaultValue !== undefined}
+          <div
+            class="border-border-brand-muted flex min-w-0 items-baseline gap-2 border-t-2 px-4 py-2 sm:flex-1 sm:border-t-0 sm:border-l-2"
           >
-          <code
-            class="bg-(--muted-surface)! wrap-anywhere border-0! px-1.5! py-0.5! text-sm text-(--text-primary)"
-            >{item.defaultValue}</code
+            <span
+              class="font-space shrink-0 text-[9px] font-bold tracking-[1.25px] text-(--text-secondary) uppercase"
+              >Default</span
+            >
+            <code
+              class="bg-(--muted-surface)! wrap-anywhere border-0! px-1.5! py-0.5! text-sm text-(--text-primary)"
+              >{item.defaultValue}</code
+            >
+          </div>
+        {/if}
+        {#if item.requirement}
+          <div
+            class="border-border-brand-muted flex min-w-0 items-center justify-end border-t-2 px-4 py-2 sm:ml-auto sm:border-t-0 sm:border-l-2"
           >
-        </div>
+            <Badge
+              variant="outline"
+              class="font-space border-hister-amber bg-hister-amber/10 border-2 px-2 py-1 text-[10px] font-bold tracking-[1px] text-(--text-primary) uppercase"
+            >
+              <AlertTriangleIcon aria-hidden="true" class="size-3.5! text-hister-amber" />
+              {item.requirement}
+            </Badge>
+          </div>
+        {/if}
       </Card.Footer>
     </Card.Root>
   {/each}

@@ -7,6 +7,392 @@ title: 'Configuration Reference'
 <script>
   import ConfigReference from '$lib/ConfigReference.svelte';
 
+  const appOptions = [
+    {
+      name: 'directory',
+      type: 'string',
+      defaultValue: 'platform default',
+      description: 'Directory where Hister stores its data, including the index, rules, and secret key.',
+    },
+    {
+      name: 'title',
+      type: 'string',
+      defaultValue: 'Hister',
+      description: 'Main title shown on the web UI home page.',
+    },
+    {
+      name: 'subtitle',
+      type: 'string',
+      defaultValue: 'Your own search engine',
+      description: 'Secondary title shown below the main title on the web UI home page. Set it to an empty string to hide it.',
+    },
+    {
+      name: 'search_url',
+      type: 'string',
+      defaultValue: 'https://google.com/search?q={query}',
+      description: 'Fallback web search URL. Use {query} as the placeholder for the search term.',
+    },
+    {
+      name: 'access_token',
+      type: 'string',
+      defaultValue: '(none)',
+      description: 'Optional access token for securing the API. See the Access Token section below.',
+    },
+    {
+      name: 'user_handling',
+      type: 'bool',
+      defaultValue: 'false',
+      description: 'Enables multiple user mode. See the User Handling documentation for details.',
+    },
+    {
+      name: 'public',
+      type: 'bool',
+      defaultValue: 'false',
+      description: 'Allows unauthenticated users to search public documents, use API docs, MCP search, previews, and file serving. Requires access_token or user_handling.',
+    },
+    {
+      name: 'log_level',
+      type: 'string',
+      defaultValue: 'info',
+      description: 'Log verbosity. Supported values are debug, info, warn, and error.',
+    },
+    {
+      name: 'log_format',
+      type: 'string',
+      defaultValue: 'text',
+      description: 'Log output format. Text emits colored human readable lines. JSON emits one object per entry for log aggregators.',
+    },
+    {
+      name: 'log_file',
+      type: 'string',
+      defaultValue: '(none)',
+      description: 'Path to a log file. Hister creates or appends to this file instead of writing logs to standard error.',
+    },
+    {
+      name: 'debug_sql',
+      type: 'bool',
+      defaultValue: 'false',
+      description: 'Enables verbose SQL query logging.',
+    },
+    {
+      name: 'open_results_on_new_tab',
+      type: 'bool',
+      defaultValue: 'false',
+      description: 'Opens search results in a new browser tab instead of the current tab.',
+    },
+    {
+      name: 'redirect_on_no_results',
+      type: 'bool',
+      defaultValue: 'true',
+      description: 'Redirects to the configured search_url when a query returns no results. Disable it to remain within Hister.',
+    },
+    {
+      name: 'disable_previews',
+      type: 'bool',
+      defaultValue: 'false',
+      description: 'Disables the preview panel and prevents HTML storage. See the Disable Previews section below.',
+    },
+  ];
+
+  const serverOptions = [
+    {
+      name: 'address',
+      type: 'string',
+      defaultValue: '127.0.0.1:4433',
+      description: 'Host and port to listen on. Use [::]:4433 or 0.0.0.0:4433 to listen on all interfaces.',
+    },
+    {
+      name: 'base_url',
+      type: 'string',
+      defaultValue: 'derived from address',
+      description: 'Public URL of the Hister instance. It is required when address uses 0.0.0.0 and must match how you access Hister.',
+    },
+    {
+      name: 'database',
+      type: 'string',
+      defaultValue: 'db.sqlite3',
+      description: 'SQLite filename relative to app.directory or a PostgreSQL DSN. See Database Backends below.',
+    },
+    {
+      name: 'oauth',
+      type: 'map',
+      defaultValue: '(none)',
+      description: 'Optional map of OAuth or OIDC provider configurations. See OAuth below.',
+    },
+    {
+      name: 'oauth_only',
+      type: 'bool',
+      defaultValue: 'false',
+      description: 'Disables password login. OAuth, the global app access token, and personal access tokens remain accepted.',
+    },
+  ];
+
+  const tuiThemeOptions = [
+    {
+      name: 'dark_theme',
+      type: 'string',
+      defaultValue: 'tokyonight',
+      description: 'Theme used in dark mode. Available themes include Catppuccin, Dracula, Gruvbox, Nord, Rose Pine, and Tokyo Night.',
+    },
+    {
+      name: 'light_theme',
+      type: 'string',
+      defaultValue: 'catppuccin-latte',
+      description: 'Theme used in light mode.',
+    },
+    {
+      name: 'color_scheme',
+      type: 'string',
+      defaultValue: 'auto',
+      description: 'Color scheme mode. Use auto to follow the system, or select dark or light.',
+    },
+    {
+      name: 'themes_dir',
+      type: 'string',
+      defaultValue: '(built in themes)',
+      description: 'Optional directory containing custom theme YAML files.',
+    },
+  ];
+
+  const indexerOptions = [
+    {
+      name: 'detect_languages',
+      type: 'bool',
+      defaultValue: 'true',
+      description: 'Enables automatic language detection. Changing this setting requires reindexing.',
+    },
+    {
+      name: 'keep_stopwords',
+      type: 'bool',
+      defaultValue: 'false',
+      description: 'Preserves stop words while retaining language analysis. Changing this setting requires reindexing.',
+    },
+    {
+      name: 'directories',
+      type: 'Directory[]',
+      defaultValue: '(none)',
+      description: 'List of local directories to index. See Local Directory Indexing below.',
+    },
+    {
+      name: 'max_file_size_mb',
+      type: 'int',
+      defaultValue: '1',
+      description: 'Maximum file size in megabytes to index. Larger files are skipped.',
+    },
+  ];
+
+  const directoryOptions = [
+    {
+      name: 'path',
+      type: 'string',
+      defaultValue: '""',
+      requirement: 'Required',
+      description: 'Directory path to index. Paths beginning with ~/ are expanded to the home directory.',
+    },
+    {
+      name: 'filetypes',
+      type: 'string[]',
+      defaultValue: '(none)',
+      description: 'Only indexes files with these extensions, without the dot. For example: ["txt", "md"].',
+    },
+    {
+      name: 'patterns',
+      type: 'string[]',
+      defaultValue: '(none)',
+      description: 'Only indexes filenames matching at least one glob pattern. For example: ["doc_*", "README*"].',
+    },
+    {
+      name: 'excludes',
+      type: 'string[]',
+      defaultValue: '(none)',
+      description: 'Skips filenames matching any listed glob pattern. For example: ["*secret*", "*.tmp"].',
+    },
+    {
+      name: 'include_hidden',
+      type: 'bool',
+      defaultValue: 'false',
+      description: 'Includes hidden files, hidden directories, and common dependency or cache directories. Explicit excludes still apply.',
+    },
+    {
+      name: 'delete_on_remove',
+      type: 'bool',
+      defaultValue: 'false',
+      description: 'Automatically removes a file from the index when it is deleted or renamed.',
+    },
+    {
+      name: 'user',
+      type: 'string',
+      defaultValue: '""',
+      description: 'Username that owns files in this directory. Leave it empty for global access.',
+    },
+  ];
+
+  const oauthOptions = [
+    {
+      name: 'client_id',
+      type: 'string',
+      requirement: 'Required',
+      description: 'OAuth application client ID issued by the provider.',
+    },
+    {
+      name: 'client_secret',
+      type: 'string',
+      requirement: 'Required',
+      description: 'OAuth application client secret issued by the provider.',
+    },
+    {
+      name: 'configuration_url',
+      type: 'string',
+      requirement: 'Conditional',
+      description: 'OIDC discovery URL. For OIDC, either set this or configure auth_url, token_url, and userinfo_url directly.',
+    },
+    {
+      name: 'auth_url',
+      type: 'string',
+      requirement: 'Conditional',
+      description: 'Overrides the provider authorization endpoint. Required for OIDC when configuration_url is not set. Optional for GitHub and Google.',
+    },
+    {
+      name: 'token_url',
+      type: 'string',
+      requirement: 'Conditional',
+      description: 'Overrides the provider token endpoint. Required for OIDC when configuration_url is not set. Optional for GitHub and Google.',
+    },
+    {
+      name: 'userinfo_url',
+      type: 'string',
+      requirement: 'Conditional',
+      description: 'Overrides the OIDC user information endpoint. Required when configuration_url is not set or its discovery response does not provide this endpoint.',
+    },
+    {
+      name: 'scopes',
+      type: '[]string',
+      requirement: 'Optional',
+      description: 'Additional OAuth scopes to request. Provider defaults are used when omitted.',
+    },
+  ];
+
+  const crawlerOptions = [
+    {
+      name: 'backend',
+      type: 'string',
+      defaultValue: 'http',
+      description: 'Scraping backend. Supported values are http, chromedp, and bidi.',
+    },
+    {
+      name: 'backend_options',
+      type: 'map',
+      defaultValue: '(none)',
+      description: 'Options for the selected backend. See Crawler Backend Options below.',
+    },
+    {
+      name: 'proxy',
+      type: 'string',
+      defaultValue: '(none)',
+      description: 'HTTP or SOCKS5 proxy URL used by every crawler backend.',
+    },
+    {
+      name: 'timeout',
+      type: 'int',
+      defaultValue: '5',
+      description: 'Request timeout in seconds.',
+    },
+    {
+      name: 'delay',
+      type: 'int',
+      defaultValue: '0',
+      description: 'Seconds to wait between requests to avoid overloading target servers.',
+    },
+    {
+      name: 'user_agent',
+      type: 'string',
+      defaultValue: '(none)',
+      description: 'Custom User Agent header sent with every request.',
+    },
+    {
+      name: 'headers',
+      type: 'map[string]string',
+      defaultValue: '(none)',
+      description: 'Extra HTTP headers sent with every request.',
+    },
+    {
+      name: 'cookies',
+      type: 'Cookie[]',
+      defaultValue: '(none)',
+      description: 'Cookies sent with every request. See Crawler Cookies below.',
+    },
+    {
+      name: 'no_robots',
+      type: 'bool',
+      defaultValue: 'false',
+      description: 'Disables robots.txt compliance during crawling.',
+    },
+  ];
+
+  const chromedpOptions = [
+    {
+      name: 'exec_path',
+      type: 'string',
+      defaultValue: '(none)',
+      description: 'Path to the Chrome or Chromium binary.',
+    },
+  ];
+
+  const bidiOptions = [
+    {
+      name: 'socket',
+      type: 'string',
+      defaultValue: '(none)',
+      description: 'Full WebSocket URL. When set, host and port are ignored.',
+    },
+    {
+      name: 'host',
+      type: 'string',
+      defaultValue: '127.0.0.1',
+      description: 'Hostname or IP address of the browser WebDriver BiDi endpoint.',
+    },
+    {
+      name: 'port',
+      type: 'string',
+      defaultValue: '9222',
+      description: 'Port of the browser WebDriver BiDi endpoint.',
+    },
+    {
+      name: 'capture_delay',
+      type: 'float',
+      defaultValue: '0',
+      description: 'Seconds to wait after page load before capturing HTML for pages that rely on JavaScript rendering.',
+    },
+  ];
+
+  const crawlerCookieOptions = [
+    {
+      name: 'name',
+      type: 'string',
+      requirement: 'Required',
+      description: 'Cookie name.',
+    },
+    {
+      name: 'value',
+      type: 'string',
+      requirement: 'Required',
+      description: 'Cookie value.',
+    },
+    {
+      name: 'domain',
+      type: 'string',
+      requirement: 'Required',
+      description: 'Domain to which the cookie applies, such as example.com.',
+    },
+    {
+      name: 'path',
+      type: 'string',
+      defaultValue: '/',
+      requirement: 'Optional',
+      description: 'Cookie path.',
+    },
+  ];
+
   const semanticConnectionOptions = [
     {
       name: 'enable',
@@ -243,32 +629,11 @@ sensitive_content_patterns:
 
 ## `app` Section
 
-| Key                       | Type   | Default                               | Description                                                                                                                                               |
-| ------------------------- | ------ | ------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `directory`               | string | platform default                      | Directory where Hister stores its data (index, rules, secret key).                                                                                        |
-| `title`                   | string | `Hister`                              | Main title shown on the web UI home page.                                                                                                                 |
-| `subtitle`                | string | `Your own search engine`              | Secondary title shown below the main title on the web UI home page. Set to an empty string to hide it.                                                    |
-| `search_url`              | string | `https://google.com/search?q={query}` | Fallback web search URL. Use `{query}` as the placeholder for the search term.                                                                            |
-| `access_token`            | string | (none)                                | Optional access token for securing the API. See [Access Token](#access-token).                                                                            |
-| `user_handling`           | bool   | `false`                               | Enable multi-user mode. See [User Handling](/docs/user-handling) for details.                                                                             |
-| `public`                  | bool   | `false`                               | Allow unauthenticated users to search public documents, use API docs, MCP search, previews, and file serving. Requires `access_token` or `user_handling`. |
-| `log_level`               | string | `info`                                | Log verbosity. One of: `debug`, `info`, `warn`, `error`.                                                                                                  |
-| `log_format`              | string | `text`                                | Log output format. `text` emits colored, human-readable lines; `json` emits one JSON object per log entry, suitable for log aggregators.                  |
-| `log_file`                | string | (none)                                | Path to a log file. When set, log output is written to this file instead of stderr. The file is created if it does not exist and appended to if it does.  |
-| `debug_sql`               | bool   | `false`                               | Enable verbose SQL query logging.                                                                                                                         |
-| `open_results_on_new_tab` | bool   | `false`                               | Open search results in a new browser tab instead of the current tab.                                                                                      |
-| `redirect_on_no_results`  | bool   | `true`                                | Redirect to the configured `search_url` when a query returns no results. Disable to always stay within Hister.                                            |
-| `disable_previews`        | bool   | `false`                               | Disable the preview panel entirely. No HTML is stored on disk, and the preview UI is hidden. See [Disable Previews](#disable-previews).                   |
+<ConfigReference items={appOptions} />
 
 ## `server` Section
 
-| Key          | Type   | Default                | Description                                                                                                                                                                |
-| ------------ | ------ | ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `address`    | string | `127.0.0.1:4433`       | Host and port to listen on. Use `[::]:4433` or `0.0.0.0:4433` to listen on all interfaces.                                                                                 |
-| `base_url`   | string | derived from `address` | Public URL of the Hister instance. Required when `address` uses `0.0.0.0`. Must match how you access Hister.                                                               |
-| `database`   | string | `db.sqlite3`           | Database connection. SQLite filename (relative to `app.directory`) or a PostgreSQL DSN. See [Database Backends](#database-backends).                                       |
-| `oauth`      | map    | (none)                 | Optional map of OAuth/OIDC provider configurations. See [OAuth](#oauth).                                                                                                   |
-| `oauth_only` | bool   | `false`                | When `true`, disables password login. OAuth and both the global `app.access_token` and per-user access tokens are still accepted. See [OAuth-Only Mode](#oauth-only-mode). |
+<ConfigReference items={serverOptions} />
 
 ## Database Backends
 
@@ -354,37 +719,19 @@ TUI settings are configured in a separate `tui.yaml` file located in the same di
 
 ### Theme Settings
 
-| Key            | Type   | Default            | Description                                                                                             |
-| -------------- | ------ | ------------------ | ------------------------------------------------------------------------------------------------------- |
-| `dark_theme`   | string | `tokyonight`       | Theme to use in dark mode. Available themes: catppuccin, dracula, gruvbox, nord, rose-pine, tokyonight. |
-| `light_theme`  | string | `catppuccin-latte` | Theme to use in light mode.                                                                             |
-| `color_scheme` | string | `auto`             | Color scheme mode: `auto` (follow system), `dark`, or `light`.                                          |
-| `themes_dir`   | string | (built-in themes)  | Custom directory for theme YAML files (optional).                                                       |
+<ConfigReference items={tuiThemeOptions} />
 
 **Built-in themes**: catppuccin-mocha, catppuccin-frappe, catppuccin-macchiato, catppuccin-latte, dracula, gruvbox, nord, rose-pine, tokyonight.
 
 ## `indexer` Section
 
-| Key                | Type        | Default | Description                                                                                                                                                        |
-| ------------------ | ----------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `detect_languages` | bool        | `true`  | Enable automatic language detection for indexed pages. See [Language Detection](#language-detection) for details on memory/CPU impact and reindexing requirements. |
-| `keep_stopwords`   | bool        | `false` | Preserve stop words while retaining language analysis. Changing this option requires reindexing.                                                                   |
-| `directories`      | Directory[] | (none)  | List of local directories to index. See [Local Directory Indexing](#local-directory-indexing) for details.                                                         |
-| `max_file_size_mb` | int         | `1`     | Maximum file size (in MB) to index. Files larger than this value are skipped.                                                                                      |
+<ConfigReference items={indexerOptions} />
 
 ### Directory Entry
 
 Each entry in `directories` is an object with the following keys:
 
-| Key                | Type     | Default | Description                                                                                                                                                                                                                                                                                                  |
-| ------------------ | -------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `path`             | string   | ""      | **(required)** Directory path to index. Paths starting with `~/` are expanded to your home directory.                                                                                                                                                                                                        |
-| `filetypes`        | string[] | (none)  | Only index files with these extensions (without the dot). e.g. `['txt', 'md']`.                                                                                                                                                                                                                              |
-| `patterns`         | string[] | (none)  | Only index files whose names match at least one glob pattern. e.g. `['doc_*', 'README*']`.                                                                                                                                                                                                                   |
-| `excludes`         | string[] | (none)  | Skip files whose names match any of these glob patterns. e.g. `['*secret*', '*.tmp']`.                                                                                                                                                                                                                       |
-| `include_hidden`   | bool     | `false` | When `true`, index hidden files/directories (starting with `.`) and well-known dependency/cache directories (`node_modules`, `__pycache__`, etc.) that are skipped by default. User-specified `excludes` still apply.                                                                                        |
-| `delete_on_remove` | bool     | `false` | When `true`, automatically remove a file from the index when it is deleted or renamed on the filesystem.                                                                                                                                                                                                     |
-| `user`             | string   | `""`    | Username that owns files in this directory. Files are only visible to this user in search results (plus global files). Omit or leave empty for global access. A non-existing username, or a configured username when `user_handling` is not enabled, causes an error log entry and the directory is skipped. |
+<ConfigReference items={directoryOptions} />
 
 When multiple filters are specified, they are applied in order: excludes first, then filetypes, then patterns. A file must pass all specified filters to be indexed. When a filter is omitted, it is not applied (all files pass).
 
@@ -519,15 +866,7 @@ The `server.oauth` key is a map where each key is a provider name and the value 
 
 Each entry supports the following fields:
 
-| Field               | Type     | Required  | Description                                                                                                                                                                                                 |
-| ------------------- | -------- | --------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `client_id`         | string   | yes       | OAuth application client ID issued by the provider.                                                                                                                                                         |
-| `client_secret`     | string   | yes       | OAuth application client secret issued by the provider.                                                                                                                                                     |
-| `configuration_url` | string   | OIDC only | OIDC discovery URL (e.g. `https://accounts.example.com/.well-known/openid-configuration`). When set, `auth_url`, `token_url`, and `userinfo_url` are discovered automatically.                              |
-| `auth_url`          | string   | no        | Override the provider's authorization endpoint. Not needed for `github` or `google`. Required for `oidc` when `configuration_url` is not set.                                                               |
-| `token_url`         | string   | no        | Override the provider's token endpoint. Not needed for `github` or `google`. Required for `oidc` when `configuration_url` is not set.                                                                       |
-| `userinfo_url`      | string   | no        | Override the OIDC userinfo endpoint. Normally discovered from `configuration_url`. Set this when auto-discovery does not return a `userinfo_endpoint` or when configuring OIDC without `configuration_url`. |
-| `scopes`            | []string | no        | Additional OAuth scopes to request. The provider defaults are used when omitted.                                                                                                                            |
+<ConfigReference items={oauthOptions} />
 
 ### GitHub Example
 
@@ -702,17 +1041,7 @@ the same backend and request settings.
 Every recursive crawl runs as a persistent job so it can be interrupted and resumed
 without losing progress. See [Website Crawler](crawler) for usage details.
 
-| Key               | Type              | Default | Description                                                                |
-| ----------------- | ----------------- | ------- | -------------------------------------------------------------------------- |
-| `backend`         | string            | `http`  | Scraping backend to use. One of: `http`, `chromedp`, `bidi`.               |
-| `backend_options` | map               | (none)  | Backend-specific options. See [Backend Options](#crawler-backend-options). |
-| `proxy`           | string            | (none)  | HTTP or SOCKS5 proxy URL used by every crawler backend.                    |
-| `timeout`         | int               | `5`     | Request timeout in seconds.                                                |
-| `delay`           | int               | `0`     | Seconds to wait between requests. Use to avoid overloading target servers. |
-| `user_agent`      | string            | (none)  | Custom `User-Agent` header sent with every request (both backends).        |
-| `headers`         | map[string]string | (none)  | Extra HTTP headers sent with every request (both backends).                |
-| `cookies`         | Cookie[]          | (none)  | Cookies sent with every request. See [Crawler Cookies](#crawler-cookies).  |
-| `no_robots`       | bool              | `false` | Disable robots.txt compliance during crawling.                             |
+<ConfigReference items={crawlerOptions} />
 
 Set `proxy` to an `http://` or `socks5://` URL. The HTTP backend uses it as its transport proxy,
 Chromedp passes it to the browser process, and BiDi requests it when creating the browser session.
@@ -738,9 +1067,7 @@ The `backend_options` map passes configuration to the selected backend. Each bac
 
 **`chromedp` backend**:
 
-| Option      | Type   | Description                                   |
-| ----------- | ------ | --------------------------------------------- |
-| `exec_path` | string | Path to the Chrome or Chromium binary to use. |
+<ConfigReference items={chromedpOptions} />
 
 ```yaml
 crawler:
@@ -754,12 +1081,7 @@ crawler:
 
 Connects to an **already-running** browser that exposes a [WebDriver BiDi](https://w3c.github.io/webdriver-bidi/) WebSocket endpoint. This is the W3C-standard automation protocol supported by Firefox (≥ 102), Chrome (≥ 106), Edge, and other modern browsers. Unlike `chromedp`, the `bidi` backend does **not** launch a browser process — it reuses one you have started yourself (headless or not).
 
-| Option          | Type   | Default     | Description                                                                                        |
-| --------------- | ------ | ----------- | -------------------------------------------------------------------------------------------------- |
-| `socket`        | string | (none)      | Full WebSocket URL (e.g. `ws://127.0.0.1:9222/session`). When set, `host` and `port` are ignored.  |
-| `host`          | string | `127.0.0.1` | Hostname or IP of the browser's BiDi endpoint.                                                     |
-| `port`          | string | `9222`      | Port of the browser's BiDi endpoint.                                                               |
-| `capture_delay` | float  | `0`         | Seconds to wait after page load before capturing HTML. Useful for pages that rely on JS rendering. |
+<ConfigReference items={bidiOptions} />
 
 Start your browser with BiDi enabled, for example:
 
@@ -796,12 +1118,7 @@ crawler:
 
 Each entry in `cookies` is an object with the following keys:
 
-| Key      | Type   | Required | Description                                        |
-| -------- | ------ | -------- | -------------------------------------------------- |
-| `name`   | string | ✓        | Cookie name.                                       |
-| `value`  | string | ✓        | Cookie value.                                      |
-| `domain` | string | ✓        | Domain the cookie applies to (e.g. `example.com`). |
-| `path`   | string |          | Cookie path. Defaults to `/`.                      |
+<ConfigReference items={crawlerCookieOptions} />
 
 ### Full Crawler Example
 
