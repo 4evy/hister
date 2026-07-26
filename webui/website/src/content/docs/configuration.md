@@ -102,13 +102,15 @@ semantic_search:
   enable: false
   embedding_endpoint: 'http://localhost:11434/v1/embeddings'
   embedding_model: 'qwen3-embedding:8b'
+  embedding_timeout: 300
   dimensions: 4096
   max_context_length: 512
   chunk_overlap: 64
+  max_embedding_batch_size: 8
   similarity_threshold: 0.1
   result_limit: 50
   semantic_weight: 0.4
-  max_embedding_concurrency: 10
+  max_embedding_concurrency: 2
 
 hotkeys:
   web:
@@ -192,17 +194,19 @@ Semantic search is **opt-in** and disabled by default. It requires an OpenAI-com
 | `enable`                    | bool              | `false`                                | Enable or disable semantic search. All other keys are ignored when `false`.                                                                                                                                                                                                 |
 | `embedding_endpoint`        | string            | `http://localhost:11434/v1/embeddings` | URL of the OpenAI-compatible `/v1/embeddings` endpoint.                                                                                                                                                                                                                     |
 | `embedding_model`           | string            | `qwen3-embedding:8b`                   | Model name passed in the embedding request. Must match a model served by your endpoint.                                                                                                                                                                                     |
+| `embedding_timeout`         | int               | `300`                                  | Maximum number of seconds allowed for one embedding request. Values below `1` use the bounded default of `300`.                                                                                                                                                             |
 | `api_key`                   | string            | `""`                                   | Optional API key sent as `Authorization: Bearer <key>`. Required for hosted providers such as OpenAI, Together, Mistral, or Voyage.                                                                                                                                         |
 | `headers`                   | map[string]string | `{}`                                   | Optional extra HTTP headers added to every embedding request. Useful for proxies or providers that use a non-standard auth scheme.                                                                                                                                          |
 | `dimensions`                | int               | `4096`                                 | Vector dimensionality. Must match the output of the chosen model.                                                                                                                                                                                                           |
 | `max_context_length`        | int               | `512`                                  | Maximum approximate token count per text chunk sent to the embedding model. Smaller chunks generally provide more focused passage retrieval. If the endpoint reports that its exact tokenizer exceeds the context window, Hister automatically retries with smaller chunks. |
 | `chunk_overlap`             | int               | `64`                                   | Approximate token allowance for complete structural units shared between consecutive chunks. Helps preserve context while keeping paragraph, sentence, list item, and code boundaries intact.                                                                               |
+| `max_embedding_batch_size`  | int               | `8`                                    | Maximum number of chunks sent in one request. Smaller batches keep slow local endpoints responsive and let long documents make incremental progress. Values below `1` use the bounded default of `8`.                                                                       |
 | `query_prefix`              | string            | `"query: "`                            | String prepended to every search query before embedding. Many models require a task prefix for optimal recall (e.g. `"search_query: "` for Nomic, `"query: "` for E5/BGE). Set to `""` for models that do not use prefixes (e.g. OpenAI `text-embedding-3-*`).              |
 | `document_prefix`           | string            | `""`                                   | String prepended to every document chunk before embedding (e.g. `"search_document: "` for Nomic, `"passage: "` for E5/BGE). Must match the model's expected convention.                                                                                                     |
 | `similarity_threshold`      | float             | `0.1`                                  | Minimum cosine similarity score for a chunk to be included in results. Raise this to surface only highly relevant matches.                                                                                                                                                  |
 | `result_limit`              | int               | `50`                                   | Maximum number of semantic hits retrieved per query.                                                                                                                                                                                                                        |
 | `semantic_weight`           | float             | `0.4`                                  | Weight applied to the semantic score when merging with keyword scores (0.0 = keyword only, 1.0 = semantic only). Adjustable in the web UI.                                                                                                                                  |
-| `max_embedding_concurrency` | int               | `10`                                   | Maximum number of embedding workers and requests sent to the endpoint simultaneously. Increase for fast remote endpoints, or decrease to `1` through `3` for resource constrained local models. Values below `1` use the bounded default of `10`.                           |
+| `max_embedding_concurrency` | int               | `2`                                    | Maximum number of embedding workers and requests sent to the endpoint simultaneously. Increase for fast remote endpoints. Values below `1` use the bounded default of `2`.                                                                                                  |
 
 ### Vector Storage Backends
 
@@ -218,15 +222,17 @@ semantic_search:
   enable: true
   embedding_endpoint: 'http://localhost:11434/v1/embeddings'
   embedding_model: 'nomic-embed-text'
+  embedding_timeout: 300
   dimensions: 768
   max_context_length: 512
   chunk_overlap: 50
+  max_embedding_batch_size: 8
   query_prefix: 'search_query: '
   document_prefix: 'search_document: '
   similarity_threshold: 0.5
   result_limit: 10
   semantic_weight: 0.4
-  max_embedding_concurrency: 10 # lower to 1-3 for resource-constrained local models
+  max_embedding_concurrency: 2
   # api_key: 'sk-...'            # required for hosted providers
   # headers: {}                  # extra HTTP headers for proxies or custom auth
 ```

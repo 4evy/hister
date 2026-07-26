@@ -52,6 +52,22 @@ func TestIndexerDefaults(t *testing.T) {
 	}
 }
 
+func TestSemanticSearchRequestDefaults(t *testing.T) {
+	cfg, err := parseConfig([]byte("semantic_search:\n  max_context_length: 256\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := cfg.SemanticSearch.EmbeddingTimeout, 300; got != want {
+		t.Errorf("semantic_search.embedding_timeout = %d, want %d", got, want)
+	}
+	if got, want := cfg.SemanticSearch.MaxEmbeddingBatchSize, 8; got != want {
+		t.Errorf("semantic_search.max_embedding_batch_size = %d, want %d", got, want)
+	}
+	if got, want := cfg.SemanticSearch.MaxEmbeddingConcurrency, 2; got != want {
+		t.Errorf("semantic_search.max_embedding_concurrency = %d, want %d", got, want)
+	}
+}
+
 func TestCrawlerProxyConfigAndEnvironment(t *testing.T) {
 	const envName = "HISTER__CRAWLER__PROXY"
 	oldProxy, hadProxy := os.LookupEnv(envName)

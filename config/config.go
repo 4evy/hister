@@ -160,11 +160,13 @@ type SemanticSearch struct {
 	Enable                  bool              `yaml:"enable" mapstructure:"enable"`
 	EmbeddingEndpoint       string            `yaml:"embedding_endpoint" mapstructure:"embedding_endpoint"`
 	EmbeddingModel          string            `yaml:"embedding_model" mapstructure:"embedding_model"`
+	EmbeddingTimeout        int               `yaml:"embedding_timeout" mapstructure:"embedding_timeout"`
 	APIKey                  string            `yaml:"api_key" mapstructure:"api_key"`
 	Headers                 map[string]string `yaml:"headers" mapstructure:"headers"`
 	Dimensions              int               `yaml:"dimensions" mapstructure:"dimensions"`
 	MaxContextLength        int               `yaml:"max_context_length" mapstructure:"max_context_length"`
 	ChunkOverlap            int               `yaml:"chunk_overlap" mapstructure:"chunk_overlap"`
+	MaxEmbeddingBatchSize   int               `yaml:"max_embedding_batch_size" mapstructure:"max_embedding_batch_size"`
 	QueryPrefix             string            `yaml:"query_prefix" mapstructure:"query_prefix"`
 	DocumentPrefix          string            `yaml:"document_prefix" mapstructure:"document_prefix"`
 	SimilarityThreshold     float64           `yaml:"similarity_threshold" mapstructure:"similarity_threshold"`
@@ -525,17 +527,19 @@ func CreateDefaultConfig() *Config {
 			Enable:                  false,
 			EmbeddingEndpoint:       "http://localhost:11434/v1/embeddings",
 			EmbeddingModel:          "qwen3-embedding:8b",
+			EmbeddingTimeout:        300,
 			APIKey:                  "",
 			Headers:                 map[string]string{},
 			Dimensions:              4096,
 			MaxContextLength:        512,
 			ChunkOverlap:            64,
+			MaxEmbeddingBatchSize:   8,
 			QueryPrefix:             "query: ",
 			DocumentPrefix:          "",
 			SimilarityThreshold:     0.1,
 			ResultLimit:             50,
 			SemanticWeight:          0.4,
-			MaxEmbeddingConcurrency: 10,
+			MaxEmbeddingConcurrency: 2,
 		},
 	}
 }

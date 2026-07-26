@@ -18,7 +18,7 @@ import (
 const (
 	embeddingQueuePollInterval = time.Second
 	embeddingRetryMaxDelay     = time.Minute
-	defaultEmbeddingWorkers    = 10
+	defaultEmbeddingWorkers    = 2
 )
 
 type activeEmbedding struct {

@@ -28,6 +28,7 @@ type Embedder struct {
 	client           *http.Client
 	maxContextLength int
 	chunkOverlap     int
+	maxBatchSize     int
 	queryPrefix      string
 	documentPrefix   string
 	sem              chan struct{} // nil means unlimited concurrency
@@ -56,13 +57,25 @@ type documentEmbeddingInput struct {
 	chunkText     string
 }
 
-const embeddingMaxAttempts = 3
+const (
+	embeddingMaxAttempts      = 3
+	defaultEmbeddingTimeout   = 5 * time.Minute
+	defaultEmbeddingBatchSize = 8
+)
 
 // NewEmbedder creates an Embedder from the semantic search config.
 func NewEmbedder(cfg *config.SemanticSearch) *Embedder {
 	var sem chan struct{}
 	if cfg.MaxEmbeddingConcurrency > 0 {
 		sem = make(chan struct{}, cfg.MaxEmbeddingConcurrency)
+	}
+	timeout := time.Duration(cfg.EmbeddingTimeout) * time.Second
+	if timeout <= 0 {
+		timeout = defaultEmbeddingTimeout
+	}
+	maxBatchSize := cfg.MaxEmbeddingBatchSize
+	if maxBatchSize <= 0 {
+		maxBatchSize = defaultEmbeddingBatchSize
 	}
 	return &Embedder{
 		endpoint:         cfg.EmbeddingEndpoint,
@@ -72,10 +85,11 @@ func NewEmbedder(cfg *config.SemanticSearch) *Embedder {
 		dimensions:       cfg.Dimensions,
 		maxContextLength: cfg.MaxContextLength,
 		chunkOverlap:     cfg.ChunkOverlap,
+		maxBatchSize:     maxBatchSize,
 		queryPrefix:      cfg.QueryPrefix,
 		documentPrefix:   cfg.DocumentPrefix,
 		client: &http.Client{
-			Timeout: 30 * time.Second,
+			Timeout: timeout,
 		},
 		sem: sem,
 	}
@@ -168,7 +182,7 @@ func shouldRetryEmbeddingError(ctx context.Context, err error) bool {
 	}
 
 	var urlErr *url.Error
-	return errors.As(err, &urlErr)
+	return errors.As(err, &urlErr) && !urlErr.Timeout()
 }
 
 // doEmbeddingRequestOnce sends one embedding request to the endpoint and returns
@@ -287,18 +301,18 @@ func embeddingVectors(result *embeddingResponse, dimensions int) ([][]float32, e
 	return vectors, nil
 }
 
-// EmbedBatch converts multiple texts, splitting context limited requests into
-// smaller batches when the endpoint applies one limit to the complete batch.
-func (e *Embedder) EmbedBatch(ctx context.Context, texts []string) ([][]float32, error) {
+// embedBatch converts one bounded batch, splitting it further when an endpoint
+// applies a context limit to the complete request.
+func (e *Embedder) embedBatch(ctx context.Context, texts []string) ([][]float32, error) {
 	result, err := e.doEmbeddingRequest(ctx, texts)
 	if err != nil {
 		if _, _, contextError := embeddingContextErrorDetails(err); contextError && len(texts) > 1 {
 			middle := len(texts) / 2
-			left, leftErr := e.EmbedBatch(ctx, texts[:middle])
+			left, leftErr := e.embedBatch(ctx, texts[:middle])
 			if leftErr != nil {
 				return nil, leftErr
 			}
-			right, rightErr := e.EmbedBatch(ctx, texts[middle:])
+			right, rightErr := e.embedBatch(ctx, texts[middle:])
 			if rightErr != nil {
 				return nil, rightErr
 			}
@@ -307,6 +321,22 @@ func (e *Embedder) EmbedBatch(ctx context.Context, texts []string) ([][]float32,
 		return nil, err
 	}
 	return embeddingVectors(result, e.dimensions)
+}
+
+// EmbedBatch converts multiple texts in bounded requests. Smaller requests
+// avoid long documents monopolizing a local embedding server while preserving
+// response order.
+func (e *Embedder) EmbedBatch(ctx context.Context, texts []string) ([][]float32, error) {
+	var vectors [][]float32
+	for start := 0; start < len(texts); start += e.maxBatchSize {
+		end := min(start+e.maxBatchSize, len(texts))
+		batchVectors, err := e.embedBatch(ctx, texts[start:end])
+		if err != nil {
+			return nil, err
+		}
+		vectors = append(vectors, batchVectors...)
+	}
+	return vectors, nil
 }
 
 func toFloat32(f64 []float64) []float32 {

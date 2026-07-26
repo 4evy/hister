@@ -186,6 +186,55 @@ func TestEmbedBatchSplitsAggregateContextOverflow(t *testing.T) {
 	}
 }
 
+func TestEmbedBatchHonorsConfiguredMaximum(t *testing.T) {
+	var requests atomic.Int32
+	var largestBatch atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests.Add(1)
+		var request struct {
+			Input []string `json:"input"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		batchSize := int32(len(request.Input))
+		if batchSize > largestBatch.Load() {
+			largestBatch.Store(batchSize)
+		}
+		writeEmbeddingBatchResponse(w, len(request.Input))
+	}))
+	defer srv.Close()
+
+	embedder := NewEmbedder(&config.SemanticSearch{
+		EmbeddingEndpoint:     srv.URL,
+		EmbeddingModel:        "test-model",
+		EmbeddingTimeout:      17,
+		Dimensions:            3,
+		MaxContextLength:      128,
+		MaxEmbeddingBatchSize: 2,
+	})
+	if got, want := embedder.client.Timeout, 17*time.Second; got != want {
+		t.Errorf("client timeout = %v, want %v", got, want)
+	}
+	vectors, err := embedder.EmbedBatch(
+		context.Background(),
+		[]string{"one", "two", "three", "four", "five"},
+	)
+	if err != nil {
+		t.Fatalf("EmbedBatch returned error: %v", err)
+	}
+	if len(vectors) != 5 {
+		t.Fatalf("vector count = %d, want 5", len(vectors))
+	}
+	if got := requests.Load(); got != 3 {
+		t.Errorf("request count = %d, want 3", got)
+	}
+	if got := largestBatch.Load(); got != 2 {
+		t.Errorf("largest batch = %d, want 2", got)
+	}
+}
+
 func TestChunkAndEmbedRechunksAfterEndpointContextOverflow(t *testing.T) {
 	const endpointContextLength = 64
 	var rejected atomic.Int32
@@ -310,5 +359,31 @@ func TestEmbedRequestUsesContext(t *testing.T) {
 		}
 	case <-time.After(time.Second):
 		t.Fatal("Embed did not return after context cancellation")
+	}
+}
+
+func TestEmbedClientTimeoutDoesNotRetryImmediately(t *testing.T) {
+	var requests atomic.Int32
+	unblockHandler := make(chan struct{})
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests.Add(1)
+		select {
+		case <-r.Context().Done():
+		case <-unblockHandler:
+		}
+	}))
+	defer func() {
+		close(unblockHandler)
+		srv.Close()
+	}()
+
+	embedder := newTestEmbedder(srv.URL)
+	embedder.client.Timeout = 20 * time.Millisecond
+	_, err := embedder.Embed(context.Background(), "hello")
+	if err == nil {
+		t.Fatal("Embed returned nil error")
+	}
+	if got := requests.Load(); got != 1 {
+		t.Errorf("request count = %d, want 1", got)
 	}
 }
