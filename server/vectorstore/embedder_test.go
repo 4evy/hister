@@ -26,12 +26,31 @@ func newTestEmbedder(endpoint string) *Embedder {
 }
 
 func writeEmbeddingResponse(w http.ResponseWriter) {
+	writeEmbeddingBatchResponse(w, 1)
+}
+
+func writeEmbeddingBatchResponse(w http.ResponseWriter, count int) {
+	data := make([]struct {
+		Embedding []float64 `json:"embedding"`
+	}, count)
+	for i := range data {
+		data[i].Embedding = []float64{1, 2, 3}
+	}
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(embeddingResponse{
-		Data: []struct {
-			Embedding []float64 `json:"embedding"`
-		}{
-			{Embedding: []float64{1, 2, 3}},
+		Data: data,
+	})
+}
+
+func writeContextSizeError(w http.ResponseWriter, promptTokens, contextLength int) {
+	w.WriteHeader(http.StatusBadRequest)
+	_ = json.NewEncoder(w).Encode(map[string]any{
+		"error": map[string]any{
+			"code":            http.StatusBadRequest,
+			"message":         "request exceeds the available context size",
+			"type":            "exceed_context_size_error",
+			"n_prompt_tokens": promptTokens,
+			"n_ctx":           contextLength,
 		},
 	})
 }
@@ -130,6 +149,85 @@ func TestFormatEmbeddingFieldsRespectsBudget(t *testing.T) {
 	}
 	if strings.Contains(formatted, "\nextra") {
 		t.Errorf("field value whitespace was not normalized: %q", formatted)
+	}
+}
+
+func TestEmbedBatchSplitsAggregateContextOverflow(t *testing.T) {
+	var requests atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests.Add(1)
+		var request struct {
+			Input []string `json:"input"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		if len(request.Input) > 2 {
+			writeContextSizeError(w, len(request.Input)*10, 20)
+			return
+		}
+		writeEmbeddingBatchResponse(w, len(request.Input))
+	}))
+	defer srv.Close()
+
+	vectors, err := newTestEmbedder(srv.URL).EmbedBatch(
+		context.Background(),
+		[]string{"one", "two", "three", "four", "five"},
+	)
+	if err != nil {
+		t.Fatalf("EmbedBatch returned error: %v", err)
+	}
+	if len(vectors) != 5 {
+		t.Fatalf("vector count = %d, want 5", len(vectors))
+	}
+	if requests.Load() <= 1 {
+		t.Fatalf("request count = %d, want a split batch", requests.Load())
+	}
+}
+
+func TestChunkAndEmbedRechunksAfterEndpointContextOverflow(t *testing.T) {
+	const endpointContextLength = 64
+	var rejected atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var request struct {
+			Input []string `json:"input"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		for _, input := range request.Input {
+			if actualTokens := len([]rune(input)); actualTokens > endpointContextLength {
+				rejected.Add(1)
+				writeContextSizeError(w, actualTokens, endpointContextLength)
+				return
+			}
+		}
+		writeEmbeddingBatchResponse(w, len(request.Input))
+	}))
+	defer srv.Close()
+
+	embedder := newTestEmbedder(srv.URL)
+	embedder.maxContextLength = endpointContextLength
+	chunks, err := embedder.ChunkAndEmbed(
+		context.Background(),
+		strings.Repeat("longtoken ", 20),
+		DocumentContext{Title: "Adaptive chunking"},
+	)
+	if err != nil {
+		t.Fatalf("ChunkAndEmbed returned error: %v", err)
+	}
+	if rejected.Load() == 0 {
+		t.Fatal("endpoint did not reject the initial oversized chunk")
+	}
+	if len(chunks) < 3 {
+		t.Fatalf("chunk count = %d, want rechunked inputs", len(chunks))
+	}
+	for i, chunk := range chunks {
+		if len(chunk.Embedding) != 3 {
+			t.Fatalf("chunk %d embedding length = %d, want 3", i, len(chunk.Embedding))
+		}
 	}
 }
 

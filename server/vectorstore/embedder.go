@@ -97,6 +97,15 @@ type embeddingStatusError struct {
 	body       string
 }
 
+type embeddingAPIError struct {
+	Error struct {
+		Message       string `json:"message"`
+		Type          string `json:"type"`
+		PromptTokens  int    `json:"n_prompt_tokens"`
+		ContextLength int    `json:"n_ctx"`
+	} `json:"error"`
+}
+
 func (e *embeddingStatusError) Error() string {
 	return fmt.Sprintf("embedding endpoint returned %d: %s", e.statusCode, e.body)
 }
@@ -114,6 +123,28 @@ func (e *embeddingStatusError) transient() bool {
 	default:
 		return false
 	}
+}
+
+func embeddingContextErrorDetails(err error) (promptTokens, contextLength int, ok bool) {
+	var statusErr *embeddingStatusError
+	if !errors.As(err, &statusErr) || statusErr.statusCode != http.StatusBadRequest {
+		return 0, 0, false
+	}
+
+	var apiErr embeddingAPIError
+	if json.Unmarshal([]byte(statusErr.body), &apiErr) != nil {
+		return 0, 0, false
+	}
+	errorType := strings.ToLower(apiErr.Error.Type)
+	message := strings.ToLower(apiErr.Error.Message)
+	isContextError := errorType == "exceed_context_size_error" ||
+		errorType == "context_length_exceeded" ||
+		(strings.Contains(message, "context") &&
+			(strings.Contains(message, "exceed") || strings.Contains(message, "too long")))
+	if !isContextError {
+		return 0, 0, false
+	}
+	return apiErr.Error.PromptTokens, apiErr.Error.ContextLength, true
 }
 
 func embeddingRetryDelay(attempt int) time.Duration {
@@ -245,20 +276,37 @@ func (e *Embedder) EmbedQuery(ctx context.Context, text string) ([]float32, erro
 	return e.Embed(ctx, e.queryPrefix+text)
 }
 
-// EmbedBatch converts multiple texts in a single request.
-func (e *Embedder) EmbedBatch(ctx context.Context, texts []string) ([][]float32, error) {
-	result, err := e.doEmbeddingRequest(ctx, texts)
-	if err != nil {
-		return nil, err
-	}
+func embeddingVectors(result *embeddingResponse, dimensions int) ([][]float32, error) {
 	vectors := make([][]float32, len(result.Data))
 	for i, d := range result.Data {
-		if got := len(d.Embedding); e.dimensions > 0 && got != e.dimensions {
-			return nil, fmt.Errorf("embedding dimension mismatch at index %d: expected %d, got %d", i, e.dimensions, got)
+		if got := len(d.Embedding); dimensions > 0 && got != dimensions {
+			return nil, fmt.Errorf("embedding dimension mismatch at index %d: expected %d, got %d", i, dimensions, got)
 		}
 		vectors[i] = toFloat32(d.Embedding)
 	}
 	return vectors, nil
+}
+
+// EmbedBatch converts multiple texts, splitting context limited requests into
+// smaller batches when the endpoint applies one limit to the complete batch.
+func (e *Embedder) EmbedBatch(ctx context.Context, texts []string) ([][]float32, error) {
+	result, err := e.doEmbeddingRequest(ctx, texts)
+	if err != nil {
+		if _, _, contextError := embeddingContextErrorDetails(err); contextError && len(texts) > 1 {
+			middle := len(texts) / 2
+			left, leftErr := e.EmbedBatch(ctx, texts[:middle])
+			if leftErr != nil {
+				return nil, leftErr
+			}
+			right, rightErr := e.EmbedBatch(ctx, texts[middle:])
+			if rightErr != nil {
+				return nil, rightErr
+			}
+			return append(left, right...), nil
+		}
+		return nil, err
+	}
+	return embeddingVectors(result, e.dimensions)
 }
 
 func toFloat32(f64 []float64) []float32 {
@@ -329,10 +377,10 @@ func bodyDocumentFields(d DocumentContext) []embeddingField {
 	}
 }
 
-func (e *Embedder) documentEmbeddingInputs(text string, d DocumentContext) []documentEmbeddingInput {
+func (e *Embedder) documentEmbeddingInputsWithLimit(text string, d DocumentContext, contextLength int) []documentEmbeddingInput {
 	var inputs []documentEmbeddingInput
 	metadataLabel := e.documentPrefix + "document:\n"
-	metadataBudget := e.maxContextLength - len(tokenize(metadataLabel))
+	metadataBudget := contextLength - len(tokenize(metadataLabel))
 	metadata := formatEmbeddingFields(fullDocumentFields(d), metadataBudget)
 	if metadata != "" {
 		inputs = append(inputs, documentEmbeddingInput{
@@ -341,14 +389,14 @@ func (e *Embedder) documentEmbeddingInputs(text string, d DocumentContext) []doc
 		})
 	}
 
-	bodyFieldBudget := max(1, e.maxContextLength/4)
+	bodyFieldBudget := max(1, contextLength/4)
 	bodyContext := formatEmbeddingFields(bodyDocumentFields(d), bodyFieldBudget)
 	bodyHeader := e.documentPrefix
 	if bodyContext != "" {
 		bodyHeader += bodyContext + "\n"
 	}
 	bodyHeader += "content:\n"
-	contentLimit := max(1, e.maxContextLength-len(tokenize(bodyHeader)))
+	contentLimit := max(1, contextLength-len(tokenize(bodyHeader)))
 	textChunks := ChunkText(text, contentLimit, e.chunkOverlap)
 	for _, chunk := range textChunks {
 		inputs = append(inputs, documentEmbeddingInput{
@@ -359,35 +407,73 @@ func (e *Embedder) documentEmbeddingInputs(text string, d DocumentContext) []doc
 	return inputs
 }
 
+func (e *Embedder) documentEmbeddingInputs(text string, d DocumentContext) []documentEmbeddingInput {
+	return e.documentEmbeddingInputsWithLimit(text, d, e.maxContextLength)
+}
+
+func reducedEmbeddingContextLength(err error, inputs []documentEmbeddingInput, current int) (int, bool) {
+	promptTokens, endpointContextLength, contextError := embeddingContextErrorDetails(err)
+	if !contextError || current <= 1 {
+		return 0, false
+	}
+
+	next := current * 3 / 4
+	if promptTokens > 0 && endpointContextLength > 0 {
+		estimatedTokens := 0
+		for _, input := range inputs {
+			estimatedTokens = max(estimatedTokens, len(tokenize(input.embeddingText)))
+		}
+		if estimatedTokens > 0 {
+			// Keep ten percent free because the endpoint and local tokenizer may
+			// continue to differ at the new chunk boundary.
+			next = int(int64(estimatedTokens) * int64(endpointContextLength) * 9 /
+				(int64(promptTokens) * 10))
+		}
+	}
+	if next >= current {
+		next = current * 9 / 10
+	}
+	next = max(1, next)
+	return next, next < current
+}
+
 // ChunkAndEmbed creates a dedicated metadata embedding and separate structured
 // body chunk embeddings, then returns them ready for storage. Returns nil when
 // both document context and text are empty.
 func (e *Embedder) ChunkAndEmbed(ctx context.Context, text string, d DocumentContext) ([]Chunk, error) {
-	inputs := e.documentEmbeddingInputs(text, d)
-	if len(inputs) == 0 {
-		return nil, nil
-	}
-
-	texts := make([]string, len(inputs))
-	for i, input := range inputs {
-		texts[i] = input.embeddingText
-	}
-
-	vectors, err := e.EmbedBatch(ctx, texts)
-	if err != nil {
-		return nil, err
-	}
-	if len(vectors) != len(inputs) {
-		return nil, fmt.Errorf("embedding count mismatch: expected %d, got %d", len(inputs), len(vectors))
-	}
-
-	chunks := make([]Chunk, len(inputs))
-	for i := range inputs {
-		chunks[i] = Chunk{
-			Index:     i,
-			Text:      inputs[i].chunkText,
-			Embedding: vectors[i],
+	contextLength := e.maxContextLength
+	for {
+		inputs := e.documentEmbeddingInputsWithLimit(text, d, contextLength)
+		if len(inputs) == 0 {
+			return nil, nil
 		}
+
+		texts := make([]string, len(inputs))
+		for i, input := range inputs {
+			texts[i] = input.embeddingText
+		}
+
+		vectors, err := e.EmbedBatch(ctx, texts)
+		if err != nil {
+			nextContextLength, retry := reducedEmbeddingContextLength(err, inputs, contextLength)
+			if retry {
+				contextLength = nextContextLength
+				continue
+			}
+			return nil, err
+		}
+		if len(vectors) != len(inputs) {
+			return nil, fmt.Errorf("embedding count mismatch: expected %d, got %d", len(inputs), len(vectors))
+		}
+
+		chunks := make([]Chunk, len(inputs))
+		for i := range inputs {
+			chunks[i] = Chunk{
+				Index:     i,
+				Text:      inputs[i].chunkText,
+				Embedding: vectors[i],
+			}
+		}
+		return chunks, nil
 	}
-	return chunks, nil
 }
