@@ -61,7 +61,22 @@ const (
 	embeddingMaxAttempts      = 3
 	defaultEmbeddingTimeout   = 5 * time.Minute
 	defaultEmbeddingBatchSize = 8
+	embeddingHeadroomDivisor  = 20 // Five percent
 )
+
+// contextLengthWithHeadroom keeps the configured context length as a hard
+// ceiling. Token counts are approximate because the endpoint may use any
+// model tokenizer, so reserve a small margin before constructing chunks.
+func contextLengthWithHeadroom(configured int) int {
+	if configured <= 1 {
+		return 1
+	}
+	headroom := configured / embeddingHeadroomDivisor
+	if configured%embeddingHeadroomDivisor != 0 {
+		headroom++
+	}
+	return max(1, configured-headroom)
+}
 
 // NewEmbedder creates an Embedder from the semantic search config.
 func NewEmbedder(cfg *config.SemanticSearch) *Embedder {
@@ -83,7 +98,7 @@ func NewEmbedder(cfg *config.SemanticSearch) *Embedder {
 		apiKey:           cfg.APIKey,
 		headers:          cfg.Headers,
 		dimensions:       cfg.Dimensions,
-		maxContextLength: cfg.MaxContextLength,
+		maxContextLength: contextLengthWithHeadroom(cfg.MaxContextLength),
 		chunkOverlap:     cfg.ChunkOverlap,
 		maxBatchSize:     maxBatchSize,
 		queryPrefix:      cfg.QueryPrefix,

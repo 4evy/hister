@@ -55,6 +55,31 @@ func writeContextSizeError(w http.ResponseWriter, promptTokens, contextLength in
 	})
 }
 
+func TestContextLengthWithHeadroom(t *testing.T) {
+	tests := []struct {
+		configured int
+		want       int
+	}{
+		{configured: 32000, want: 30400},
+		{configured: 512, want: 486},
+		{configured: 100, want: 95},
+		{configured: 19, want: 18},
+		{configured: 1, want: 1},
+	}
+	for _, test := range tests {
+		if got := contextLengthWithHeadroom(test.configured); got != test.want {
+			t.Errorf("contextLengthWithHeadroom(%d) = %d, want %d", test.configured, got, test.want)
+		}
+	}
+}
+
+func TestNewEmbedderAppliesContextHeadroom(t *testing.T) {
+	embedder := NewEmbedder(&config.SemanticSearch{MaxContextLength: 32000})
+	if got, want := embedder.maxContextLength, 30400; got != want {
+		t.Errorf("max context length = %d, want %d", got, want)
+	}
+}
+
 func TestDocumentEmbeddingInputsSeparateMetadataAndBody(t *testing.T) {
 	embedder := newTestEmbedder("")
 	embedder.documentPrefix = "passage: "
