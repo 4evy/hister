@@ -4,6 +4,118 @@ draft: false
 title: 'Configuration Reference'
 ---
 
+<script>
+  import ConfigReference from '$lib/ConfigReference.svelte';
+
+  const semanticConnectionOptions = [
+    {
+      name: 'enable',
+      type: 'bool',
+      defaultValue: 'false',
+      description: 'Enables semantic search. All other semantic search settings are ignored when this is disabled.',
+    },
+    {
+      name: 'embedding_endpoint',
+      type: 'string',
+      defaultValue: 'http://localhost:11434/v1/embeddings',
+      description: 'URL of the OpenAI compatible embeddings endpoint.',
+    },
+    {
+      name: 'embedding_model',
+      type: 'string',
+      defaultValue: 'qwen3-embedding:8b',
+      description: 'Model name passed in each embedding request. It must match a model served by the endpoint.',
+    },
+    {
+      name: 'api_key',
+      type: 'string',
+      defaultValue: '""',
+      description: 'Optional API key sent as an Authorization bearer token. Hosted providers commonly require it.',
+    },
+    {
+      name: 'headers',
+      type: 'map[string]string',
+      defaultValue: '{}',
+      description: 'Optional HTTP headers added to every embedding request for proxies or custom authentication.',
+    },
+    {
+      name: 'dimensions',
+      type: 'int',
+      defaultValue: '4096',
+      description: 'Vector dimensionality. This must match the output of the selected embedding model.',
+    },
+  ];
+
+  const semanticInputOptions = [
+    {
+      name: 'max_context_length',
+      type: 'int',
+      defaultValue: '512',
+      description: 'Hard context ceiling for each text chunk. Hister reserves five percent as tokenizer headroom, giving the default an approximate budget of 486 tokens. Endpoint rejections trigger another retry with smaller chunks.',
+    },
+    {
+      name: 'chunk_overlap',
+      type: 'int',
+      defaultValue: '64',
+      description: 'Approximate token allowance shared between consecutive chunks while preserving structural boundaries.',
+    },
+    {
+      name: 'query_prefix',
+      type: 'string',
+      defaultValue: '"query: "',
+      description: 'Text prepended to every search query. Many embedding models use distinct query and document prefixes for better recall.',
+    },
+    {
+      name: 'document_prefix',
+      type: 'string',
+      defaultValue: '""',
+      description: 'Text prepended to every document chunk. Set it according to the convention expected by the embedding model.',
+    },
+  ];
+
+  const semanticRetrievalOptions = [
+    {
+      name: 'similarity_threshold',
+      type: 'float',
+      defaultValue: '0.1',
+      description: 'Minimum cosine similarity required for a semantic chunk to be included in the results.',
+    },
+    {
+      name: 'result_limit',
+      type: 'int',
+      defaultValue: '50',
+      description: 'Maximum number of semantic hits retrieved for each query.',
+    },
+    {
+      name: 'semantic_weight',
+      type: 'float',
+      defaultValue: '0.4',
+      description: 'Weight applied to semantic scores when merging them with keyword scores. Zero uses keyword results only, while one uses semantic results only.',
+    },
+  ];
+
+  const semanticProcessingOptions = [
+    {
+      name: 'embedding_timeout',
+      type: 'int',
+      defaultValue: '300',
+      description: 'Maximum seconds allowed for one embedding request. Values below one use the default of 300 seconds.',
+    },
+    {
+      name: 'max_embedding_batch_size',
+      type: 'int',
+      defaultValue: '8',
+      description: 'Maximum chunks sent in one request. Smaller batches keep local endpoints responsive and let long documents make incremental progress. Values below one use the default of eight.',
+    },
+    {
+      name: 'max_embedding_concurrency',
+      type: 'int',
+      defaultValue: '2',
+      description: 'Maximum embedding workers and simultaneous endpoint requests. Increase this for fast remote endpoints. Values below one use the default of two.',
+    },
+  ];
+</script>
+
 Hister is configured via a YAML file. The config file is searched in the following order:
 
 ### Default Config Locations
@@ -189,24 +301,21 @@ Hister can augment keyword search with vector similarity search. When enabled, e
 
 Semantic search is **opt-in** and disabled by default. It requires an OpenAI-compatible embeddings endpoint such as [Ollama](https://ollama.com), a local [llama.cpp](https://github.com/ggml-org/llama.cpp) server, or the OpenAI API itself.
 
-| Key                         | Type              | Default                                | Description                                                                                                                                                                                                                                                                 |
-| --------------------------- | ----------------- | -------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `enable`                    | bool              | `false`                                | Enable or disable semantic search. All other keys are ignored when `false`.                                                                                                                                                                                                 |
-| `embedding_endpoint`        | string            | `http://localhost:11434/v1/embeddings` | URL of the OpenAI-compatible `/v1/embeddings` endpoint.                                                                                                                                                                                                                     |
-| `embedding_model`           | string            | `qwen3-embedding:8b`                   | Model name passed in the embedding request. Must match a model served by your endpoint.                                                                                                                                                                                     |
-| `embedding_timeout`         | int               | `300`                                  | Maximum number of seconds allowed for one embedding request. Values below `1` use the bounded default of `300`.                                                                                                                                                             |
-| `api_key`                   | string            | `""`                                   | Optional API key sent as `Authorization: Bearer <key>`. Required for hosted providers such as OpenAI, Together, Mistral, or Voyage.                                                                                                                                         |
-| `headers`                   | map[string]string | `{}`                                   | Optional extra HTTP headers added to every embedding request. Useful for proxies or providers that use a non-standard auth scheme.                                                                                                                                          |
-| `dimensions`                | int               | `4096`                                 | Vector dimensionality. Must match the output of the chosen model.                                                                                                                                                                                                           |
-| `max_context_length`        | int               | `512`                                  | Hard context ceiling for each text chunk. Hister reserves five percent as tokenizer headroom, so the default produces an approximate chunk budget of `486`. If the endpoint still reports that its exact tokenizer exceeds the limit, Hister retries with smaller chunks.     |
-| `chunk_overlap`             | int               | `64`                                   | Approximate token allowance for complete structural units shared between consecutive chunks. Helps preserve context while keeping paragraph, sentence, list item, and code boundaries intact.                                                                               |
-| `max_embedding_batch_size`  | int               | `8`                                    | Maximum number of chunks sent in one request. Smaller batches keep slow local endpoints responsive and let long documents make incremental progress. Values below `1` use the bounded default of `8`.                                                                       |
-| `query_prefix`              | string            | `"query: "`                            | String prepended to every search query before embedding. Many models require a task prefix for optimal recall (e.g. `"search_query: "` for Nomic, `"query: "` for E5/BGE). Set to `""` for models that do not use prefixes (e.g. OpenAI `text-embedding-3-*`).              |
-| `document_prefix`           | string            | `""`                                   | String prepended to every document chunk before embedding (e.g. `"search_document: "` for Nomic, `"passage: "` for E5/BGE). Must match the model's expected convention.                                                                                                     |
-| `similarity_threshold`      | float             | `0.1`                                  | Minimum cosine similarity score for a chunk to be included in results. Raise this to surface only highly relevant matches.                                                                                                                                                  |
-| `result_limit`              | int               | `50`                                   | Maximum number of semantic hits retrieved per query.                                                                                                                                                                                                                        |
-| `semantic_weight`           | float             | `0.4`                                  | Weight applied to the semantic score when merging with keyword scores (0.0 = keyword only, 1.0 = semantic only). Adjustable in the web UI.                                                                                                                                  |
-| `max_embedding_concurrency` | int               | `2`                                    | Maximum number of embedding workers and requests sent to the endpoint simultaneously. Increase for fast remote endpoints. Values below `1` use the bounded default of `2`.                                                                                                  |
+### Connection and Model
+
+<ConfigReference items={semanticConnectionOptions} />
+
+### Chunking and Input
+
+<ConfigReference items={semanticInputOptions} />
+
+### Retrieval
+
+<ConfigReference items={semanticRetrievalOptions} />
+
+### Processing
+
+<ConfigReference items={semanticProcessingOptions} />
 
 ### Vector Storage Backends
 
