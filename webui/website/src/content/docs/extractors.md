@@ -4,6 +4,61 @@ draft: false
 title: 'Extractors'
 ---
 
+<script>
+  import ConfigReference from '$lib/ConfigReference.svelte';
+
+  const ytdlpOptions = [
+    {
+      name: 'binary',
+      type: 'string',
+      defaultValue: 'yt-dlp',
+      description: 'Path to the yt-dlp executable. Use this when the binary is not on PATH or to select a specific version.',
+    },
+    {
+      name: 'timeout',
+      type: 'int',
+      defaultValue: '15',
+      description: 'Seconds to wait for yt-dlp to finish before aborting the request.',
+    },
+    {
+      name: 'max_concurrent_jobs',
+      type: 'int',
+      defaultValue: '2',
+      description: 'Maximum number of yt-dlp processes running at once. Additional jobs wait for a slot. Set it to zero for no limit.',
+    },
+    {
+      name: 'fetch_subtitles',
+      type: 'bool',
+      defaultValue: 'false',
+      description: 'Downloads subtitles or an automatically generated transcript and appends them to the indexed text and preview.',
+    },
+    {
+      name: 'sub_language',
+      type: 'string',
+      defaultValue: 'auto',
+      description: 'Subtitle language code to request. Auto selects automatically generated captions. Used only when fetch_subtitles is true.',
+    },
+    {
+      name: 'cookies_file',
+      type: 'string',
+      defaultValue: '(none)',
+      description: 'Path to a Netscape format cookies file passed to yt-dlp. Useful for restricted content.',
+    },
+    {
+      name: 'cookies_from_browser',
+      type: 'string',
+      defaultValue: '(none)',
+      description: 'Browser from which yt-dlp extracts cookies. This takes precedence over cookies_file.',
+    },
+    {
+      name: 'extra_args',
+      type: 'string[]',
+      defaultValue: '(none)',
+      description: 'Additional yt-dlp command line flags appended verbatim to every invocation.',
+    },
+  ];
+</script>
+
 Extractors are the components responsible for turning raw HTML or file content
 into rich, searchable data. Every time a page is added to the index or a
 document preview is requested, Hister runs the content through a chain of
@@ -328,16 +383,7 @@ video-platform substrings.
 
 #### Options
 
-| Option                 | Type            | Default  | Description                                                                                                                                                                                          |
-| ---------------------- | --------------- | -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `binary`               | string          | `yt-dlp` | Path to the `yt-dlp` executable. Useful when the binary is not on `PATH` or you want to pin a specific version.                                                                                      |
-| `timeout`              | int             | `15`     | Seconds to wait for `yt-dlp` to finish before aborting the request.                                                                                                                                  |
-| `max_concurrent_jobs`  | int             | `2`      | Maximum number of `yt-dlp` processes running at once. Additional jobs wait for a slot. Set to `0` for no limit.                                                                                      |
-| `fetch_subtitles`      | bool            | `false`  | Download and append subtitles/auto-generated transcript to the indexed text and preview.                                                                                                             |
-| `sub_language`         | string          | `auto`   | Subtitle language code to request (e.g. `en`, `de`, `fr`). `auto` selects auto-generated captions. Only used when `fetch_subtitles` is `true`.                                                       |
-| `cookies_file`         | string          | -        | Path to a [Netscape-format cookies file](https://curl.se/docs/http-cookies.html). Passed to `yt-dlp` as `--cookies`. Useful for age-restricted or members-only content.                              |
-| `cookies_from_browser` | string          | -        | Browser name from which `yt-dlp` should extract cookies at runtime (e.g. `chrome`, `firefox`, `safari`). Passed as `--cookies-from-browser`. Takes precedence over `cookies_file` when both are set. |
-| `extra_args`           | list of strings | -        | Additional `yt-dlp` CLI flags appended verbatim to every invocation.                                                                                                                                 |
+<ConfigReference items={ytdlpOptions} />
 
 #### Example configuration
 
