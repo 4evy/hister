@@ -9,6 +9,7 @@ import screenshot from "$lib/assets/landing_screenshot.png";
 </script>
 
 The simplest way to use Hister requires no configuration. First [install the Hister binary](installing), then follow the steps below.
+When you are ready to customize it, start with [Creating a Config File](configuration#creating-a-config-file).
 
 ## Running the Server
 
@@ -28,6 +29,7 @@ Just make sure not to close the terminal that the above command was run on, as d
 It is fine to close and/or reopen the server at any time, but it **must** be running for the clients to be able to index any pages; you will get errors otherwise.
 
 More advanced setups are described in the "Advanced Server Setup" documentation.
+To change storage, logging, interface, database, or authentication settings, review the [`app`](configuration#app-section) and [`server`](configuration#server-section) configuration sections.
 
 ## Installing a Browser Extension
 
@@ -60,6 +62,8 @@ If you can't access the Web interface at all, check that [the server is running]
 ## Next Steps
 
 - [Import files, browser history, or Linkwarden bookmarks](import)
+- [Index local directories](configuration#local-directory-indexing)
+- [Enable semantic search](configuration#semantic-search)
 - In the Web interface, set up ignoring and priority rules, as well as keyword aliases for efficient searching
 - Explore the [Hister query language](query-language)
-- Configure hotkeys and sensitive data patterns in your config file
+- Configure [web hotkeys](configuration#hotkeysweb-section) and review the [sensitive content patterns](configuration#sensitive_content_patterns-section)

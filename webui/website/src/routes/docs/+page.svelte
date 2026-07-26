@@ -1,5 +1,7 @@
 <script lang="ts">
+  import ArrowRightIcon from '@lucide/svelte/icons/arrow-right';
   import Globe from '@lucide/svelte/icons/globe';
+  import SettingsIcon from '@lucide/svelte/icons/settings';
   import * as Card from '@hister/components/ui/card';
   import Seo from '$lib/Seo.svelte';
 
@@ -19,6 +21,24 @@
     Documentation
   </h1>
 
+  <Card.Root href="/docs/configuration" color="hister-indigo" class="bg-hister-indigo/10 mb-10 p-6">
+    <div class="flex items-center gap-4">
+      <div
+        class="border-brutal-border bg-hister-indigo flex size-11 shrink-0 items-center justify-center border-[2px] text-white"
+      >
+        <SettingsIcon aria-hidden="true" size={22} />
+      </div>
+      <div class="min-w-0 flex-1">
+        <h2
+          class="font-space text-xl font-extrabold tracking-[0.5px] text-(--text-primary) sm:text-2xl"
+        >
+          Configuration Reference
+        </h2>
+      </div>
+      <ArrowRightIcon aria-hidden="true" size={20} class="shrink-0 text-hister-indigo" />
+    </div>
+  </Card.Root>
+
   {#each data.categories as category}
     <div class="mb-8">
       <div class="mb-3 flex items-center gap-2">
@@ -32,13 +52,17 @@
 
       <ul class="m-0 flex list-none flex-col gap-3 p-0">
         {#each category.docs as doc}
-          <li>
-            <Card.Root href="/docs/{doc.slug}" class="bg-brutal-card p-5">
-              <h2 class="font-space text-lg font-extrabold tracking-[0.5px] text-(--text-primary)">
-                {doc.title}
-              </h2>
-            </Card.Root>
-          </li>
+          {#if doc.slug !== 'configuration'}
+            <li>
+              <Card.Root href="/docs/{doc.slug}" class="bg-brutal-card p-5">
+                <h2
+                  class="font-space text-lg font-extrabold tracking-[0.5px] text-(--text-primary)"
+                >
+                  {doc.title}
+                </h2>
+              </Card.Root>
+            </li>
+          {/if}
         {/each}
       </ul>
     </div>
