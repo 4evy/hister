@@ -5,6 +5,7 @@ let d: PageData;
 const defaultSleepTime = 10 * 1000;
 let sleepTime = defaultSleepTime;
 const sleepIncrementRatio = 2;
+const supportedContentTypes = new Set(['text/html', 'application/xhtml+xml', 'text/plain']);
 // URL that was rejected by the server with a 406 (skip rule match).
 // Cleared when the page navigates to a different URL.
 let skippedUrl: string | null = null;
@@ -44,8 +45,22 @@ function scheduleUpdate() {
   updateTimer = setTimeout(update, sleepTime);
 }
 
+function normalizeContentType(contentType: string): string {
+  return contentType.split(';', 1)[0].trim().toLowerCase();
+}
+
+function isSupportedContentType(contentType: string): boolean {
+  return supportedContentTypes.has(normalizeContentType(contentType));
+}
+
 function extract(sendResponse, actionType, force) {
   if (!isContextValid()) return;
+  if (!isSupportedContentType(document.contentType)) {
+    if (typeof sendResponse === 'function') {
+      sendResponse({ status: 'unsupported_content_type', content_type: document.contentType });
+    }
+    return;
+  }
   const navEntry = window.performance.getEntries().find((e) => e.entryType === 'navigation') as
     PerformanceNavigationTiming | undefined;
   if (navEntry && navEntry.responseStatus > 299 && !force) {
