@@ -26,6 +26,7 @@ var weights = map[string]float64{
 }
 
 var relativeTimeFilterPattern = regexp.MustCompile(`^(<=|>=|<|>)([0-9]+)([smhdw])$`)
+var absoluteDateFilterPattern = regexp.MustCompile(`^(<=|>=|<|>)([0-9]{4}-[0-9]{2}-[0-9]{2})$`)
 
 func Build(s string) query.Query {
 	if strings.TrimSpace(s) == "" {
@@ -130,9 +131,8 @@ func isFieldSpecific(t Token) bool {
 		if _, ok := visitCountFilterValue(v); ok {
 			return true
 		}
-		if _, value, ok := relativeTimeFilterValue(v); ok {
-			_, _, valid := parseRelativeTimeFilter(value)
-			return valid
+		if _, value, ok := timeFilterValue(v); ok {
+			return validTimeFilter(value)
 		}
 		if _, ok := strings.CutPrefix(v, "user_id:"); ok {
 			return true
@@ -263,7 +263,7 @@ func buildVisitCountQuery(v string) (query.Query, bool) {
 	return q, true
 }
 
-func relativeTimeFilterValue(v string) (string, string, bool) {
+func timeFilterValue(v string) (string, string, bool) {
 	if value, ok := strings.CutPrefix(v, "added:"); ok {
 		return "added", value, true
 	}
@@ -303,29 +303,67 @@ func parseRelativeTimeFilter(v string) (string, int64, bool) {
 	return parts[1], amount * unitSeconds, true
 }
 
-func buildRelativeTimeQuery(field, v string, now time.Time) (query.Query, bool) {
+func parseAbsoluteDateFilter(v string) (string, int64, bool) {
+	parts := absoluteDateFilterPattern.FindStringSubmatch(v)
+	if parts == nil {
+		return "", 0, false
+	}
+	date, err := time.Parse("2006-01-02", parts[2])
+	if err != nil {
+		return "", 0, false
+	}
+	return parts[1], date.Unix(), true
+}
+
+func validTimeFilter(v string) bool {
+	if _, _, ok := parseRelativeTimeFilter(v); ok {
+		return true
+	}
+	_, _, ok := parseAbsoluteDateFilter(v)
+	return ok
+}
+
+func buildTimeQuery(field, v string, now time.Time) (query.Query, bool) {
 	if field != "added" && field != "updated" {
 		return nil, false
 	}
-	comparison, durationSeconds, ok := parseRelativeTimeFilter(v)
-	if !ok {
-		return nil, false
+	comparison, durationSeconds, relative := parseRelativeTimeFilter(v)
+	var cutoff float64
+	if relative {
+		cutoff = float64(now.Unix() - durationSeconds)
+		switch comparison {
+		case ">":
+			comparison = "<"
+		case ">=":
+			comparison = "<="
+		case "<":
+			comparison = ">"
+		case "<=":
+			comparison = ">="
+		}
+	} else {
+		var timestamp int64
+		var ok bool
+		comparison, timestamp, ok = parseAbsoluteDateFilter(v)
+		if !ok {
+			return nil, false
+		}
+		cutoff = float64(timestamp)
 	}
-	cutoff := float64(now.Unix() - durationSeconds)
 	var min, max *float64
 	minInclusive := true
 	maxInclusive := true
 	switch comparison {
 	case ">":
-		max = &cutoff
-		maxInclusive = false
-	case ">=":
-		max = &cutoff
-	case "<":
 		min = &cutoff
 		minInclusive = false
-	case "<=":
+	case ">=":
 		min = &cutoff
+	case "<":
+		max = &cutoff
+		maxInclusive = false
+	case "<=":
+		max = &cutoff
 	default:
 		return nil, false
 	}
@@ -395,8 +433,8 @@ func getTokenQuery(t Token, now time.Time) (query.Query, bool) {
 				return q, negated
 			}
 		}
-		if field, v, ok := relativeTimeFilterValue(t.Value); ok {
-			if q, ok := buildRelativeTimeQuery(field, v, now); ok {
+		if field, v, ok := timeFilterValue(t.Value); ok {
+			if q, ok := buildTimeQuery(field, v, now); ok {
 				return q, negated
 			}
 		}

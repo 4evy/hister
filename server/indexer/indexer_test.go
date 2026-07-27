@@ -201,6 +201,69 @@ func TestSearchAndDeleteFilterByRelativeTime(t *testing.T) {
 	}
 }
 
+func TestSearchFiltersByAbsoluteDate(t *testing.T) {
+	idxCfg := testutil.Config(t)
+	if err := Init(idxCfg); err != nil {
+		t.Fatalf("failed to init indexer: %v", err)
+	}
+	defer i.Close()
+
+	beforeCutoff := time.Date(2025, time.December, 31, 23, 59, 59, 0, time.UTC).Unix()
+	atCutoff := time.Date(2026, time.January, 1, 0, 0, 0, 0, time.UTC).Unix()
+	afterCutoff := time.Date(2026, time.January, 2, 0, 0, 0, 0, time.UTC).Unix()
+	documents := []*document.Document{
+		{
+			URL:       "https://example.com/absolute-date-before",
+			Title:     "Absolute date before",
+			Text:      "Absolute date filter text",
+			Added:     beforeCutoff,
+			Updated:   beforeCutoff,
+			Processed: true,
+		},
+		{
+			URL:       "https://example.com/absolute-date-boundary",
+			Title:     "Absolute date boundary",
+			Text:      "Absolute date filter text",
+			Added:     atCutoff,
+			Updated:   atCutoff,
+			Processed: true,
+		},
+		{
+			URL:       "https://example.com/absolute-date-after",
+			Title:     "Absolute date after",
+			Text:      "Absolute date filter text",
+			Added:     afterCutoff,
+			Updated:   afterCutoff,
+			Processed: true,
+		},
+	}
+	for _, doc := range documents {
+		if err := Add(doc); err != nil {
+			t.Fatalf("Add failed: %v", err)
+		}
+	}
+
+	res, err := Search(idxCfg, &Query{Text: "Absolute date added:<2026-01-01"})
+	if err != nil {
+		t.Fatalf("Search before absolute date failed: %v", err)
+	}
+	if len(res.Documents) != 1 || res.Documents[0].URL != documents[0].URL {
+		t.Fatalf("absolute date search returned %#v, want only %q", res.Documents, documents[0].URL)
+	}
+
+	res, err = Search(idxCfg, &Query{Text: "Absolute date updated:>=2026-01-01"})
+	if err != nil {
+		t.Fatalf("Search from absolute date failed: %v", err)
+	}
+	gotURLs := make(map[string]bool, len(res.Documents))
+	for _, doc := range res.Documents {
+		gotURLs[doc.URL] = true
+	}
+	if len(gotURLs) != 2 || !gotURLs[documents[1].URL] || !gotURLs[documents[2].URL] {
+		t.Fatalf("absolute date search returned %#v, want boundary and after documents", res.Documents)
+	}
+}
+
 func TestSearchVisitCountFacets(t *testing.T) {
 	idxCfg := testutil.Config(t)
 	if err := Init(idxCfg); err != nil {

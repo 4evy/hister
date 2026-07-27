@@ -512,9 +512,47 @@ func Test_build_relative_time_comparisons(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.field+test.value, func(t *testing.T) {
-			q, ok := buildRelativeTimeQuery(test.field, test.value, now)
+			q, ok := buildTimeQuery(test.field, test.value, now)
 			if !ok {
-				t.Fatalf("buildRelativeTimeQuery(%q, %q) was not accepted", test.field, test.value)
+				t.Fatalf("buildTimeQuery(%q, %q) was not accepted", test.field, test.value)
+			}
+			nq := asNumericRange(t, q)
+			if nq.FieldVal != test.field {
+				t.Fatalf("field = %q, want %q", nq.FieldVal, test.field)
+			}
+			if !equalFloatPointers(nq.Min, test.wantMin) || !equalFloatPointers(nq.Max, test.wantMax) {
+				t.Fatalf("range = %v..%v, want %v..%v", nq.Min, nq.Max, test.wantMin, test.wantMax)
+			}
+			if nq.InclusiveMin == nil || *nq.InclusiveMin != test.wantMinClosed {
+				t.Fatalf("inclusive min = %v, want %t", nq.InclusiveMin, test.wantMinClosed)
+			}
+			if nq.InclusiveMax == nil || *nq.InclusiveMax != test.wantMaxClosed {
+				t.Fatalf("inclusive max = %v, want %t", nq.InclusiveMax, test.wantMaxClosed)
+			}
+		})
+	}
+}
+
+func Test_build_absolute_date_comparisons(t *testing.T) {
+	date := float64(time.Date(2026, time.April, 28, 0, 0, 0, 0, time.UTC).Unix())
+	tests := []struct {
+		field         string
+		value         string
+		wantMin       *float64
+		wantMax       *float64
+		wantMinClosed bool
+		wantMaxClosed bool
+	}{
+		{field: "updated", value: ">2026-04-28", wantMin: &date, wantMaxClosed: true},
+		{field: "added", value: ">=2026-04-28", wantMin: &date, wantMinClosed: true, wantMaxClosed: true},
+		{field: "updated", value: "<2026-04-28", wantMax: &date, wantMinClosed: true},
+		{field: "added", value: "<=2026-04-28", wantMax: &date, wantMinClosed: true, wantMaxClosed: true},
+	}
+	for _, test := range tests {
+		t.Run(test.field+test.value, func(t *testing.T) {
+			q, ok := buildTimeQuery(test.field, test.value, time.Time{})
+			if !ok {
+				t.Fatalf("buildTimeQuery(%q, %q) was not accepted", test.field, test.value)
 			}
 			nq := asNumericRange(t, q)
 			if nq.FieldVal != test.field {
@@ -541,19 +579,23 @@ func equalFloatPointers(got, want *float64) bool {
 }
 
 func Test_build_relative_time_filter_is_field_specific(t *testing.T) {
-	bq := buildBoolQ(t, "privacy updated:>90d")
+	bq := buildBoolQ(t, "privacy updated:>90d added:>=2026-04-28")
 	clauses := mustClauses(t, bq)
-	if len(clauses) != 2 {
-		t.Fatalf("expected 2 must clauses without phrase wrapping, got %d", len(clauses))
+	if len(clauses) != 3 {
+		t.Fatalf("expected 3 must clauses without phrase wrapping, got %d", len(clauses))
 	}
 	asDisjunction(t, clauses[0])
 	nq := asNumericRange(t, clauses[1])
 	if nq.FieldVal != "updated" {
 		t.Fatalf("field = %q, want updated", nq.FieldVal)
 	}
+	nq = asNumericRange(t, clauses[2])
+	if nq.FieldVal != "added" {
+		t.Fatalf("field = %q, want added", nq.FieldVal)
+	}
 }
 
-func Test_build_invalid_relative_time_filter_falls_through(t *testing.T) {
+func Test_build_invalid_time_filter_falls_through(t *testing.T) {
 	for _, test := range []struct {
 		field string
 		value string
@@ -564,9 +606,13 @@ func Test_build_invalid_relative_time_filter_falls_through(t *testing.T) {
 		{field: "added", value: ">-1d"},
 		{field: "updated", value: ">1y"},
 		{field: "added", value: ">999999999999999999999d"},
+		{field: "updated", value: ">2026-2-01"},
+		{field: "added", value: ">2026-02-29"},
+		{field: "updated", value: "<2026-04-31"},
+		{field: "added", value: ">=2026-04-28T10:30:00Z"},
 	} {
-		if _, ok := buildRelativeTimeQuery(test.field, test.value, time.Now()); ok {
-			t.Errorf("buildRelativeTimeQuery(%q, %q) was accepted", test.field, test.value)
+		if _, ok := buildTimeQuery(test.field, test.value, time.Now()); ok {
+			t.Errorf("buildTimeQuery(%q, %q) was accepted", test.field, test.value)
 		}
 	}
 }
