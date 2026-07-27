@@ -42,6 +42,10 @@
       Use <code>visits:</code> to filter by visit count, such as <code>visits:1</code>,
       <code>visits:2..4</code>, or <code>visits:10..</code>.
     </p>
+    <p>
+      Use <code>age:</code> to filter by time since a page was indexed or updated, such as
+      <code>age:&gt;90d</code> or <code>age:&lt;=24h</code>.
+    </p>
 
     <h3>Examples</h3>
     <p>
@@ -55,6 +59,10 @@
     <p>
       <code>project docs visits:5..9</code>: Search matching pages that have been visited between 5
       and 9 times.
+    </p>
+    <p>
+      <code>age:&gt;90d</code>: Search pages that have not been indexed or updated in more than 90
+      days.
     </p>
 
     <h2>Search Aliases</h2>

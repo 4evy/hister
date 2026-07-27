@@ -7,6 +7,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/asciimoo/hister/files"
 	"github.com/asciimoo/hister/server/types"
@@ -23,6 +24,8 @@ var weights = map[string]float64{
 	"domain":   8,
 	"title":    12,
 }
+
+var ageFilterPattern = regexp.MustCompile(`^(<=|>=|<|>)([0-9]+)([smhdw])$`)
 
 func Build(s string) query.Query {
 	if strings.TrimSpace(s) == "" {
@@ -43,9 +46,10 @@ func Build(s string) query.Query {
 
 	qs := []query.Query{}
 	nqs := []query.Query{}
+	now := time.Now()
 
 	for _, t := range qt {
-		q, negated := getTokenQuery(t)
+		q, negated := getTokenQuery(t, now)
 		if negated {
 			nqs = append(nqs, q)
 		} else {
@@ -125,6 +129,10 @@ func isFieldSpecific(t Token) bool {
 		}
 		if _, ok := visitCountFilterValue(v); ok {
 			return true
+		}
+		if value, ok := ageFilterValue(v); ok {
+			_, _, valid := parseAgeFilter(value)
+			return valid
 		}
 		if _, ok := strings.CutPrefix(v, "user_id:"); ok {
 			return true
@@ -255,6 +263,68 @@ func buildVisitCountQuery(v string) (query.Query, bool) {
 	return q, true
 }
 
+func ageFilterValue(v string) (string, bool) {
+	return strings.CutPrefix(v, "age:")
+}
+
+func parseAgeFilter(v string) (string, int64, bool) {
+	parts := ageFilterPattern.FindStringSubmatch(strings.ToLower(v))
+	if parts == nil {
+		return "", 0, false
+	}
+	amount, err := strconv.ParseInt(parts[2], 10, 64)
+	if err != nil {
+		return "", 0, false
+	}
+	var unitSeconds int64
+	switch parts[3] {
+	case "s":
+		unitSeconds = 1
+	case "m":
+		unitSeconds = 60
+	case "h":
+		unitSeconds = 60 * 60
+	case "d":
+		unitSeconds = 24 * 60 * 60
+	case "w":
+		unitSeconds = 7 * 24 * 60 * 60
+	default:
+		return "", 0, false
+	}
+	if amount > (1<<63-1)/unitSeconds {
+		return "", 0, false
+	}
+	return parts[1], amount * unitSeconds, true
+}
+
+func buildAgeQuery(v string, now time.Time) (query.Query, bool) {
+	comparison, ageSeconds, ok := parseAgeFilter(v)
+	if !ok {
+		return nil, false
+	}
+	cutoff := float64(now.Unix() - ageSeconds)
+	var min, max *float64
+	minInclusive := true
+	maxInclusive := true
+	switch comparison {
+	case ">":
+		max = &cutoff
+		maxInclusive = false
+	case ">=":
+		max = &cutoff
+	case "<":
+		min = &cutoff
+		minInclusive = false
+	case "<=":
+		min = &cutoff
+	default:
+		return nil, false
+	}
+	q := bleve.NewNumericRangeInclusiveQuery(min, max, &minInclusive, &maxInclusive)
+	q.SetField("updated")
+	return q, true
+}
+
 // Matches exact phrases without stopwords
 func createMatchPhraseQuery(s string, boost float64) query.Query {
 	tiq := bleve.NewMatchPhraseQuery(s)
@@ -268,7 +338,7 @@ func createMatchPhraseQuery(s string, boost float64) query.Query {
 	return q
 }
 
-func getTokenQuery(t Token) (query.Query, bool) {
+func getTokenQuery(t Token, now time.Time) (query.Query, bool) {
 	negated := false
 	switch t.Type {
 	case TokenQuoted:
@@ -316,6 +386,11 @@ func getTokenQuery(t Token) (query.Query, bool) {
 				return q, negated
 			}
 		}
+		if v, ok := ageFilterValue(t.Value); ok {
+			if q, ok := buildAgeQuery(v, now); ok {
+				return q, negated
+			}
+		}
 		if v, ok := strings.CutPrefix(t.Value, "user_id:"); ok {
 			if uid, err := strconv.ParseUint(v, 10, 64); err == nil {
 				f := float64(uid)
@@ -352,7 +427,7 @@ func getTokenQuery(t Token) (query.Query, bool) {
 						qs := []query.Query{}
 						for _, p := range parts {
 							partToken := Token{Type: TokenWord, Value: field + ":" + p.Value}
-							q, _ := getTokenQuery(partToken)
+							q, _ := getTokenQuery(partToken, now)
 							qs = append(qs, q)
 						}
 						return bleve.NewDisjunctionQuery(qs...), negated
@@ -383,7 +458,7 @@ func getTokenQuery(t Token) (query.Query, bool) {
 	case TokenAlternation:
 		qs := []query.Query{}
 		for _, p := range t.Parts {
-			r, _ := getTokenQuery(p)
+			r, _ := getTokenQuery(p, now)
 			qs = append(qs, r)
 		}
 		return bleve.NewDisjunctionQuery(qs...), negated

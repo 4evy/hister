@@ -47,6 +47,7 @@ You can search within specific fields using the `field:value` syntax:
 - **language:** - Filter by detected language (e.g., `en`, `de`, `fr`. Use `unknown` for languages Hister doesn't support)
 - **type:** - Filter by document type (`web` for websites, `file` or `local` for local files)
 - **visits:** - Filter by visit count, with exact values (`visits:1`), bounded ranges (`visits:2..4`), or open ranges (`visits:10..`)
+- **age:** Filter by time since a document was last indexed or updated, such as `age:>90d` or `age:<=24h`. Supported units are seconds (`s`), minutes (`m`), hours (`h`), days (`d`), and weeks (`w`)
 - **user_id:** - Filter by user ID (admin use; e.g., `user_id:3`)
 
 **Examples:**
@@ -100,6 +101,12 @@ visits:10..
 Finds pages visited 10 or more times.
 
 ```textplain
+age:>90d
+```
+
+Finds pages that have not been indexed or updated in more than 90 days. The comparison operators `<`, `<=`, `>`, and `>=` are supported.
+
+```textplain
 user_id:3
 ```
 
@@ -120,6 +127,7 @@ url:*/privacy-policy
 domain:privacyguides.org text:encryption
 language:en type:web
 visits:2..4 domain:example.com
+age:<7d domain:example.com
 user_id:3 domain:example.com
 ```
 

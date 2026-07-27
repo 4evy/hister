@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/blevesearch/bleve/v2/search/query"
 )
@@ -490,6 +491,72 @@ func Test_build_visit_count_open_range(t *testing.T) {
 	}
 	if nq.Max != nil {
 		t.Fatalf("expected nil Max, got %v", nq.Max)
+	}
+}
+
+func Test_build_age_comparisons(t *testing.T) {
+	now := time.Unix(2_000_000_000, 0)
+	tests := []struct {
+		value         string
+		wantMin       *float64
+		wantMax       *float64
+		wantMinClosed bool
+		wantMaxClosed bool
+	}{
+		{value: ">30s", wantMax: new(float64(2_000_000_000 - 30)), wantMinClosed: true},
+		{value: ">90d", wantMax: new(float64(2_000_000_000 - 90*24*60*60)), wantMinClosed: true},
+		{value: ">=2w", wantMax: new(float64(2_000_000_000 - 2*7*24*60*60)), wantMinClosed: true, wantMaxClosed: true},
+		{value: "<24h", wantMin: new(float64(2_000_000_000 - 24*60*60)), wantMaxClosed: true},
+		{value: "<=30m", wantMin: new(float64(2_000_000_000 - 30*60)), wantMinClosed: true, wantMaxClosed: true},
+	}
+	for _, test := range tests {
+		t.Run(test.value, func(t *testing.T) {
+			q, ok := buildAgeQuery(test.value, now)
+			if !ok {
+				t.Fatalf("buildAgeQuery(%q) was not accepted", test.value)
+			}
+			nq := asNumericRange(t, q)
+			if nq.FieldVal != "updated" {
+				t.Fatalf("field = %q, want updated", nq.FieldVal)
+			}
+			if !equalFloatPointers(nq.Min, test.wantMin) || !equalFloatPointers(nq.Max, test.wantMax) {
+				t.Fatalf("range = %v..%v, want %v..%v", nq.Min, nq.Max, test.wantMin, test.wantMax)
+			}
+			if nq.InclusiveMin == nil || *nq.InclusiveMin != test.wantMinClosed {
+				t.Fatalf("inclusive min = %v, want %t", nq.InclusiveMin, test.wantMinClosed)
+			}
+			if nq.InclusiveMax == nil || *nq.InclusiveMax != test.wantMaxClosed {
+				t.Fatalf("inclusive max = %v, want %t", nq.InclusiveMax, test.wantMaxClosed)
+			}
+		})
+	}
+}
+
+func equalFloatPointers(got, want *float64) bool {
+	if got == nil || want == nil {
+		return got == nil && want == nil
+	}
+	return *got == *want
+}
+
+func Test_build_age_filter_is_field_specific(t *testing.T) {
+	bq := buildBoolQ(t, "privacy age:>90d")
+	clauses := mustClauses(t, bq)
+	if len(clauses) != 2 {
+		t.Fatalf("expected 2 must clauses without phrase wrapping, got %d", len(clauses))
+	}
+	asDisjunction(t, clauses[0])
+	nq := asNumericRange(t, clauses[1])
+	if nq.FieldVal != "updated" {
+		t.Fatalf("field = %q, want updated", nq.FieldVal)
+	}
+}
+
+func Test_build_invalid_age_filter_falls_through(t *testing.T) {
+	for _, value := range []string{"90d", ">90", ">-1d", ">1y", ">999999999999999999999d"} {
+		if _, ok := buildAgeQuery(value, time.Now()); ok {
+			t.Errorf("buildAgeQuery(%q) was accepted", value)
+		}
 	}
 }
 

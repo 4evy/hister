@@ -3,6 +3,7 @@ package indexer
 import (
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/asciimoo/hister/server/document"
 	"github.com/asciimoo/hister/server/testutil"
@@ -133,6 +134,59 @@ func TestSearchFiltersByVisitCount(t *testing.T) {
 	}
 	if res.Documents[0].URL != mostVisitedURL {
 		t.Fatalf("result URL = %q, want %q", res.Documents[0].URL, mostVisitedURL)
+	}
+}
+
+func TestSearchAndDeleteFilterByAge(t *testing.T) {
+	idxCfg := testutil.Config(t)
+	if err := Init(idxCfg); err != nil {
+		t.Fatalf("failed to init indexer: %v", err)
+	}
+	defer i.Close()
+
+	now := time.Now()
+	oldDocument := &document.Document{
+		URL:       "https://example.com/age-filter-old",
+		Title:     "Age filter old",
+		Text:      "Age filter document text",
+		Added:     now.Add(-100 * 24 * time.Hour).Unix(),
+		Updated:   now.Add(-100 * 24 * time.Hour).Unix(),
+		Processed: true,
+	}
+	recentDocument := &document.Document{
+		URL:       "https://example.com/age-filter-recent",
+		Title:     "Age filter recent",
+		Text:      "Age filter document text",
+		Added:     now.Add(-10 * 24 * time.Hour).Unix(),
+		Updated:   now.Add(-10 * 24 * time.Hour).Unix(),
+		Processed: true,
+	}
+	for _, doc := range []*document.Document{oldDocument, recentDocument} {
+		if err := Add(doc); err != nil {
+			t.Fatalf("Add failed: %v", err)
+		}
+	}
+
+	res, err := Search(idxCfg, &Query{Text: "Age filter age:>90d"})
+	if err != nil {
+		t.Fatalf("Search failed: %v", err)
+	}
+	if len(res.Documents) != 1 || res.Documents[0].URL != oldDocument.URL {
+		t.Fatalf("age search returned %#v, want only %q", res.Documents, oldDocument.URL)
+	}
+
+	deleted, err := DeleteByQuery("age:>90d", nil, nil)
+	if err != nil {
+		t.Fatalf("DeleteByQuery failed: %v", err)
+	}
+	if deleted != 1 {
+		t.Fatalf("DeleteByQuery deleted %d documents, want 1", deleted)
+	}
+	if GetByURLAndUser(oldDocument.URL, 0) != nil {
+		t.Fatal("old document still exists after age deletion")
+	}
+	if GetByURLAndUser(recentDocument.URL, 0) == nil {
+		t.Fatal("recent document was removed by age deletion")
 	}
 }
 
