@@ -22,12 +22,12 @@
   ];
 </script>
 
-<div class="relative mx-auto min-w-0 w-full max-w-[760px] lg:mx-0">
+<div class="relative mx-auto w-full max-w-[760px] min-w-0 lg:mx-0">
   <div
-    class="overflow-hidden border-[3px] border-brutal-border bg-brutal-card shadow-[10px_10px_0_var(--brutal-shadow)]"
+    class="border-brutal-border bg-brutal-card overflow-hidden border-[3px] shadow-[10px_10px_0_var(--brutal-shadow)]"
   >
     <div
-      class="flex h-12 items-center justify-between border-b-[3px] border-brutal-border bg-[var(--text-primary)] px-4 text-white"
+      class="border-brutal-border flex h-12 items-center justify-between border-b-[3px] bg-[var(--text-primary)] px-4 text-white"
     >
       <div class="flex items-center gap-3">
         <img src="/logo.png" alt="" class="h-6 w-6" />
@@ -40,14 +40,14 @@
 
     <div class="p-4 sm:p-6">
       <div
-        class="flex items-center gap-3 border-[3px] border-brutal-border bg-white px-4 py-3 shadow-[4px_4px_0_var(--hister-coral)] sm:py-4"
+        class="border-brutal-border flex items-center gap-3 border-[3px] bg-white px-4 py-3 shadow-[4px_4px_0_var(--hister-coral)] sm:py-4"
       >
         <Search size={20} class="shrink-0 text-[var(--text-secondary)]" />
         <span
           class="font-inter min-w-0 flex-1 truncate text-sm font-medium text-[var(--text-primary)] sm:text-base"
           >privacy notes I read last month</span
         >
-        <span class="h-5 w-1 shrink-0 bg-hister-indigo" aria-hidden="true"></span>
+        <span class="bg-hister-indigo h-5 w-1 shrink-0" aria-hidden="true"></span>
       </div>
 
       <div class="mt-5 grid gap-4 md:grid-cols-[1.08fr_0.92fr]">
@@ -62,12 +62,12 @@
 
           {#each results as result}
             <article
-              class="result-card border-[2px] border-brutal-border bg-white p-4"
+              class="result-card border-brutal-border border-[2px] bg-white p-4"
               style="--result-accent: {result.accent}"
             >
               <div class="flex items-start gap-3">
                 <div
-                  class="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center border-[2px] border-brutal-border bg-[var(--result-accent)] text-white"
+                  class="border-brutal-border mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center border-[2px] bg-[var(--result-accent)] text-white"
                 >
                   <svelte:component this={result.icon} size={15} />
                 </div>
@@ -90,14 +90,14 @@
         </div>
 
         <aside
-          class="hidden border-[2px] border-brutal-border bg-[#f4f0e7] p-4 md:flex md:flex-col"
+          class="border-brutal-border hidden border-[2px] bg-[#f4f0e7] p-4 md:flex md:flex-col"
         >
           <div class="flex items-center justify-between border-b border-black/15 pb-3">
             <span
               class="font-fira text-[9px] font-bold tracking-[1px] text-[var(--text-secondary)] uppercase"
               >Stored preview</span
             >
-            <span class="h-2.5 w-2.5 bg-hister-coral"></span>
+            <span class="bg-hister-coral h-2.5 w-2.5"></span>
           </div>
           <p class="font-space mt-4 text-lg leading-tight font-black text-[var(--text-primary)]">
             Search without retracing your steps
@@ -112,7 +112,7 @@
                 class="font-fira flex items-center gap-2 text-[9px] font-semibold text-[var(--text-primary)]"
               >
                 <span
-                  class="flex h-4 w-4 items-center justify-center bg-hister-lime text-[var(--text-primary)]"
+                  class="bg-hister-lime flex h-4 w-4 items-center justify-center text-[var(--text-primary)]"
                   ><Check size={11} strokeWidth={3} /></span
                 >
                 {item}

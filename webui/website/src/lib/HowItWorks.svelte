@@ -49,13 +49,13 @@
 
 <section
   id="how-it-works"
-  class="border-b-[3px] border-brutal-border bg-[#eeeae1] px-6 py-16 md:px-12 md:py-24"
+  class="border-brutal-border border-b-[3px] bg-[#eeeae1] px-6 py-16 md:px-12 md:py-24"
 >
   <div class="mx-auto max-w-[1400px]">
     <header>
       <div>
         <div class="mb-5 flex items-center gap-3">
-          <span class="h-3 w-3 bg-hister-coral"></span>
+          <span class="bg-hister-coral h-3 w-3"></span>
           <p
             class="font-fira text-xs font-bold tracking-[1.8px] text-[var(--text-secondary)] uppercase"
           >
@@ -74,12 +74,12 @@
       {#each steps as step, i}
         {@const StepIcon = step.icon}
         <article
-          class="step-card relative flex min-h-[410px] flex-col border-[3px] border-brutal-border bg-brutal-card p-6 shadow-[7px_7px_0_var(--brutal-shadow)] md:p-8"
+          class="step-card border-brutal-border bg-brutal-card relative flex min-h-[410px] flex-col border-[3px] p-6 shadow-[7px_7px_0_var(--brutal-shadow)] md:p-8"
           style="--step-accent: {step.color}"
         >
           <div class="flex items-center gap-5">
             <div
-              class="flex h-14 w-14 shrink-0 items-center justify-center border-[3px] border-brutal-border bg-[var(--step-accent)] shadow-brutal"
+              class="border-brutal-border shadow-brutal flex h-14 w-14 shrink-0 items-center justify-center border-[3px] bg-[var(--step-accent)]"
             >
               <StepIcon size={26} strokeWidth={2.3} />
             </div>
@@ -97,11 +97,11 @@
             {#each step.items as item}
               {@const ItemIcon = item.icon}
               <div
-                class="flex flex-col items-center border-[2px] border-brutal-border bg-white p-4 text-center"
+                class="border-brutal-border flex flex-col items-center border-[2px] bg-white p-4 text-center"
               >
                 <ItemIcon size={32} class="mb-4 text-[var(--text-primary)]" />
                 <span
-                  class="font-fira block text-[11px] font-bold leading-tight tracking-[0.7px] text-[var(--text-secondary)] uppercase"
+                  class="font-fira block text-[11px] leading-tight font-bold tracking-[0.7px] text-[var(--text-secondary)] uppercase"
                   >{item.label}</span
                 >
               </div>
@@ -125,10 +125,10 @@
     </div>
 
     <div
-      class="mt-12 grid border-[3px] border-brutal-border bg-[var(--text-primary)] text-white md:grid-cols-[auto_1fr]"
+      class="border-brutal-border mt-12 grid border-[3px] bg-[var(--text-primary)] text-white md:grid-cols-[auto_1fr]"
     >
       <div
-        class="flex items-center gap-3 border-b-[3px] border-white/20 bg-[#59598f] px-5 py-4 md:border-r-[3px] md:border-b-0 md:border-brutal-border"
+        class="md:border-brutal-border flex items-center gap-3 border-b-[3px] border-white/20 bg-[#59598f] px-5 py-4 md:border-r-[3px] md:border-b-0"
       >
         <Browser size={20} />
         <span class="font-space text-xs font-black tracking-[1.4px] uppercase">The simple loop</span

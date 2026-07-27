@@ -29,7 +29,7 @@
   ];
 </script>
 
-<section id="product" class="overflow-hidden border-b-[3px] border-brutal-border bg-brutal-bg">
+<section id="product" class="border-brutal-border bg-brutal-bg overflow-hidden border-b-[3px]">
   <div class="mx-auto max-w-[1500px] px-6 py-16 md:px-12 md:py-24">
     <div class="grid items-center gap-12 lg:grid-cols-[0.72fr_1.28fr] lg:gap-16">
       <div class="flex flex-col items-start">
@@ -48,11 +48,11 @@
         <div class="mt-9 flex w-full flex-col gap-3">
           {#each proofPoints as point}
             <article
-              class="proof-point grid grid-cols-[auto_1fr] gap-4 border-[2px] border-brutal-border bg-brutal-card p-4"
+              class="proof-point border-brutal-border bg-brutal-card grid grid-cols-[auto_1fr] gap-4 border-[2px] p-4"
               style="--proof-color: {point.color}"
             >
               <div
-                class="flex h-10 w-10 items-center justify-center border-[2px] border-brutal-border bg-[var(--proof-color)]"
+                class="border-brutal-border flex h-10 w-10 items-center justify-center border-[2px] bg-[var(--proof-color)]"
               >
                 <svelte:component this={point.icon} size={18} />
               </div>
@@ -70,7 +70,7 @@
 
         <a
           href="/docs/query-language"
-          class="font-space mt-8 inline-flex items-center gap-2 text-xs font-bold tracking-[1.2px] text-[var(--text-primary)] uppercase underline decoration-[3px] decoration-hister-coral underline-offset-4 hover:no-underline"
+          class="font-space decoration-hister-coral mt-8 inline-flex items-center gap-2 text-xs font-bold tracking-[1.2px] text-[var(--text-primary)] uppercase underline decoration-[3px] underline-offset-4 hover:no-underline"
         >
           Explore the query language
           <ArrowRight size={15} />
@@ -79,11 +79,11 @@
 
       <div class="relative min-w-0 lg:py-8">
         <div
-          class="absolute -top-2 -right-3 h-28 w-28 border-[3px] border-brutal-border bg-hister-amber shadow-brutal sm:-right-7 lg:top-0"
+          class="border-brutal-border bg-hister-amber shadow-brutal absolute -top-2 -right-3 h-28 w-28 border-[3px] sm:-right-7 lg:top-0"
           aria-hidden="true"
         ></div>
         <div
-          class="absolute -bottom-4 -left-3 h-20 w-20 border-[3px] border-brutal-border bg-hister-rose shadow-brutal sm:-left-8"
+          class="border-brutal-border bg-hister-rose shadow-brutal absolute -bottom-4 -left-3 h-20 w-20 border-[3px] sm:-left-8"
           aria-hidden="true"
         ></div>
         <div class="relative z-10">

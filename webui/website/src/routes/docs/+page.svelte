@@ -35,7 +35,7 @@
           Configuration Reference
         </h2>
       </div>
-      <ArrowRightIcon aria-hidden="true" size={20} class="shrink-0 text-hister-indigo" />
+      <ArrowRightIcon aria-hidden="true" size={20} class="text-hister-indigo shrink-0" />
     </div>
   </Card.Root>
 

@@ -5,7 +5,7 @@
 </script>
 
 <section
-  class="relative isolate overflow-hidden border-b-[3px] border-brutal-border bg-hister-coral"
+  class="border-brutal-border bg-hister-coral relative isolate overflow-hidden border-b-[3px]"
 >
   <div class="document-backdrop" aria-hidden="true">
     <svg viewBox="0 0 1600 700" preserveAspectRatio="xMidYMid slice">
@@ -69,7 +69,7 @@
     </svg>
   </div>
   <div class="relative z-10 mx-auto w-full max-w-[1500px] px-6 py-16 md:px-12 md:py-24">
-    <div class="mx-auto flex min-w-0 max-w-[900px] flex-col items-center text-center">
+    <div class="mx-auto flex max-w-[900px] min-w-0 flex-col items-center text-center">
       <h2
         class="font-outfit max-w-[880px] text-4xl leading-[0.88] font-black tracking-[-0.05em] text-[var(--text-primary)] uppercase md:text-7xl lg:text-8xl"
       >
@@ -85,7 +85,7 @@
           href="https://github.com/asciimoo/hister/releases/latest"
           target="_blank"
           rel="noopener noreferrer"
-          class="font-space brutal-press-lg h-auto justify-center rounded-none border-[3px] border-brutal-border bg-[var(--text-primary)] px-8 py-4 text-[15px] font-bold tracking-[1.3px] text-white uppercase no-underline"
+          class="font-space brutal-press-lg border-brutal-border h-auto justify-center rounded-none border-[3px] bg-[var(--text-primary)] px-8 py-4 text-[15px] font-bold tracking-[1.3px] text-white uppercase no-underline"
         >
           Download Hister
           <Download size={18} />
@@ -94,7 +94,7 @@
           href="https://demo.hister.org/"
           target="_blank"
           rel="noopener noreferrer"
-          class="bg-brutal-card font-space brutal-press-lg h-auto justify-center rounded-none border-[3px] border-brutal-border px-8 py-4 text-[15px] font-bold tracking-[1.3px] text-[var(--text-primary)] uppercase no-underline hover:bg-[var(--text-primary)] hover:text-white"
+          class="bg-brutal-card font-space brutal-press-lg border-brutal-border h-auto justify-center rounded-none border-[3px] px-8 py-4 text-[15px] font-bold tracking-[1.3px] text-[var(--text-primary)] uppercase no-underline hover:bg-[var(--text-primary)] hover:text-white"
         >
           Try the live demo
           <ExternalLink size={18} />

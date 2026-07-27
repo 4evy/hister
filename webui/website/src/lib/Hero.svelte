@@ -42,7 +42,7 @@
   ];
 </script>
 
-<section class="hero-shell relative isolate overflow-hidden border-b-[3px] border-brutal-border">
+<section class="hero-shell border-brutal-border relative isolate overflow-hidden border-b-[3px]">
   <div class="hero-grid" aria-hidden="true"></div>
   <div class="hero-shape hero-shape-one" aria-hidden="true"></div>
   <div class="hero-shape hero-shape-two" aria-hidden="true"></div>
@@ -66,7 +66,7 @@
       <div class="mt-9 flex w-full flex-col gap-4 sm:w-auto sm:flex-row">
         <Button
           href="/docs/quickstart"
-          class="font-space brutal-press-lg h-auto justify-center rounded-none border-[3px] border-brutal-border bg-[#59598f] px-8 py-4 text-[15px] font-bold tracking-[1.3px] text-white uppercase no-underline"
+          class="font-space brutal-press-lg border-brutal-border h-auto justify-center rounded-none border-[3px] bg-[#59598f] px-8 py-4 text-[15px] font-bold tracking-[1.3px] text-white uppercase no-underline"
         >
           Get started
           <ArrowRight size={18} />
@@ -75,7 +75,7 @@
           href={extensionDownloadURL}
           target="_blank"
           rel="noopener noreferrer"
-          class="bg-brutal-card font-space brutal-press-lg h-auto justify-center rounded-none border-[3px] border-brutal-border px-8 py-4 text-[15px] font-bold tracking-[1.3px] text-[var(--text-primary)] uppercase no-underline hover:bg-[var(--text-primary)] hover:text-white"
+          class="bg-brutal-card font-space brutal-press-lg border-brutal-border h-auto justify-center rounded-none border-[3px] px-8 py-4 text-[15px] font-bold tracking-[1.3px] text-[var(--text-primary)] uppercase no-underline hover:bg-[var(--text-primary)] hover:text-white"
         >
           Download extension
           <ArrowRight size={18} />
@@ -98,16 +98,16 @@
   </div>
 </section>
 
-<section class="border-b-[3px] border-brutal-border bg-brutal-card">
+<section class="border-brutal-border bg-brutal-card border-b-[3px]">
   <div class="mx-auto grid w-full max-w-[1500px] md:grid-cols-3">
     {#each trustItems as item, i}
       <article
         class="flex items-center gap-4 px-6 py-5 {i < 2
-          ? 'border-b-[3px] border-brutal-border md:border-r-[3px] md:border-b-0'
+          ? 'border-brutal-border border-b-[3px] md:border-r-[3px] md:border-b-0'
           : ''} md:px-9"
       >
         <div
-          class="flex h-10 w-10 shrink-0 items-center justify-center border-[2px] border-brutal-border {item.iconClass}"
+          class="border-brutal-border flex h-10 w-10 shrink-0 items-center justify-center border-[2px] {item.iconClass}"
         >
           <svelte:component this={item.icon} size={19} strokeWidth={2.4} />
         </div>

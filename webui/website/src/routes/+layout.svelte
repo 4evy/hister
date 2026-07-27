@@ -19,7 +19,7 @@
 
 <a
   href="#main-content"
-  class="sr-only fixed top-4 left-4 z-50 border-[3px] border-brutal-border bg-brutal-card px-4 py-3 font-bold text-(--text-primary) shadow-brutal focus:not-sr-only"
+  class="border-brutal-border bg-brutal-card shadow-brutal sr-only fixed top-4 left-4 z-50 border-[3px] px-4 py-3 font-bold text-(--text-primary) focus:not-sr-only"
 >
   Skip to main content
 </a>

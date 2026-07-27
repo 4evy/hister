@@ -70,7 +70,7 @@
           placeholder={'^https://example\\.com/\n^https://docs\\.example\\.com/'}
           aria-describedby="bulk-rule-patterns-help"
           wrap="off"
-          class="bg-page-bg border-brutal-border font-fira text-text-brand placeholder:text-text-brand-muted focus-visible:border-hister-coral field-sizing-fixed h-48 min-h-48 max-h-48 w-full resize-none overflow-auto rounded-none border-[3px] p-3 text-sm whitespace-pre"
+          class="bg-page-bg border-brutal-border font-fira text-text-brand placeholder:text-text-brand-muted focus-visible:border-hister-coral field-sizing-fixed h-48 max-h-48 min-h-48 w-full resize-none overflow-auto rounded-none border-[3px] p-3 text-sm whitespace-pre"
         />
         <div
           id="bulk-rule-patterns-help"

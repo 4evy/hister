@@ -25,7 +25,7 @@
 <div class="flex flex-col gap-4">
   <a
     href="/docs"
-    class="font-space border-brutal-border flex items-center gap-2 border-[2px] bg-brutal-card px-3 py-2.5 text-[11px] font-bold tracking-[1.25px] text-(--text-primary) uppercase no-underline transition-colors hover:bg-(--muted-surface)"
+    class="font-space border-brutal-border bg-brutal-card flex items-center gap-2 border-[2px] px-3 py-2.5 text-[11px] font-bold tracking-[1.25px] text-(--text-primary) uppercase no-underline transition-colors hover:bg-(--muted-surface)"
   >
     <ArrowLeftIcon size={15} />
     All documentation
@@ -59,7 +59,7 @@
             >
               <span>{doc.title}</span>
               {#if doc.slug === currentSlug}
-                <ArrowRightIcon aria-hidden="true" size={14} class="shrink-0 text-hister-indigo" />
+                <ArrowRightIcon aria-hidden="true" size={14} class="text-hister-indigo shrink-0" />
               {/if}
             </a>
           {/each}

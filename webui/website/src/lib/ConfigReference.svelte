@@ -22,13 +22,13 @@
       class="bg-brutal-card min-w-0"
     >
       <Card.Header
-        class="bg-(--text-primary) border-brutal-border items-center justify-between gap-4 border-b-[3px] px-5 py-3.5"
+        class="border-brutal-border items-center justify-between gap-4 border-b-[3px] bg-(--text-primary) px-5 py-3.5"
       >
         <Card.Title
           id="config-option-{item.name}"
           class="font-outfit text-xl font-extrabold text-(--brutal-bg)"
         >
-          <code class="wrap-anywhere border-0! bg-transparent! p-0! text-xl! text-(--brutal-bg)"
+          <code class="border-0! bg-transparent! p-0! text-xl! wrap-anywhere text-(--brutal-bg)"
             >{item.name}</code
           >
         </Card.Title>
@@ -55,7 +55,7 @@
             >Type</span
           >
           <code
-            class="bg-(--muted-surface)! border-0! px-1.5! py-0.5! text-sm whitespace-nowrap text-(--text-primary)"
+            class="border-0! bg-(--muted-surface)! px-1.5! py-0.5! text-sm whitespace-nowrap text-(--text-primary)"
             >{item.type}</code
           >
         </div>
@@ -68,7 +68,7 @@
               >Default</span
             >
             <code
-              class="bg-(--muted-surface)! wrap-anywhere border-0! px-1.5! py-0.5! text-sm text-(--text-primary)"
+              class="border-0! bg-(--muted-surface)! px-1.5! py-0.5! text-sm wrap-anywhere text-(--text-primary)"
               >{item.defaultValue}</code
             >
           </div>
@@ -81,7 +81,7 @@
               variant="outline"
               class="font-space border-hister-amber bg-hister-amber/10 border-2 px-2 py-1 text-[10px] font-bold tracking-[1px] text-(--text-primary) uppercase"
             >
-              <AlertTriangleIcon aria-hidden="true" class="size-3.5! text-hister-amber" />
+              <AlertTriangleIcon aria-hidden="true" class="text-hister-amber size-3.5!" />
               {item.requirement}
             </Badge>
           </div>

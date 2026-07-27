@@ -72,13 +72,13 @@
 
 <section
   id="features"
-  class="border-b-[3px] border-brutal-border bg-[#eeeae1] px-6 py-16 md:px-12 md:py-24"
+  class="border-brutal-border border-b-[3px] bg-[#eeeae1] px-6 py-16 md:px-12 md:py-24"
 >
   <div class="mx-auto max-w-[1400px]">
     <header class="flex flex-col gap-7 lg:flex-row lg:items-end lg:justify-between">
       <div>
         <div class="mb-5 flex items-center gap-3">
-          <span class="h-3 w-3 bg-hister-indigo"></span>
+          <span class="bg-hister-indigo h-3 w-3"></span>
           <p
             class="font-fira text-xs font-bold tracking-[1.8px] text-[var(--text-secondary)] uppercase"
           >
@@ -100,13 +100,13 @@
     <div class="mt-12 grid gap-6 md:grid-cols-2 lg:mt-16 lg:grid-cols-3">
       {#each groups as group}
         <article
-          class="feature-group relative flex min-h-[420px] flex-col overflow-hidden border-[3px] border-brutal-border bg-brutal-card p-7 shadow-[7px_7px_0_var(--brutal-shadow)]"
+          class="feature-group border-brutal-border bg-brutal-card relative flex min-h-[420px] flex-col overflow-hidden border-[3px] p-7 shadow-[7px_7px_0_var(--brutal-shadow)]"
           style="--feature-color: {group.color}"
         >
           <div class="feature-accent absolute inset-x-0 top-0 h-3 bg-[var(--feature-color)]"></div>
           <div class="mt-4 flex items-center gap-5">
             <div
-              class="flex h-14 w-14 shrink-0 items-center justify-center border-[3px] border-brutal-border bg-[var(--feature-color)]"
+              class="border-brutal-border flex h-14 w-14 shrink-0 items-center justify-center border-[3px] bg-[var(--feature-color)]"
             >
               <svelte:component this={group.icon} size={26} strokeWidth={2.2} />
             </div>
@@ -123,7 +123,7 @@
           <ul class="mt-auto grid list-none gap-x-4 gap-y-2 p-0 pt-8 sm:grid-cols-2">
             {#each group.features as feature}
               <li
-                class="font-fira flex items-start gap-2 border-t border-[var(--text-primary)]/15 pt-2 text-[10px] font-semibold leading-tight text-[var(--text-primary)]"
+                class="font-fira flex items-start gap-2 border-t border-[var(--text-primary)]/15 pt-2 text-[10px] leading-tight font-semibold text-[var(--text-primary)]"
               >
                 <span class="mt-0.5 h-2 w-2 shrink-0 bg-[var(--feature-color)]"></span>
                 {feature}
@@ -135,10 +135,10 @@
     </div>
 
     <div
-      class="mt-12 grid border-[3px] border-brutal-border bg-brutal-card shadow-brutal-lg md:grid-cols-[auto_1fr_auto] md:items-center"
+      class="border-brutal-border bg-brutal-card shadow-brutal-lg mt-12 grid border-[3px] md:grid-cols-[auto_1fr_auto] md:items-center"
     >
       <div
-        class="flex h-full items-center justify-center border-b-[3px] border-brutal-border bg-hister-teal p-5 text-white md:border-r-[3px] md:border-b-0"
+        class="border-brutal-border bg-hister-teal flex h-full items-center justify-center border-b-[3px] p-5 text-white md:border-r-[3px] md:border-b-0"
       >
         <Languages size={28} />
       </div>
@@ -153,7 +153,7 @@
       </div>
       <a
         href="/docs"
-        class="font-space m-5 inline-flex items-center justify-center gap-2 border-[2px] border-brutal-border bg-[var(--text-primary)] px-5 py-3 text-xs font-bold tracking-[1px] text-white uppercase no-underline shadow-brutal-sm transition-all hover:translate-x-[2px] hover:translate-y-[2px] hover:shadow-none"
+        class="font-space border-brutal-border shadow-brutal-sm m-5 inline-flex items-center justify-center gap-2 border-[2px] bg-[var(--text-primary)] px-5 py-3 text-xs font-bold tracking-[1px] text-white uppercase no-underline transition-all hover:translate-x-[2px] hover:translate-y-[2px] hover:shadow-none"
       >
         Explore docs
         <ArrowRight size={15} />

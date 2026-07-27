@@ -47,7 +47,7 @@
 </svelte:head>
 
 <section
-  class="relative isolate overflow-hidden border-b-[3px] border-brutal-border px-6 py-16 md:px-12 md:py-24"
+  class="border-brutal-border relative isolate overflow-hidden border-b-[3px] px-6 py-16 md:px-12 md:py-24"
 >
   <div class="error-grid" aria-hidden="true"></div>
   <div
@@ -55,10 +55,10 @@
   >
     <div class="relative mx-auto w-fit lg:mx-0" aria-hidden="true">
       <div
-        class="border-brutal-border bg-hister-rose absolute -top-5 -right-5 h-14 w-14 rotate-12 border-[3px] shadow-brutal"
+        class="border-brutal-border bg-hister-rose shadow-brutal absolute -top-5 -right-5 h-14 w-14 rotate-12 border-[3px]"
       ></div>
       <div
-        class="border-brutal-border bg-hister-amber absolute -bottom-6 -left-6 h-10 w-20 -rotate-6 border-[3px] shadow-brutal"
+        class="border-brutal-border bg-hister-amber shadow-brutal absolute -bottom-6 -left-6 h-10 w-20 -rotate-6 border-[3px]"
       ></div>
       <div
         class="bg-brutal-card border-brutal-border relative flex aspect-square w-[min(68vw,320px)] flex-col items-center justify-center border-[4px] shadow-[12px_12px_0_var(--brutal-shadow)]"
@@ -86,7 +86,7 @@
       <div class="mt-8 flex flex-col gap-4 sm:flex-row">
         <Button
           href="/"
-          class="font-space brutal-press-lg h-auto justify-center rounded-none border-[3px] border-brutal-border bg-[#59598f] px-7 py-3.5 text-sm font-bold tracking-[1.2px] text-white uppercase no-underline"
+          class="font-space brutal-press-lg border-brutal-border h-auto justify-center rounded-none border-[3px] bg-[#59598f] px-7 py-3.5 text-sm font-bold tracking-[1.2px] text-white uppercase no-underline"
         >
           <House size={18} />
           Go home
@@ -95,7 +95,7 @@
           <Button
             href={page.url.pathname}
             data-sveltekit-reload
-            class="bg-brutal-card font-space brutal-press-lg h-auto justify-center rounded-none border-[3px] border-brutal-border px-7 py-3.5 text-sm font-bold tracking-[1.2px] text-[var(--text-primary)] uppercase no-underline"
+            class="bg-brutal-card font-space brutal-press-lg border-brutal-border h-auto justify-center rounded-none border-[3px] px-7 py-3.5 text-sm font-bold tracking-[1.2px] text-[var(--text-primary)] uppercase no-underline"
           >
             <RefreshCw size={18} />
             Try again
@@ -106,7 +106,7 @@
   </div>
 </section>
 
-<nav aria-label="Helpful pages" class="bg-brutal-card border-b-[3px] border-brutal-border">
+<nav aria-label="Helpful pages" class="bg-brutal-card border-brutal-border border-b-[3px]">
   <ul class="mx-auto grid max-w-6xl list-none p-0 md:grid-cols-3">
     {#each destinations as destination, index}
       {@const Icon = destination.icon}

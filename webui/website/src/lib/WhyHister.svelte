@@ -37,7 +37,7 @@
 
 <section
   id="privacy"
-  class="border-b-[3px] border-brutal-border bg-[var(--text-primary)] text-white"
+  class="border-brutal-border border-b-[3px] bg-[var(--text-primary)] text-white"
 >
   <div class="mx-auto max-w-[1500px] px-6 py-16 md:px-12 md:py-24">
     <div class="grid gap-12 lg:grid-cols-[0.9fr_1.1fr] lg:gap-20">
@@ -61,7 +61,7 @@
 
         <a
           href="/docs/intro#privacy"
-          class="font-space mt-9 inline-flex items-center gap-2 border-b-[3px] border-hister-coral pb-1 text-xs font-bold tracking-[1.5px] text-white uppercase no-underline transition-colors hover:text-hister-coral"
+          class="font-space border-hister-coral hover:text-hister-coral mt-9 inline-flex items-center gap-2 border-b-[3px] pb-1 text-xs font-bold tracking-[1.5px] text-white uppercase no-underline transition-colors"
         >
           Read the privacy model
           <ArrowRight size={15} />

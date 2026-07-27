@@ -65,11 +65,11 @@
 <div class="flex gap-10">
   <article class="min-w-0 flex-1" data-doc-content>
     {#if toc.length > 0}
-      <details class="group border-brutal-border mb-8 border-[3px] bg-brutal-card xl:hidden">
+      <details class="group border-brutal-border bg-brutal-card mb-8 border-[3px] xl:hidden">
         <summary
           class="flex cursor-pointer list-none items-center gap-3 px-4 py-3 [&::-webkit-details-marker]:hidden"
         >
-          <ListIcon aria-hidden="true" size={18} class="shrink-0 text-hister-indigo" />
+          <ListIcon aria-hidden="true" size={18} class="text-hister-indigo shrink-0" />
           <span class="min-w-0 flex-1">
             <span
               class="font-space block text-[9px] font-bold tracking-[1.5px] text-(--text-secondary) uppercase"

@@ -46,12 +46,12 @@
     </div>
   </header>
 
-  <div class="border-brutal-border sticky top-0 z-30 border-b-[3px] bg-brutal-bg md:hidden">
+  <div class="border-brutal-border bg-brutal-bg sticky top-0 z-30 border-b-[3px] md:hidden">
     <details class="group">
       <summary
         class="flex cursor-pointer list-none items-center gap-3 px-6 py-3.5 [&::-webkit-details-marker]:hidden"
       >
-        <BookOpenIcon aria-hidden="true" size={19} class="shrink-0 text-hister-indigo" />
+        <BookOpenIcon aria-hidden="true" size={19} class="text-hister-indigo shrink-0" />
         <span class="min-w-0 flex-1">
           <span
             class="font-space block text-[9px] font-bold tracking-[1.5px] text-(--text-secondary) uppercase"
