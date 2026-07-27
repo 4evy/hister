@@ -25,7 +25,7 @@ var weights = map[string]float64{
 	"title":    12,
 }
 
-var ageFilterPattern = regexp.MustCompile(`^(<=|>=|<|>)([0-9]+)([smhdw])$`)
+var relativeTimeFilterPattern = regexp.MustCompile(`^(<=|>=|<|>)([0-9]+)([smhdw])$`)
 
 func Build(s string) query.Query {
 	if strings.TrimSpace(s) == "" {
@@ -130,8 +130,8 @@ func isFieldSpecific(t Token) bool {
 		if _, ok := visitCountFilterValue(v); ok {
 			return true
 		}
-		if value, ok := ageFilterValue(v); ok {
-			_, _, valid := parseAgeFilter(value)
+		if _, value, ok := relativeTimeFilterValue(v); ok {
+			_, _, valid := parseRelativeTimeFilter(value)
 			return valid
 		}
 		if _, ok := strings.CutPrefix(v, "user_id:"); ok {
@@ -263,12 +263,18 @@ func buildVisitCountQuery(v string) (query.Query, bool) {
 	return q, true
 }
 
-func ageFilterValue(v string) (string, bool) {
-	return strings.CutPrefix(v, "age:")
+func relativeTimeFilterValue(v string) (string, string, bool) {
+	if value, ok := strings.CutPrefix(v, "added:"); ok {
+		return "added", value, true
+	}
+	if value, ok := strings.CutPrefix(v, "updated:"); ok {
+		return "updated", value, true
+	}
+	return "", "", false
 }
 
-func parseAgeFilter(v string) (string, int64, bool) {
-	parts := ageFilterPattern.FindStringSubmatch(strings.ToLower(v))
+func parseRelativeTimeFilter(v string) (string, int64, bool) {
+	parts := relativeTimeFilterPattern.FindStringSubmatch(strings.ToLower(v))
 	if parts == nil {
 		return "", 0, false
 	}
@@ -297,12 +303,15 @@ func parseAgeFilter(v string) (string, int64, bool) {
 	return parts[1], amount * unitSeconds, true
 }
 
-func buildAgeQuery(v string, now time.Time) (query.Query, bool) {
-	comparison, ageSeconds, ok := parseAgeFilter(v)
+func buildRelativeTimeQuery(field, v string, now time.Time) (query.Query, bool) {
+	if field != "added" && field != "updated" {
+		return nil, false
+	}
+	comparison, durationSeconds, ok := parseRelativeTimeFilter(v)
 	if !ok {
 		return nil, false
 	}
-	cutoff := float64(now.Unix() - ageSeconds)
+	cutoff := float64(now.Unix() - durationSeconds)
 	var min, max *float64
 	minInclusive := true
 	maxInclusive := true
@@ -321,7 +330,7 @@ func buildAgeQuery(v string, now time.Time) (query.Query, bool) {
 		return nil, false
 	}
 	q := bleve.NewNumericRangeInclusiveQuery(min, max, &minInclusive, &maxInclusive)
-	q.SetField("updated")
+	q.SetField(field)
 	return q, true
 }
 
@@ -386,8 +395,8 @@ func getTokenQuery(t Token, now time.Time) (query.Query, bool) {
 				return q, negated
 			}
 		}
-		if v, ok := ageFilterValue(t.Value); ok {
-			if q, ok := buildAgeQuery(v, now); ok {
+		if field, v, ok := relativeTimeFilterValue(t.Value); ok {
+			if q, ok := buildRelativeTimeQuery(field, v, now); ok {
 				return q, negated
 			}
 		}

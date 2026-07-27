@@ -137,7 +137,7 @@ func TestSearchFiltersByVisitCount(t *testing.T) {
 	}
 }
 
-func TestSearchAndDeleteFilterByAge(t *testing.T) {
+func TestSearchAndDeleteFilterByRelativeTime(t *testing.T) {
 	idxCfg := testutil.Config(t)
 	if err := Init(idxCfg); err != nil {
 		t.Fatalf("failed to init indexer: %v", err)
@@ -146,36 +146,44 @@ func TestSearchAndDeleteFilterByAge(t *testing.T) {
 
 	now := time.Now()
 	oldDocument := &document.Document{
-		URL:       "https://example.com/age-filter-old",
-		Title:     "Age filter old",
-		Text:      "Age filter document text",
+		URL:       "https://example.com/time-filter-old",
+		Title:     "Time filter old",
+		Text:      "Time filter document text",
 		Added:     now.Add(-100 * 24 * time.Hour).Unix(),
 		Updated:   now.Add(-100 * 24 * time.Hour).Unix(),
 		Processed: true,
 	}
+	revisitedDocument := &document.Document{
+		URL:       "https://example.com/time-filter-revisited",
+		Title:     "Time filter revisited",
+		Text:      "Time filter document text",
+		Added:     now.Add(-100 * 24 * time.Hour).Unix(),
+		Updated:   now.Add(-10 * 24 * time.Hour).Unix(),
+		Processed: true,
+	}
 	recentDocument := &document.Document{
-		URL:       "https://example.com/age-filter-recent",
-		Title:     "Age filter recent",
-		Text:      "Age filter document text",
+		URL:       "https://example.com/time-filter-recent",
+		Title:     "Time filter recent",
+		Text:      "Time filter document text",
 		Added:     now.Add(-10 * 24 * time.Hour).Unix(),
 		Updated:   now.Add(-10 * 24 * time.Hour).Unix(),
 		Processed: true,
 	}
-	for _, doc := range []*document.Document{oldDocument, recentDocument} {
+	for _, doc := range []*document.Document{oldDocument, revisitedDocument, recentDocument} {
 		if err := Add(doc); err != nil {
 			t.Fatalf("Add failed: %v", err)
 		}
 	}
 
-	res, err := Search(idxCfg, &Query{Text: "Age filter age:>90d"})
+	res, err := Search(idxCfg, &Query{Text: "Time filter added:>90d updated:<90d"})
 	if err != nil {
 		t.Fatalf("Search failed: %v", err)
 	}
-	if len(res.Documents) != 1 || res.Documents[0].URL != oldDocument.URL {
-		t.Fatalf("age search returned %#v, want only %q", res.Documents, oldDocument.URL)
+	if len(res.Documents) != 1 || res.Documents[0].URL != revisitedDocument.URL {
+		t.Fatalf("combined relative time search returned %#v, want only %q", res.Documents, revisitedDocument.URL)
 	}
 
-	deleted, err := DeleteByQuery("age:>90d", nil, nil)
+	deleted, err := DeleteByQuery("updated:>90d", nil, nil)
 	if err != nil {
 		t.Fatalf("DeleteByQuery failed: %v", err)
 	}
@@ -183,10 +191,13 @@ func TestSearchAndDeleteFilterByAge(t *testing.T) {
 		t.Fatalf("DeleteByQuery deleted %d documents, want 1", deleted)
 	}
 	if GetByURLAndUser(oldDocument.URL, 0) != nil {
-		t.Fatal("old document still exists after age deletion")
+		t.Fatal("old document still exists after relative time deletion")
+	}
+	if GetByURLAndUser(revisitedDocument.URL, 0) == nil {
+		t.Fatal("recently updated document was removed by relative time deletion")
 	}
 	if GetByURLAndUser(recentDocument.URL, 0) == nil {
-		t.Fatal("recent document was removed by age deletion")
+		t.Fatal("recent document was removed by relative time deletion")
 	}
 }
 

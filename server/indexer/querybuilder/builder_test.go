@@ -494,30 +494,31 @@ func Test_build_visit_count_open_range(t *testing.T) {
 	}
 }
 
-func Test_build_age_comparisons(t *testing.T) {
+func Test_build_relative_time_comparisons(t *testing.T) {
 	now := time.Unix(2_000_000_000, 0)
 	tests := []struct {
+		field         string
 		value         string
 		wantMin       *float64
 		wantMax       *float64
 		wantMinClosed bool
 		wantMaxClosed bool
 	}{
-		{value: ">30s", wantMax: new(float64(2_000_000_000 - 30)), wantMinClosed: true},
-		{value: ">90d", wantMax: new(float64(2_000_000_000 - 90*24*60*60)), wantMinClosed: true},
-		{value: ">=2w", wantMax: new(float64(2_000_000_000 - 2*7*24*60*60)), wantMinClosed: true, wantMaxClosed: true},
-		{value: "<24h", wantMin: new(float64(2_000_000_000 - 24*60*60)), wantMaxClosed: true},
-		{value: "<=30m", wantMin: new(float64(2_000_000_000 - 30*60)), wantMinClosed: true, wantMaxClosed: true},
+		{field: "updated", value: ">30s", wantMax: new(float64(2_000_000_000 - 30)), wantMinClosed: true},
+		{field: "added", value: ">90d", wantMax: new(float64(2_000_000_000 - 90*24*60*60)), wantMinClosed: true},
+		{field: "updated", value: ">=2w", wantMax: new(float64(2_000_000_000 - 2*7*24*60*60)), wantMinClosed: true, wantMaxClosed: true},
+		{field: "added", value: "<24h", wantMin: new(float64(2_000_000_000 - 24*60*60)), wantMaxClosed: true},
+		{field: "updated", value: "<=30m", wantMin: new(float64(2_000_000_000 - 30*60)), wantMinClosed: true, wantMaxClosed: true},
 	}
 	for _, test := range tests {
-		t.Run(test.value, func(t *testing.T) {
-			q, ok := buildAgeQuery(test.value, now)
+		t.Run(test.field+test.value, func(t *testing.T) {
+			q, ok := buildRelativeTimeQuery(test.field, test.value, now)
 			if !ok {
-				t.Fatalf("buildAgeQuery(%q) was not accepted", test.value)
+				t.Fatalf("buildRelativeTimeQuery(%q, %q) was not accepted", test.field, test.value)
 			}
 			nq := asNumericRange(t, q)
-			if nq.FieldVal != "updated" {
-				t.Fatalf("field = %q, want updated", nq.FieldVal)
+			if nq.FieldVal != test.field {
+				t.Fatalf("field = %q, want %q", nq.FieldVal, test.field)
 			}
 			if !equalFloatPointers(nq.Min, test.wantMin) || !equalFloatPointers(nq.Max, test.wantMax) {
 				t.Fatalf("range = %v..%v, want %v..%v", nq.Min, nq.Max, test.wantMin, test.wantMax)
@@ -539,8 +540,8 @@ func equalFloatPointers(got, want *float64) bool {
 	return *got == *want
 }
 
-func Test_build_age_filter_is_field_specific(t *testing.T) {
-	bq := buildBoolQ(t, "privacy age:>90d")
+func Test_build_relative_time_filter_is_field_specific(t *testing.T) {
+	bq := buildBoolQ(t, "privacy updated:>90d")
 	clauses := mustClauses(t, bq)
 	if len(clauses) != 2 {
 		t.Fatalf("expected 2 must clauses without phrase wrapping, got %d", len(clauses))
@@ -552,10 +553,20 @@ func Test_build_age_filter_is_field_specific(t *testing.T) {
 	}
 }
 
-func Test_build_invalid_age_filter_falls_through(t *testing.T) {
-	for _, value := range []string{"90d", ">90", ">-1d", ">1y", ">999999999999999999999d"} {
-		if _, ok := buildAgeQuery(value, time.Now()); ok {
-			t.Errorf("buildAgeQuery(%q) was accepted", value)
+func Test_build_invalid_relative_time_filter_falls_through(t *testing.T) {
+	for _, test := range []struct {
+		field string
+		value string
+	}{
+		{field: "age", value: ">90d"},
+		{field: "added", value: "90d"},
+		{field: "updated", value: ">90"},
+		{field: "added", value: ">-1d"},
+		{field: "updated", value: ">1y"},
+		{field: "added", value: ">999999999999999999999d"},
+	} {
+		if _, ok := buildRelativeTimeQuery(test.field, test.value, time.Now()); ok {
+			t.Errorf("buildRelativeTimeQuery(%q, %q) was accepted", test.field, test.value)
 		}
 	}
 }
