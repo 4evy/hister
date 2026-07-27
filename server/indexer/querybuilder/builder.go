@@ -16,17 +16,19 @@ import (
 	"github.com/blevesearch/bleve/v2/search/query"
 )
 
-var weights = map[string]float64{
-	"text":     1,
-	"label":    1,
-	"language": 1,
-	"url":      4,
-	"domain":   8,
-	"title":    12,
-}
+var (
+	weights = map[string]float64{
+		"text":     1,
+		"label":    1,
+		"language": 1,
+		"url":      4,
+		"domain":   8,
+		"title":    12,
+	}
 
-var relativeTimeFilterPattern = regexp.MustCompile(`^(<=|>=|<|>)([0-9]+)([smhdw])$`)
-var absoluteDateFilterPattern = regexp.MustCompile(`^(<=|>=|<|>)([0-9]{4}-[0-9]{2}-[0-9]{2})$`)
+	relativeTimeFilterPattern = regexp.MustCompile(`^(<=|>=|<|>)([0-9]+)([smhdw])$`)
+	absoluteDateFilterPattern = regexp.MustCompile(`^(<=|>=|<|>)([0-9]{4}-[0-9]{2}-[0-9]{2})$`)
+)
 
 func Build(s string) query.Query {
 	if strings.TrimSpace(s) == "" {
@@ -323,14 +325,34 @@ func validTimeFilter(v string) bool {
 	return ok
 }
 
+// BuildTimestampRange creates a numeric timestamp range for an indexed time
+// field. It is shared by query syntax and legacy structured API parameters.
+func BuildTimestampRange(field string, min, max *int64, minInclusive, maxInclusive bool) (query.Query, bool) {
+	if (field != "added" && field != "updated") || (min == nil && max == nil) {
+		return nil, false
+	}
+	var minValue, maxValue *float64
+	if min != nil {
+		minValue = new(float64)
+		*minValue = float64(*min)
+	}
+	if max != nil {
+		maxValue = new(float64)
+		*maxValue = float64(*max)
+	}
+	q := bleve.NewNumericRangeInclusiveQuery(minValue, maxValue, &minInclusive, &maxInclusive)
+	q.SetField(field)
+	return q, true
+}
+
 func buildTimeQuery(field, v string, now time.Time) (query.Query, bool) {
 	if field != "added" && field != "updated" {
 		return nil, false
 	}
 	comparison, durationSeconds, relative := parseRelativeTimeFilter(v)
-	var cutoff float64
+	var cutoff int64
 	if relative {
-		cutoff = float64(now.Unix() - durationSeconds)
+		cutoff = now.Unix() - durationSeconds
 		switch comparison {
 		case ">":
 			comparison = "<"
@@ -348,9 +370,9 @@ func buildTimeQuery(field, v string, now time.Time) (query.Query, bool) {
 		if !ok {
 			return nil, false
 		}
-		cutoff = float64(timestamp)
+		cutoff = timestamp
 	}
-	var min, max *float64
+	var min, max *int64
 	minInclusive := true
 	maxInclusive := true
 	switch comparison {
@@ -367,9 +389,7 @@ func buildTimeQuery(field, v string, now time.Time) (query.Query, bool) {
 	default:
 		return nil, false
 	}
-	q := bleve.NewNumericRangeInclusiveQuery(min, max, &minInclusive, &maxInclusive)
-	q.SetField(field)
-	return q, true
+	return BuildTimestampRange(field, min, max, minInclusive, maxInclusive)
 }
 
 // Matches exact phrases without stopwords
@@ -396,13 +416,13 @@ func getTokenQuery(t Token, now time.Time) (query.Query, bool) {
 		}
 		var field string
 		for f := range weights {
-			if strings.HasPrefix(t.Value, f+":") {
+			if strings.HasPrefix(v, f+":") {
 				field = f
 				break
 			}
 		}
 		if field != "" {
-			v := t.Value[len(field)+1:]
+			v := v[len(field)+1:]
 			if strings.HasPrefix(v, "-") && len(v) > 1 {
 				negated = true
 				v = v[1:]
