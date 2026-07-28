@@ -30,6 +30,7 @@ export interface SearchResult {
   added?: number;
   updated?: number;
   add_count?: number;
+  user_id?: number;
   label?: string;
   pinned?: boolean;
 }

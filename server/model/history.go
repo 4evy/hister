@@ -39,6 +39,7 @@ type URLCount struct {
 	Text   string `gorm:"-" json:"text,omitempty"`
 	Count  uint   `json:"count"`
 	Pinned bool   `json:"pinned"`
+	UserID uint   `gorm:"-" json:"user_id"`
 }
 
 type HistoryItem struct {

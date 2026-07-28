@@ -894,13 +894,11 @@
     if (lastResults) lastResults = { ...lastResults, documents: accumulatedDocs };
   }
 
-  // Convert a file:// URL to a server-side /api/file?path= URL for in-browser viewing.
-  // On Windows, strips the extra leading slash before the drive letter (file:///C:/ → C:/).
-  function fileResultUrl(url: string): string {
+  // Convert a file URL to a document authorized server URL for browser viewing.
+  function fileResultUrl(url: string, userID = 0): string {
     if (!url.startsWith('file://')) return url;
-    let path = url.slice('file://'.length);
-    if (/^\/[A-Za-z]:/.test(path)) path = path.slice(1);
-    return 'api/file?path=' + encodeURIComponent(path);
+    const id = userID ? `${userID}:${url}` : url;
+    return 'api/file?id=' + encodeURIComponent(id);
   }
 
   function displayResultPath(url: string, domain: string): string {
@@ -2094,7 +2092,7 @@
                         />
                         <a
                           data-result-link={r.url}
-                          href={fileResultUrl(r.url)}
+                          href={fileResultUrl(r.url, r.user_id)}
                           class="result-title font-outfit text-md line-clamp-3 min-w-0 flex-1 font-semibold hover:underline md:text-xl"
                           title={r.title || '*title*'}
                           target={config.openResultsOnNewTab ? '_blank' : undefined}

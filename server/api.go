@@ -749,10 +749,10 @@ func init() {
 			Description:  "Serve the raw content of a locally indexed file",
 			Args: []*EndpointArg{
 				{
-					Name:        "path",
+					Name:        "id",
 					Type:        "string",
 					Required:    true,
-					Description: "Absolute path to the file",
+					Description: "Indexed document ID in user_id:url form, or the URL for a shared document",
 				},
 			},
 		},

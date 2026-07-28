@@ -1761,6 +1761,9 @@ func (i *indexer) getAddCountByDocID(id string) (uint, bool) {
 // GetByDocID returns the document with the given bleve document ID, or nil if
 // none exists. The ID is the uid-prefixed form produced by document.GetDocID.
 func GetByDocID(id string) *document.Document {
+	if i == nil {
+		return nil
+	}
 	return i.getByDocID(id, resultIncludeAll)
 }
 

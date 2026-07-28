@@ -15,6 +15,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/pprof"
+	"net/url"
 	"os"
 	"path"
 	"path/filepath"
@@ -970,6 +971,7 @@ func doSearch(query *indexer.Query, cfg *config.Config, rules *config.Rules, use
 					if h.Text == "" {
 						h.Text = d.Text
 					}
+					h.UserID = d.UserID
 					continue
 				}
 				filtered = append(filtered, d)
@@ -1574,16 +1576,15 @@ func servePreview(c *webContext) {
 }
 
 func serveFile(c *webContext) {
-	filePath := c.Request.URL.Query().Get("path")
-	if filePath == "" {
-		http.Error(c.Response, "missing path parameter", http.StatusBadRequest)
+	id := c.Request.URL.Query().Get("id")
+	if id == "" {
+		http.Error(c.Response, "missing id parameter", http.StatusBadRequest)
 		return
 	}
-
-	// Resolve to absolute and clean the path to prevent traversal
-	filePath = filepath.Clean(filePath)
-	if !filepath.IsAbs(filePath) {
-		http.Error(c.Response, "path must be absolute", http.StatusBadRequest)
+	doc := indexer.GetByDocID(id)
+	filePath, dir, ok := authorizedFilePath(c, id, doc)
+	if !ok {
+		http.Error(c.Response, "file not found", http.StatusNotFound)
 		return
 	}
 
@@ -1595,21 +1596,10 @@ func serveFile(c *webContext) {
 		return
 	}
 
-	// Verify the resolved file is within a configured directory (also resolved)
-	allowed := false
-	for _, dir := range c.Config.Indexer.Directories {
-		expandedDir := filepath.Clean(files.ExpandHome(dir.Path))
-		resolvedDir, err := filepath.EvalSymlinks(expandedDir)
-		if err != nil {
-			continue
-		}
-		if files.HasPathPrefix(resolvedPath, resolvedDir) {
-			allowed = true
-			break
-		}
-	}
-	if !allowed {
-		http.Error(c.Response, "file not in configured directories", http.StatusForbidden)
+	// Verify the resolved file remains within its configured directory.
+	resolvedDir, err := filepath.EvalSymlinks(filepath.Clean(files.ExpandHome(dir.Path)))
+	if err != nil || !files.HasPathPrefix(resolvedPath, resolvedDir) {
+		http.Error(c.Response, "file not found", http.StatusNotFound)
 		return
 	}
 
@@ -1628,6 +1618,32 @@ func serveFile(c *webContext) {
 	if _, err := c.Response.Write(content); err != nil {
 		log.Warn().Err(err).Msg("failed to write file response")
 	}
+}
+
+func authorizedFilePath(c *webContext, id string, doc *document.Document) (string, *config.Directory, bool) {
+	if doc == nil || doc.Type != types.Local || document.GetDocID(doc.UserID, doc.URL) != id {
+		return "", nil, false
+	}
+	if doc.UserID != 0 && doc.UserID != c.UserID {
+		return "", nil, false
+	}
+	pu, err := url.Parse(doc.URL)
+	if err != nil || !strings.EqualFold(pu.Scheme, "file") {
+		return "", nil, false
+	}
+	filePath := filepath.Clean(files.FileURLToPath(doc.URL))
+	if !filepath.IsAbs(filePath) {
+		return "", nil, false
+	}
+	dir := files.FindMatchingDir(c.Config.Indexer.Directories, filePath)
+	if dir == nil || !dir.IsMatching(filePath) {
+		return "", nil, false
+	}
+	ownerID, err := files.FindDirUser(c.Config.Indexer.Directories, filePath)
+	if err != nil || ownerID != doc.UserID {
+		return "", nil, false
+	}
+	return filePath, dir, true
 }
 
 func serveAPI(c *webContext) {

@@ -83,11 +83,7 @@ func TestPublicModeConfigResponse(t *testing.T) {
 }
 
 func TestPublicModeAllowsDocumentedPublicRoutes(t *testing.T) {
-	cfg, handler := newPublicTokenTestServer(t)
-	dir := t.TempDir()
-	filePath := testutil.WriteFile(t, dir, "note.txt", []byte("public file"))
-	cfg.Indexer.Directories = []*config.Directory{{Path: dir}}
-
+	_, handler := newPublicTokenTestServer(t)
 	tests := []struct {
 		name   string
 		method string
@@ -97,7 +93,8 @@ func TestPublicModeAllowsDocumentedPublicRoutes(t *testing.T) {
 	}{
 		{name: "api docs", method: http.MethodGet, target: "/api", want: http.StatusOK},
 		{name: "search", method: http.MethodGet, target: "/search?format=json", want: http.StatusBadRequest},
-		{name: "file", method: http.MethodGet, target: "/api/file?path=" + filePath, want: http.StatusOK},
+		{name: "legacy file path", method: http.MethodGet, target: "/api/file?path=/tmp/note.txt", want: http.StatusBadRequest},
+		{name: "file", method: http.MethodGet, target: "/api/file?id=missing", want: http.StatusNotFound},
 		{name: "mcp tools list", method: http.MethodPost, target: "/mcp", body: `{"jsonrpc":"2.0","id":1,"method":"tools/list"}`, want: http.StatusOK},
 	}
 	for _, tt := range tests {
