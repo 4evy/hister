@@ -58,6 +58,7 @@ type indexer struct {
 	embeddingWorkers  int
 	disablePreviews   bool
 	keepStopwords     bool
+	directories       []*config.Directory
 }
 
 const (
@@ -295,9 +296,10 @@ type MultiBatch struct {
 var (
 	i *indexer
 	// allFields      []string       = []string{"url", "title", "text", "favicon", "html", "domain", "added", "updated", "type", "user_id"}
-	allFields      []string       = []string{"*"}
-	ErrEmptyFilter                = errors.New("delete query must not be empty")
-	bleveConfig    map[string]any = map[string]any{
+	allFields            []string       = []string{"*"}
+	ErrEmptyFilter                      = errors.New("delete query must not be empty")
+	ErrFileURLNotAllowed                = errors.New("file URL is not allowed")
+	bleveConfig          map[string]any = map[string]any{
 		"bolt_timeout": "2s",
 		// https://github.com/blevesearch/bleve/blob/master/docs/persister.md
 		"scorchPersisterOptions": map[string]any{
@@ -329,6 +331,7 @@ func Init(cfg *config.Config) error {
 		return err
 	}
 	i.disablePreviews = cfg.App.DisablePreviews
+	i.directories = cfg.Indexer.Directories
 	if cfg.SemanticSearch.Enable {
 		vs, err := vectorstore.New(cfg)
 		if err != nil {
@@ -576,6 +579,7 @@ func Reindex(basePath string, rules *config.Rules, skipSensitiveChecks bool, det
 	if err != nil {
 		return err
 	}
+	tmpIdx.directories = dirs
 	// Propagate the disablePreviews flag so the temp indexer skips HTML storage too.
 	tmpIdx.disablePreviews = idx.disablePreviews
 	// The data store is shared between the live and temp indexers so that
@@ -731,6 +735,7 @@ func Reindex(basePath string, rules *config.Rules, skipSensitiveChecks bool, det
 	}
 	// Restore settings that are not part of the index state.
 	i.disablePreviews = idx.disablePreviews
+	i.directories = dirs
 	// Restore the vector store and embedder on the newly initialized global indexer.
 	if vs != nil && embedder != nil {
 		i.vectorStore = vs
@@ -877,7 +882,37 @@ func embedDocumentChunks(ctx context.Context, idx *indexer, d *document.Document
 }
 
 func Add(d *document.Document) error {
+	if err := i.validateFileDocument(d); err != nil {
+		return err
+	}
 	return i.AddDocument(d)
+}
+
+func (i *indexer) validateFileDocument(d *document.Document) error {
+	pu, err := url.Parse(d.URL)
+	if err != nil {
+		return err
+	}
+	if !strings.EqualFold(pu.Scheme, "file") {
+		return nil
+	}
+	if d.Text == "" {
+		return fmt.Errorf("%w: submitted content is required", ErrFileURLNotAllowed)
+	}
+
+	filePath := filepath.Clean(files.FileURLToPath(d.URL))
+	dir := files.FindMatchingDir(i.directories, filePath)
+	if !filepath.IsAbs(filePath) || dir == nil || !dir.IsMatching(filePath) {
+		return ErrFileURLNotAllowed
+	}
+	ownerID, err := files.FindDirUser(i.directories, filePath)
+	if err != nil {
+		return fmt.Errorf("%w: %v", ErrFileURLNotAllowed, err)
+	}
+	if ownerID != d.UserID {
+		return fmt.Errorf("%w: directory owner mismatch", ErrFileURLNotAllowed)
+	}
+	return nil
 }
 
 func (i *indexer) Total() uint64 {
@@ -1308,6 +1343,9 @@ func (b *MultiBatch) getOrCreateBatch(name string, idx bleve.Index) *bleve.Batch
 }
 
 func (b *MultiBatch) Add(d *document.Document) error {
+	if err := b.indexer.validateFileDocument(d); err != nil {
+		return err
+	}
 	return b.add(d, b.incrementAddCount)
 }
 
