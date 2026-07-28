@@ -895,10 +895,9 @@
   }
 
   // Convert a file URL to a document authorized server URL for browser viewing.
-  function fileResultUrl(url: string, userID = 0): string {
-    if (!url.startsWith('file://')) return url;
-    const id = userID ? `${userID}:${url}` : url;
-    return 'api/file?id=' + encodeURIComponent(id);
+  function fileResultUrl(url: string, documentID?: string): string {
+    if (!url.startsWith('file://') || !documentID) return url;
+    return 'api/file?id=' + encodeURIComponent(documentID);
   }
 
   function displayResultPath(url: string, domain: string): string {
@@ -2092,7 +2091,7 @@
                         />
                         <a
                           data-result-link={r.url}
-                          href={fileResultUrl(r.url, r.user_id)}
+                          href={fileResultUrl(r.url, r.id)}
                           class="result-title font-outfit text-md line-clamp-3 min-w-0 flex-1 font-semibold hover:underline md:text-xl"
                           title={r.title || '*title*'}
                           target={config.openResultsOnNewTab ? '_blank' : undefined}

@@ -971,7 +971,7 @@ func doSearch(query *indexer.Query, cfg *config.Config, rules *config.Rules, use
 					if h.Text == "" {
 						h.Text = d.Text
 					}
-					h.UserID = d.UserID
+					h.DocID = d.DocumentID
 					continue
 				}
 				filtered = append(filtered, d)

@@ -1225,8 +1225,9 @@ func GetLatestDocumentsFiltered(limit int, latest string, userID uint, filter st
 	docs := make([]*document.Document, len(res.Hits))
 	for i, h := range res.Hits {
 		d := &document.Document{
-			Title: h.Fields["title"].(string),
-			URL:   h.Fields["url"].(string),
+			DocumentID: h.ID,
+			Title:      h.Fields["title"].(string),
+			URL:        h.Fields["url"].(string),
 		}
 		if n, ok := h.Fields["added"].(float64); ok {
 			d.Added = int64(n)
@@ -1818,7 +1819,7 @@ func (include resultInclude) has(flag resultInclude) bool {
 }
 
 func (idx *indexer) resFromHit(h *search.DocumentMatch, include resultInclude) *document.Document {
-	d := &document.Document{}
+	d := &document.Document{DocumentID: h.ID}
 	if t, ok := h.Fragments["title"]; ok {
 		d.Title = t[0]
 	} else if s, ok := h.Fields["title"].(string); ok {
@@ -2043,6 +2044,13 @@ func createMapping(lang string, keepStopwords bool) mapping.IndexMapping {
 	docMapping.AddFieldMappingsAt("html", noIdxMap)
 	docMapping.AddFieldMappingsAt("html_key", um)
 	docMapping.AddFieldMappingsAt("metadata", noIdxMap)
+	ignoredTextMap := bleve.NewTextFieldMapping()
+	ignoredTextMap.Store = false
+	ignoredTextMap.Index = false
+	ignoredTextMap.IncludeTermVectors = false
+	ignoredTextMap.IncludeInAll = false
+	ignoredTextMap.DocValues = false
+	docMapping.AddFieldMappingsAt("id", ignoredTextMap)
 	noStoreMap := bleve.NewBooleanFieldMapping()
 	noStoreMap.Store = false
 	noStoreMap.Index = false

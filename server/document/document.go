@@ -22,6 +22,7 @@ import (
 )
 
 type Document struct {
+	DocumentID string         `json:"id,omitempty"`
 	URL        string         `json:"url"`
 	Domain     string         `json:"domain"`
 	HTML       string         `json:"html"`

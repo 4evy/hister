@@ -44,6 +44,9 @@ func TestSearchSortsByMostVisited(t *testing.T) {
 	if res.Documents[0].URL != mostVisitedURL {
 		t.Fatalf("first result URL = %q, want %q", res.Documents[0].URL, mostVisitedURL)
 	}
+	if res.Documents[0].DocumentID != res.Documents[0].ID() {
+		t.Fatalf("first result document ID = %q, want %q", res.Documents[0].DocumentID, res.Documents[0].ID())
+	}
 	if res.Documents[0].AddCount != 3 {
 		t.Fatalf("first result AddCount = %d, want 3", res.Documents[0].AddCount)
 	}

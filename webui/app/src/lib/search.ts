@@ -20,6 +20,7 @@ interface SearchMessage {
 }
 
 export interface SearchResult {
+  id?: string;
   url: string;
   title: string;
   domain: string;
@@ -30,7 +31,6 @@ export interface SearchResult {
   added?: number;
   updated?: number;
   add_count?: number;
-  user_id?: number;
   label?: string;
   pinned?: boolean;
 }
