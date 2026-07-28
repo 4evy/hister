@@ -18,8 +18,33 @@
   import { Separator } from '@hister/components/ui/separator';
   import { ScrollArea } from '@hister/components/ui/scroll-area';
   import { PageHeader } from '@hister/components';
-  import { StatusMessage, PreviewPanel, ResultFavicon } from '$lib/components';
-  import { CalendarDays, Clock, Eye, ListFilter, Rss, Search, Trash2, X } from '@lucide/svelte';
+  import {
+    StatusMessage,
+    PreviewPanel,
+    ResultFavicon,
+    TimelinePeriodChips,
+    TimelinePeriodRows,
+  } from '$lib/components';
+  import {
+    formatDateLabel,
+    getColorVar,
+    getGroupColor,
+    timelineBucketLabel,
+    type HistoryTimeline,
+    type TimelineBucket,
+  } from '$lib/history-timeline';
+  import {
+    CalendarDays,
+    ChevronDown,
+    ChevronRight,
+    Clock,
+    Eye,
+    ListFilter,
+    Rss,
+    Search,
+    Trash2,
+    X,
+  } from '@lucide/svelte';
 
   const historyPageSize = 100;
   const historyFilterRequestDelay = 150;
@@ -33,8 +58,20 @@
   let serverFilter = $state(initialFilter.trim());
   let pageKey = $state('');
   let openedLastID = $state(0);
-  let activeGroup = $state('');
-  let filterByDate = $state('');
+  let openedLastUpdatedAt = $state('');
+  let selectedBucket: TimelineBucket | null = $state(null);
+  let timelineData: HistoryTimeline = $state({
+    days: [],
+    older: { key: 'older', to: 0, count: 0 },
+    months: [],
+  });
+  let timelineLoading = $state(false);
+  let timelineError = $state('');
+  let olderExpanded = $state(false);
+  let expandedTimelinePeriods = $state(new Set<string>());
+  let timelinePeriodDays = $state(new Map<string, TimelineBucket[]>());
+  let timelinePeriodLoading = $state(new Set<string>());
+  let timelinePeriodErrors = $state(new Map<string, string>());
   let openedOnly = $state(
     typeof localStorage !== 'undefined'
       ? localStorage.getItem('historyOpenedOnly') === 'true'
@@ -42,6 +79,9 @@
   );
   let historyRequestController: AbortController | undefined;
   let historyRequestID = 0;
+  let timelineRequestController: AbortController | undefined;
+  let timelineRequestID = 0;
+  let timelinePeriodGeneration = 0;
 
   interface HistoryGroup {
     key: string;
@@ -174,42 +214,7 @@
     localStorage.setItem('historyOpenedOnly', String(openedOnly));
   });
 
-  const groupColors = [
-    'hister-indigo',
-    'hister-coral',
-    'hister-teal',
-    'hister-amber',
-    'hister-rose',
-    'hister-cyan',
-    'hister-lime',
-  ];
-
-  function getColorVar(color: string): string {
-    return `var(--${color})`;
-  }
-
-  function formatDateLabel(timestamp: int): string {
-    if (!timestamp) {
-      return 'Unknown';
-    }
-    const date = new Date(timestamp * 1000);
-    const now = new Date();
-    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    const yesterday = new Date(today);
-    yesterday.setDate(yesterday.getDate() - 1);
-    const itemDate = new Date(date.getFullYear(), date.getMonth(), date.getDate());
-
-    if (itemDate.getTime() === today.getTime()) return 'Today';
-    if (itemDate.getTime() === yesterday.getTime()) return 'Yesterday';
-    return itemDate.toLocaleDateString(undefined, {
-      weekday: 'short',
-      month: 'short',
-      day: 'numeric',
-      year: 'numeric',
-    });
-  }
-
-  function getDateKey(timestamp: int): string {
+  function getDateKey(timestamp: number): string {
     if (!timestamp) {
       return 'unknown';
     }
@@ -228,15 +233,6 @@
       serverFilter = nextFilter;
     }, historyFilterRequestDelay);
     return () => window.clearTimeout(timer);
-  });
-
-  const filteredItems = $derived.by(() => {
-    if (!filterByDate) return items;
-
-    return items.filter((item) => {
-      const timestamp = itemTimestamp(item);
-      return timestamp > 0 && getDateKey(timestamp) === filterByDate;
-    });
   });
 
   function groupByDate(sourceItems: HistoryItem[]): HistoryGroup[] {
@@ -260,40 +256,60 @@
     return result;
   }
 
-  const allGroups = $derived.by(() => groupByDate(items));
-
-  const groups = $derived.by(() => (filterByDate ? groupByDate(filteredItems) : allGroups));
-
-  function getGroupColor(idx: number): string {
-    return groupColors[idx % groupColors.length];
-  }
+  const groups = $derived.by(() => groupByDate(items));
+  const activeTimelineKey = $derived(selectedBucket?.key ?? '');
 
   const globalGroupColors = $derived.by(
-    () => new Map(allGroups.map((group, idx) => [group.key, getGroupColor(idx)])),
+    () => new Map(groups.map((group, idx) => [group.key, getGroupColor(idx)])),
   );
 
   function getGlobalGroupColor(key: string): string {
-    return globalGroupColors.get(key) ?? groupColors[0];
+    return globalGroupColors.get(key) ?? getGroupColor(0);
   }
 
-  function scrollToGroup(key: string) {
-    activeGroup = key;
-    filterByDate = key;
+  function selectTimelineBucket(bucket: TimelineBucket) {
+    selectedBucket = bucket;
     if (sentinel) {
       getScrollParent(sentinel.parentElement)?.scrollTo({ top: 0, behavior: 'instant' });
     }
   }
 
   function showAll() {
-    filterByDate = '';
-    activeGroup = groups.length > 0 ? groups[0].key : '';
+    selectedBucket = null;
     if (sentinel) {
       getScrollParent(sentinel.parentElement)?.scrollTo({ top: 0, behavior: 'instant' });
     }
   }
 
+  const populatedMonths = $derived(timelineData.months.filter((bucket) => bucket.count > 0));
+  const timelineTotalCount = $derived(
+    timelineData.days.reduce((sum, bucket) => sum + bucket.count, 0) + timelineData.older.count,
+  );
+
   function clearFilter() {
     filter = '';
+  }
+
+  function historyQueryParams(
+    requestedFilter: string,
+    requestedOpenedOnly: boolean,
+    requestedBucket: TimelineBucket | null = null,
+    includeTimezone = false,
+  ): URLSearchParams {
+    const params = new URLSearchParams();
+    if (requestedOpenedOnly) params.set('opened', 'true');
+    if (requestedFilter) params.set('filter', requestedFilter);
+    if (requestedBucket) {
+      if (requestedBucket.from !== undefined) {
+        params.set('date_from', String(requestedBucket.from));
+      }
+      params.set('date_to', String(requestedBucket.to));
+    }
+    if (includeTimezone) {
+      const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+      if (timezone) params.set('timezone', timezone);
+    }
+    return params;
   }
 
   function displayText(value: string): string {
@@ -305,21 +321,12 @@
     return group.items.length;
   }
 
-  function groupHasMore(group: HistoryGroup): boolean {
-    if (!hasMore || items.length === 0) return false;
-    const oldestLoadedItem = items[items.length - 1];
-    const timestamp = itemTimestamp(oldestLoadedItem);
-    return timestamp > 0 && getDateKey(timestamp) === group.key;
-  }
-
-  function groupCountLabel(group: HistoryGroup): string {
-    return `${groupCount(group)}${groupHasMore(group) ? '+' : ''}`;
-  }
-
   async function loadItems(
     latest: string = '',
     requestedFilter: string = serverFilter,
     requestedOpenedOnly: boolean = openedOnly,
+    requestedBucket: TimelineBucket | null = selectedBucket,
+    requestedLastUpdatedAt: string = openedLastUpdatedAt,
   ) {
     historyRequestController?.abort();
     const controller = new AbortController();
@@ -335,14 +342,15 @@
         window.location.href = base + '/';
         return;
       }
-      const params = new URLSearchParams();
+      const params = historyQueryParams(requestedFilter, requestedOpenedOnly, requestedBucket);
       if (requestedOpenedOnly) {
-        params.set('opened', 'true');
-        if (latest) params.set('last_id', latest);
+        if (latest) {
+          params.set('last_id', latest);
+          if (requestedLastUpdatedAt) params.set('last_updated_at', requestedLastUpdatedAt);
+        }
       } else if (latest) {
         params.set('last', latest);
       }
-      if (requestedFilter) params.set('filter', requestedFilter);
       const url = `/history${params.size > 0 ? `?${params.toString()}` : ''}`;
       const res = await apiFetch(url, {
         headers: { Accept: 'application/json' },
@@ -360,15 +368,19 @@
         }
         if (requestedOpenedOnly) {
           openedLastID = loadedCount >= historyPageSize ? (resJSON.last_id ?? 0) : 0;
+          openedLastUpdatedAt =
+            loadedCount >= historyPageSize ? (resJSON.last_updated_at ?? '') : '';
           pageKey = '';
         } else {
           pageKey = loadedCount >= historyPageSize ? (resJSON.page_key ?? '') : '';
           openedLastID = 0;
+          openedLastUpdatedAt = '';
         }
       } else {
         if (!latest) items = [];
         pageKey = '';
         openedLastID = 0;
+        openedLastUpdatedAt = '';
       }
     } catch (e) {
       if (controller.signal.aborted) return;
@@ -384,37 +396,150 @@
   $effect(() => {
     const requestedOpenedOnly = openedOnly;
     const requestedFilter = serverFilter;
+    const requestedBucket = selectedBucket;
     openedLastID = 0;
+    openedLastUpdatedAt = '';
     pageKey = '';
-    loadItems('', requestedFilter, requestedOpenedOnly);
+    loadItems('', requestedFilter, requestedOpenedOnly, requestedBucket, '');
   });
 
   async function loadMore() {
     if (loading || !hasMore) return;
     if (openedOnly) {
-      await loadItems(String(openedLastID), serverFilter, true);
+      await loadItems(
+        String(openedLastID),
+        serverFilter,
+        true,
+        selectedBucket,
+        openedLastUpdatedAt,
+      );
     } else {
-      await loadItems(pageKey, serverFilter, false);
+      await loadItems(pageKey, serverFilter, false, selectedBucket);
     }
   }
 
   const hasMore = $derived((!openedOnly && pageKey !== '') || (openedOnly && openedLastID > 0));
-  const rssUrl = $derived.by(() => {
-    const params = new URLSearchParams({ format: 'rss' });
-    if (openedOnly) params.set('opened', 'true');
-    if (serverFilter) params.set('filter', serverFilter);
-    return `api/history?${params.toString()}`;
+
+  async function loadTimeline(
+    requestedFilter: string = serverFilter,
+    requestedOpenedOnly: boolean = openedOnly,
+  ) {
+    timelineRequestController?.abort();
+    const controller = new AbortController();
+    const requestID = ++timelineRequestID;
+    timelineRequestController = controller;
+    timelineLoading = true;
+    timelineError = '';
+    try {
+      const params = historyQueryParams(requestedFilter, requestedOpenedOnly, null, true);
+      const res = await apiFetch(`/history/timeline?${params.toString()}`, {
+        headers: { Accept: 'application/json' },
+        signal: controller.signal,
+      });
+      if (!res.ok) throw new Error('Failed to load timeline');
+      const data: HistoryTimeline = await res.json();
+      if (controller.signal.aborted || requestID !== timelineRequestID) return;
+      timelineData = data;
+    } catch (e) {
+      if (controller.signal.aborted) return;
+      timelineError = String(e);
+    } finally {
+      if (requestID === timelineRequestID) {
+        timelineLoading = false;
+        timelineRequestController = undefined;
+      }
+    }
+  }
+
+  function resetTimelinePeriodDays() {
+    timelinePeriodGeneration += 1;
+    expandedTimelinePeriods = new Set();
+    timelinePeriodDays = new Map();
+    timelinePeriodLoading = new Set();
+    timelinePeriodErrors = new Map();
+  }
+
+  async function loadTimelinePeriodDays(
+    bucket: TimelineBucket,
+    requestedFilter: string = serverFilter,
+    requestedOpenedOnly: boolean = openedOnly,
+  ) {
+    if (!bucket.from || timelinePeriodLoading.has(bucket.key)) return;
+    const generation = timelinePeriodGeneration;
+    timelinePeriodLoading = new Set(timelinePeriodLoading).add(bucket.key);
+    const nextErrors = new Map(timelinePeriodErrors);
+    nextErrors.delete(bucket.key);
+    timelinePeriodErrors = nextErrors;
+    try {
+      const params = historyQueryParams(requestedFilter, requestedOpenedOnly, bucket, true);
+      const res = await apiFetch(`/history/timeline?${params.toString()}`, {
+        headers: { Accept: 'application/json' },
+      });
+      if (!res.ok) throw new Error('Failed to load daily counts');
+      const data: Pick<HistoryTimeline, 'days'> = await res.json();
+      if (
+        generation !== timelinePeriodGeneration ||
+        requestedFilter !== serverFilter ||
+        requestedOpenedOnly !== openedOnly
+      )
+        return;
+      const nextDays = new Map(timelinePeriodDays);
+      nextDays.set(bucket.key, data.days ?? []);
+      timelinePeriodDays = nextDays;
+    } catch (e) {
+      if (generation !== timelinePeriodGeneration) return;
+      const errors = new Map(timelinePeriodErrors);
+      errors.set(bucket.key, String(e));
+      timelinePeriodErrors = errors;
+    } finally {
+      if (generation === timelinePeriodGeneration) {
+        const loadingPeriods = new Set(timelinePeriodLoading);
+        loadingPeriods.delete(bucket.key);
+        timelinePeriodLoading = loadingPeriods;
+      }
+    }
+  }
+
+  async function toggleTimelinePeriod(bucket: TimelineBucket) {
+    const expanded = new Set(expandedTimelinePeriods);
+    if (expanded.has(bucket.key)) {
+      expanded.delete(bucket.key);
+      expandedTimelinePeriods = expanded;
+      return;
+    }
+    expanded.add(bucket.key);
+    expandedTimelinePeriods = expanded;
+    if (!timelinePeriodDays.has(bucket.key)) {
+      await loadTimelinePeriodDays(bucket);
+    }
+  }
+
+  const timelinePeriodRendererProps = $derived.by(() => ({
+    activeKey: activeTimelineKey,
+    expandedPeriods: expandedTimelinePeriods,
+    periodDays: timelinePeriodDays,
+    loadingPeriods: timelinePeriodLoading,
+    periodErrors: timelinePeriodErrors,
+    onToggle: toggleTimelinePeriod,
+    onSelect: selectTimelineBucket,
+  }));
+
+  $effect(() => {
+    const requestedOpenedOnly = openedOnly;
+    const requestedFilter = serverFilter;
+    resetTimelinePeriodDays();
+    loadTimeline(requestedFilter, requestedOpenedOnly);
   });
 
-  // Allow autoscroll only when no date filter is active, or when there are no
-  // items from dates earlier than the selected date loaded yet.
-  const canAutoLoad = $derived(
-    !filterByDate ||
-      !items.some((item) => {
-        const timestamp = itemTimestamp(item);
-        return timestamp > 0 && getDateKey(timestamp) < filterByDate;
-      }),
-  );
+  function toggleOlder() {
+    olderExpanded = !olderExpanded;
+  }
+
+  const rssUrl = $derived.by(() => {
+    const params = historyQueryParams(serverFilter, openedOnly, selectedBucket);
+    params.set('format', 'rss');
+    return `api/history?${params.toString()}`;
+  });
 
   let sentinel: HTMLDivElement | undefined = $state();
   let sentinelVisible = $state(false);
@@ -449,18 +574,9 @@
 
   $effect(() => {
     const inputFilter = filter.trim();
-    if (
-      inputFilter ||
-      inputFilter !== serverFilter ||
-      !sentinel ||
-      !sentinelVisible ||
-      loading ||
-      !hasMore
-    )
+    if (inputFilter !== serverFilter || !sentinel || !sentinelVisible || loading || !hasMore)
       return;
-    if (untrack(() => canAutoLoad)) {
-      loadMore();
-    }
+    loadMore();
   });
 
   async function deleteItem(item: HistoryItem) {
@@ -481,14 +597,16 @@
         });
       }
       items = items.filter((i) => i.url !== item.url);
+      resetTimelinePeriodDays();
+      await loadTimeline();
     } catch (e) {
       error = String(e);
     }
   }
 
   function selectNthResult(n: number) {
-    if (!filteredItems.length) return;
-    highlightIdx = (highlightIdx + n + filteredItems.length) % filteredItems.length;
+    if (!items.length) return;
+    highlightIdx = (highlightIdx + n + items.length) % items.length;
     const results = document.querySelectorAll('[data-result]');
     scrollTo(results[highlightIdx]);
   }
@@ -505,7 +623,7 @@
 
   function openSelectedResult(e?: KeyboardEvent, _isInputFocus?: boolean, newWindow = false) {
     if (e) e.preventDefault();
-    const item = filteredItems[highlightIdx];
+    const item = items[highlightIdx];
     if (!item) return;
     if (openResultsOnNewTab) newWindow = true;
     window.open(item.url, newWindow ? '_blank' : '_self');
@@ -513,7 +631,7 @@
 
   function viewResultPopup(e?: KeyboardEvent) {
     if (e) e.preventDefault();
-    const item = filteredItems[highlightIdx];
+    const item = items[highlightIdx];
     if (!item) return;
     if (isDesktop) {
       if (previewFullscreen) {
@@ -561,9 +679,9 @@
     disablePreviews = (cfg as any).disablePreviews ?? false;
   });
 
-  // Reset highlight when filtered list changes
+  // Reset highlight when the list changes
   $effect(() => {
-    filteredItems;
+    items;
     highlightIdx = 0;
   });
 
@@ -571,10 +689,10 @@
   // Uses data so it works even when results are hidden in fullscreen mode.
   $effect(() => {
     const idx = highlightIdx;
-    filteredItems;
+    items;
     const isFullscreen = previewFullscreen;
-    if (!isDesktop || !filteredItems.length || (!panelOpen && !isFullscreen)) return;
-    const item = filteredItems[idx];
+    if (!isDesktop || !items.length || (!panelOpen && !isFullscreen)) return;
+    const item = items[idx];
     if (!item) return;
     if (untrack(() => panelUrl) === item.url) return;
     panelViewingVersion = null;
@@ -651,7 +769,7 @@
   <StatusMessage message="Loading history..." type="loading" />
 {:else if error}
   <StatusMessage message={error} type="error" class="mx-3 mt-4 md:mx-6" />
-{:else if filteredItems.length === 0}
+{:else if items.length === 0 && !selectedBucket}
   <StatusMessage message={filter ? 'No matching entries' : 'No history yet'} type="empty" />
 {:else}
   <div class="flex min-h-0 flex-1 flex-col overflow-hidden md:flex-row">
@@ -671,31 +789,40 @@
 
           <Button
             variant="ghost"
-            class="flex h-auto w-full cursor-pointer items-center justify-start gap-2 rounded-none border-[2px] px-3 py-2 shadow-[2px_2px_0_transparent] hover:shadow-[2px_2px_0_var(--brutal-shadow)] {!filterByDate
+            class="flex h-auto w-full cursor-pointer items-center justify-start gap-2 rounded-none border-[2px] px-3 py-2 shadow-[2px_2px_0_transparent] hover:shadow-[2px_2px_0_var(--brutal-shadow)] {!activeTimelineKey
               ? 'border-brutal-border bg-hister-indigo text-primary-foreground hover:bg-hister-indigo/90 hover:text-primary-foreground'
               : 'hover:border-border-brand hover:bg-muted-surface border-transparent'}"
             onclick={showAll}
           >
             <span
               class="font-inter text-sm font-semibold"
-              class:text-text-brand-secondary={!!filterByDate}
+              class:text-text-brand-secondary={!!activeTimelineKey}
             >
               Show All
             </span>
+            <Badge
+              variant="secondary"
+              class="ml-auto h-4 border-0 px-1.5 py-0 text-xs {!activeTimelineKey
+                ? 'text-primary-foreground bg-white/20'
+                : 'bg-muted-surface text-text-brand-muted'}"
+            >
+              {timelineTotalCount.toLocaleString()}
+            </Badge>
           </Button>
 
           <Separator class="bg-border-brand-muted h-[2px]" />
 
-          {#each allGroups as group, i (group.key)}
+          {#each timelineData.days as bucket, i (bucket.key)}
             {@const color = getGroupColor(i)}
-            {@const isActive = filterByDate === group.key}
+            {@const isActive = activeTimelineKey === bucket.key}
             <Button
               variant="ghost"
               class="flex h-auto w-full cursor-pointer items-center justify-start gap-2 rounded-none border-[2px] px-3 py-2 shadow-[2px_2px_0_transparent] hover:shadow-[2px_2px_0_var(--brutal-shadow)] {isActive
                 ? 'border-brutal-border text-primary-foreground hover:text-primary-foreground'
                 : 'hover:border-border-brand hover:bg-muted-surface border-transparent'}"
               style={isActive ? `background-color: ${getColorVar(color)};` : ''}
-              onclick={() => scrollToGroup(group.key)}
+              disabled={bucket.count === 0}
+              onclick={() => selectTimelineBucket(bucket)}
             >
               <span
                 class="h-2 w-2 shrink-0 rounded-full"
@@ -709,7 +836,7 @@
                 class:font-medium={!isActive}
                 class:text-text-brand-secondary={!isActive}
               >
-                {group.label}
+                {timelineBucketLabel(bucket, 'day')}
               </span>
               <Badge
                 variant="secondary"
@@ -717,21 +844,42 @@
                   ? 'text-primary-foreground bg-white/20'
                   : 'bg-muted-surface text-text-brand-muted'}"
               >
-                {groupCountLabel(group)}
+                {bucket.count.toLocaleString()}
               </Badge>
             </Button>
           {/each}
 
-          {#if hasMore}
-            <Separator class="bg-border-brand-muted h-[2px]" />
-            <Button
-              variant="ghost"
-              class="font-inter border-brutal-border text-text-brand-secondary hover:bg-muted-surface flex h-auto w-full cursor-pointer items-center justify-center rounded-none border-[2px] px-3 py-2 text-sm font-semibold shadow-[2px_2px_0_transparent] hover:shadow-[2px_2px_0_var(--brutal-shadow)]"
-              disabled={loading}
-              onclick={loadMore}
+          <Button
+            variant="ghost"
+            class="hover:border-border-brand hover:bg-muted-surface text-text-brand-secondary flex h-auto w-full cursor-pointer items-center justify-start gap-2 rounded-none border-[2px] border-transparent px-3 py-2 font-semibold"
+            disabled={timelineData.older.count === 0}
+            onclick={toggleOlder}
+          >
+            {#if olderExpanded}<ChevronDown class="size-4" />{:else}<ChevronRight
+                class="size-4"
+              />{/if}
+            <span class="font-inter text-sm">Older</span>
+            <Badge
+              variant="secondary"
+              class="bg-muted-surface text-text-brand-muted ml-auto h-4 border-0 px-1.5 py-0 text-xs"
             >
-              {loading ? 'Loading...' : 'Load more'}
-            </Button>
+              {timelineData.older.count.toLocaleString()}
+            </Badge>
+          </Button>
+
+          {#if olderExpanded}
+            <TimelinePeriodRows
+              {...timelinePeriodRendererProps}
+              buckets={populatedMonths}
+              colorOffset={timelineData.days.length}
+            />
+            {#if timelineLoading}
+              <p class="font-inter text-text-brand-muted px-3 py-1 text-xs">Loading months...</p>
+            {/if}
+          {/if}
+
+          {#if timelineError}
+            <p class="font-inter text-hister-coral px-1 text-xs">{timelineError}</p>
           {/if}
         </div>
       </ScrollArea>
@@ -747,16 +895,16 @@
           <Button
             variant="ghost"
             size="sm"
-            class="font-inter border-brutal-border h-8 shrink-0 rounded-none border-[2px] px-3 text-xs font-bold {!filterByDate
+            class="font-inter border-brutal-border h-8 shrink-0 rounded-none border-[2px] px-3 text-xs font-bold {!activeTimelineKey
               ? 'bg-hister-indigo hover:bg-hister-indigo/90 text-primary-foreground hover:text-primary-foreground'
               : 'text-text-brand-secondary hover:bg-muted-surface'}"
             onclick={showAll}
           >
-            All
+            All ({timelineTotalCount.toLocaleString()})
           </Button>
-          {#each allGroups as group, i (group.key)}
+          {#each timelineData.days.filter((bucket) => bucket.count > 0) as bucket, i (bucket.key)}
             {@const color = getGroupColor(i)}
-            {@const isActive = filterByDate === group.key}
+            {@const isActive = activeTimelineKey === bucket.key}
             <Button
               variant="ghost"
               size="sm"
@@ -764,23 +912,31 @@
                 ? 'text-primary-foreground hover:text-primary-foreground'
                 : 'text-text-brand-secondary hover:bg-muted-surface'}"
               style={isActive ? `background-color: ${getColorVar(color)};` : ''}
-              onclick={() => scrollToGroup(group.key)}
+              onclick={() => selectTimelineBucket(bucket)}
             >
-              {group.label} ({groupCountLabel(group)})
+              {timelineBucketLabel(bucket, 'day')} ({bucket.count.toLocaleString()})
             </Button>
           {/each}
+          {#if timelineData.older.count > 0}
+            <Button
+              variant="ghost"
+              size="sm"
+              class="font-inter border-brutal-border text-text-brand-secondary hover:bg-muted-surface h-8 shrink-0 rounded-none border-[2px] px-3 text-xs font-semibold"
+              onclick={toggleOlder}
+            >
+              {olderExpanded
+                ? 'Hide older'
+                : `Older (${timelineData.older.count.toLocaleString()})`}
+            </Button>
+          {/if}
+          {#if olderExpanded}
+            <TimelinePeriodChips
+              {...timelinePeriodRendererProps}
+              buckets={populatedMonths}
+              colorOffset={timelineData.days.length}
+            />
+          {/if}
         </div>
-        {#if hasMore}
-          <Button
-            variant="ghost"
-            size="sm"
-            class="font-inter border-brutal-border text-text-brand-secondary hover:bg-muted-surface mt-2 h-8 w-full rounded-none border-[2px] px-3 text-xs font-semibold"
-            disabled={loading}
-            onclick={loadMore}
-          >
-            {loading ? 'Loading...' : 'Load more'}
-          </Button>
-        {/if}
       </div>
     {/if}
 
@@ -793,6 +949,9 @@
           <div
             class="mx-auto w-full max-w-5xl space-y-5 overflow-hidden px-3 py-3 md:space-y-7 md:px-6 md:py-5"
           >
+            {#if groups.length === 0}
+              <StatusMessage message="No entries in this period" type="empty" />
+            {/if}
             {#each groups as group (group.key)}
               {@const color = getGlobalGroupColor(group.key)}
               <section id="group-{encodeURIComponent(group.key)}" class="history-group">

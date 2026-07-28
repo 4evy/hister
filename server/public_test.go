@@ -2,6 +2,7 @@ package server
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -10,6 +11,7 @@ import (
 	"github.com/asciimoo/hister/config"
 	"github.com/asciimoo/hister/server/model"
 	"github.com/asciimoo/hister/server/testutil"
+	"github.com/asciimoo/hister/server/timeline"
 
 	"github.com/gorilla/sessions"
 )
@@ -240,6 +242,38 @@ func TestPublicModeEnablesHistoryForAuthenticatedCallers(t *testing.T) {
 	}
 	if len(items) != 1 || items[0].Query != "q" || items[0].URL != "https://example.com" {
 		t.Fatalf("saved history = %+v, want submitted item", items)
+	}
+
+	timelineRec := testutil.ServeHTTP(t, handler, http.MethodGet, "/api/history/timeline?opened=true&timezone=UTC", nil, map[string]string{
+		"X-Access-Token": "secret",
+	})
+	if timelineRec.Code != http.StatusOK {
+		t.Fatalf("GET /api/history/timeline status = %d, want %d; body=%s", timelineRec.Code, http.StatusOK, timelineRec.Body.String())
+	}
+	var timelineBody timeline.Result
+	if err := json.Unmarshal(timelineRec.Body.Bytes(), &timelineBody); err != nil {
+		t.Fatal(err)
+	}
+	if len(timelineBody.Days) != 7 || timelineBody.Days[0].Count != 1 {
+		t.Fatalf("timeline days = %+v, want one item today", timelineBody.Days)
+	}
+	drilldownURL := fmt.Sprintf(
+		"/api/history/timeline?opened=true&timezone=UTC&date_from=%d&date_to=%d",
+		timelineBody.Days[0].From,
+		timelineBody.Days[0].To,
+	)
+	drilldownRec := testutil.ServeHTTP(t, handler, http.MethodGet, drilldownURL, nil, map[string]string{
+		"X-Access-Token": "secret",
+	})
+	if drilldownRec.Code != http.StatusOK {
+		t.Fatalf("timeline drilldown status = %d, want %d; body=%s", drilldownRec.Code, http.StatusOK, drilldownRec.Body.String())
+	}
+	var drilldownBody timeline.DailyResult
+	if err := json.Unmarshal(drilldownRec.Body.Bytes(), &drilldownBody); err != nil {
+		t.Fatal(err)
+	}
+	if len(drilldownBody.Days) != 1 || drilldownBody.Days[0].Count != 1 {
+		t.Fatalf("timeline drilldown days = %+v, want one item today", drilldownBody.Days)
 	}
 }
 

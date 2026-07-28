@@ -31,6 +31,7 @@ import (
 	"github.com/asciimoo/hister/server/indexer"
 	"github.com/asciimoo/hister/server/model"
 	"github.com/asciimoo/hister/server/static"
+	"github.com/asciimoo/hister/server/timeline"
 	"github.com/asciimoo/hister/server/types"
 
 	"github.com/gorilla/sessions"
@@ -1214,6 +1215,11 @@ func serveHistory(c *webContext) {
 	}
 	rssFormat := c.Request.URL.Query().Get("format") == "rss"
 	filter := strings.TrimSpace(c.Request.URL.Query().Get("filter"))
+	dateFrom, dateTo, err := parseHistoryDateRange(c.Request)
+	if err != nil {
+		http.Error(c.Response, err.Error(), http.StatusBadRequest)
+		return
+	}
 	if c.Request.URL.Query().Get("opened") == "true" {
 		var lastID uint
 		if v := c.Request.URL.Query().Get("last_id"); v != "" {
@@ -1221,7 +1227,15 @@ func serveHistory(c *webContext) {
 				lastID = uint(parsed)
 			}
 		}
-		items, err := model.GetLatestHistoryItemsFiltered(c.UserID, 100, lastID, filter)
+		var lastUpdatedAt time.Time
+		if value := c.Request.URL.Query().Get("last_updated_at"); value != "" {
+			lastUpdatedAt, err = time.Parse(time.RFC3339Nano, value)
+			if err != nil {
+				http.Error(c.Response, "invalid last_updated_at", http.StatusBadRequest)
+				return
+			}
+		}
+		items, err := model.GetLatestHistoryItemsFilteredByDate(c.UserID, 100, lastID, lastUpdatedAt, filter, dateFrom, dateTo)
 		if err != nil {
 			serve500(c)
 			return
@@ -1235,8 +1249,9 @@ func serveHistory(c *webContext) {
 			AddCount uint   `json:"add_count"`
 		}
 		type openedResponse struct {
-			Documents []*openedItem `json:"documents"`
-			LastID    uint          `json:"last_id"`
+			Documents     []*openedItem `json:"documents"`
+			LastID        uint          `json:"last_id"`
+			LastUpdatedAt string        `json:"last_updated_at,omitempty"`
 		}
 		docs := make([]*openedItem, 0, len(items))
 		for _, item := range items {
@@ -1250,8 +1265,10 @@ func serveHistory(c *webContext) {
 			})
 		}
 		var nextLastID uint
+		var nextLastUpdatedAt string
 		if len(docs) > 0 {
 			nextLastID = docs[len(docs)-1].ID
+			nextLastUpdatedAt = items[len(items)-1].UpdatedAt.Format(time.RFC3339Nano)
 		}
 		if rssFormat {
 			rssItems := make([]rssItem, 0, len(docs))
@@ -1270,10 +1287,10 @@ func serveHistory(c *webContext) {
 			serveRSS(c, "Hister - visited pages", c.Config.BaseURL("/"), rssItems)
 			return
 		}
-		c.JSON(&openedResponse{Documents: docs, LastID: nextLastID})
+		c.JSON(&openedResponse{Documents: docs, LastID: nextLastID, LastUpdatedAt: nextLastUpdatedAt})
 		return
 	}
-	ds := indexer.GetLatestDocumentsFiltered(100, c.Request.URL.Query().Get("last"), c.UserID, filter)
+	ds := indexer.GetLatestDocumentsFilteredByDate(100, c.Request.URL.Query().Get("last"), c.UserID, filter, dateFrom, dateTo)
 	if rssFormat {
 		var rssItems []rssItem
 		if ds != nil {
@@ -1295,6 +1312,99 @@ func serveHistory(c *webContext) {
 		return
 	}
 	c.JSON(ds)
+}
+
+func parseHistoryDateRange(r *http.Request) (int64, int64, error) {
+	var dateFrom, dateTo int64
+	for name, target := range map[string]*int64{"date_from": &dateFrom, "date_to": &dateTo} {
+		value := r.URL.Query().Get(name)
+		if value == "" {
+			continue
+		}
+		parsed, err := strconv.ParseInt(value, 10, 64)
+		if err != nil || parsed < 0 {
+			return 0, 0, fmt.Errorf("invalid %s", name)
+		}
+		*target = parsed
+	}
+	if dateFrom != 0 && dateTo != 0 && dateFrom >= dateTo {
+		return 0, 0, errors.New("date_from must be earlier than date_to")
+	}
+	return dateFrom, dateTo, nil
+}
+
+func addTimelineTimestamps(result interface{ AddTimestamp(int64) }, timestamps []time.Time) {
+	for _, timestamp := range timestamps {
+		result.AddTimestamp(timestamp.Unix())
+	}
+}
+
+func serveHistoryTimeline(c *webContext) {
+	if !historyEnabled(c) {
+		c.Response.WriteHeader(http.StatusNotFound)
+		return
+	}
+	loc := time.Local
+	if timezone := c.Request.URL.Query().Get("timezone"); timezone != "" {
+		var err error
+		loc, err = time.LoadLocation(timezone)
+		if err != nil {
+			http.Error(c.Response, "invalid timezone", http.StatusBadRequest)
+			return
+		}
+	}
+	filter := strings.TrimSpace(c.Request.URL.Query().Get("filter"))
+	dateFrom, dateTo, err := parseHistoryDateRange(c.Request)
+	if err != nil || (dateFrom == 0) != (dateTo == 0) {
+		if err == nil {
+			err = errors.New("date_from and date_to must be provided together")
+		}
+		http.Error(c.Response, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if dateFrom != 0 && dateTo-dateFrom > int64(32*24*time.Hour/time.Second) {
+		http.Error(c.Response, "daily drilldown range cannot exceed 32 days", http.StatusBadRequest)
+		return
+	}
+	if c.Request.URL.Query().Get("opened") == "true" {
+		timestamps, err := model.GetHistoryItemTimestampsFilteredByDate(c.UserID, filter, dateFrom, dateTo)
+		if err != nil {
+			serve500(c)
+			return
+		}
+		if dateFrom != 0 {
+			result := timeline.NewDays(dateFrom, dateTo, loc)
+			addTimelineTimestamps(result, timestamps)
+			c.JSON(result)
+			return
+		}
+		var oldest int64
+		for _, timestamp := range timestamps {
+			unix := timestamp.Unix()
+			if oldest == 0 || unix < oldest {
+				oldest = unix
+			}
+		}
+		result := timeline.New(time.Now(), loc, oldest)
+		addTimelineTimestamps(result, timestamps)
+		c.JSON(result)
+		return
+	}
+	if dateFrom != 0 {
+		result, err := indexer.GetHistoryTimelineDays(c.UserID, filter, loc, dateFrom, dateTo)
+		if err != nil {
+			serve500(c)
+			return
+		}
+		c.JSON(result)
+		return
+	}
+	result, err := indexer.GetHistoryTimeline(c.UserID, filter, loc)
+	if err != nil {
+		serve500(c)
+		return
+	}
+	c.JSON(result)
 }
 
 type rssGUID struct {

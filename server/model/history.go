@@ -8,6 +8,8 @@ import (
 	"errors"
 	"strings"
 	"time"
+
+	"gorm.io/gorm"
 )
 
 type History struct {
@@ -174,23 +176,66 @@ func GetLatestHistoryItems(userID uint, limit int, lastID uint) ([]*HistoryItem,
 }
 
 func GetLatestHistoryItemsFiltered(userID uint, limit int, lastID uint, filter string) ([]*HistoryItem, error) {
+	return GetLatestHistoryItemsFilteredByDate(userID, limit, lastID, time.Time{}, filter, 0, 0)
+}
+
+func GetLatestHistoryItemsFilteredByDate(userID uint, limit int, lastID uint, lastUpdatedAt time.Time, filter string, dateFrom, dateTo int64) ([]*HistoryItem, error) {
 	var hs []*HistoryItem
-	q := DB.Select("history_links.id as id, links.url as url, links.title as title, histories.query as query, history_links.updated_at as updated_at").
-		Table("history_links").
+	q := filteredHistoryItems(userID, filter).
+		Select("history_links.id as id, links.url as url, links.title as title, histories.query as query, history_links.updated_at as updated_at").
+		Order("history_links.updated_at DESC").
+		Order("history_links.id DESC")
+	if dateFrom != 0 {
+		q = q.Where("history_links.updated_at >= ?", time.Unix(dateFrom, 0).UTC())
+	}
+	if dateTo != 0 {
+		q = q.Where("history_links.updated_at < ?", time.Unix(dateTo, 0).UTC())
+	}
+	if !lastUpdatedAt.IsZero() {
+		q = q.Where(
+			"(history_links.updated_at < ? OR (history_links.updated_at = ? AND history_links.id < ?))",
+			lastUpdatedAt,
+			lastUpdatedAt,
+			lastID,
+		)
+	} else if lastID > 0 {
+		q = q.Where("history_links.id < ?", lastID)
+	}
+	err := q.Limit(limit).Find(&hs).Error
+	return hs, err
+}
+
+func GetHistoryItemTimestampsFilteredByDate(userID uint, filter string, dateFrom, dateTo int64) ([]time.Time, error) {
+	var rows []struct {
+		UpdatedAt time.Time
+	}
+	q := filteredHistoryItems(userID, filter).
+		Select("history_links.updated_at as updated_at")
+	if dateFrom != 0 {
+		q = q.Where("history_links.updated_at >= ?", time.Unix(dateFrom, 0).UTC())
+	}
+	if dateTo != 0 {
+		q = q.Where("history_links.updated_at < ?", time.Unix(dateTo, 0).UTC())
+	}
+	err := q.Scan(&rows).Error
+	timestamps := make([]time.Time, len(rows))
+	for i, row := range rows {
+		timestamps[i] = row.UpdatedAt
+	}
+	return timestamps, err
+}
+
+func filteredHistoryItems(userID uint, filter string) *gorm.DB {
+	q := DB.Table("history_links").
 		Joins("JOIN links ON history_links.link_id = links.id").
 		Joins("JOIN histories ON history_links.history_id = histories.id").
-		Where("histories.user_id = ?", userID).
-		Order("history_links.updated_at DESC")
+		Where("histories.user_id = ?", userID)
 	if filter = strings.TrimSpace(filter); filter != "" {
 		filter = strings.NewReplacer("!", "!!", "%", "!%", "_", "!_").Replace(strings.ToLower(filter))
 		pattern := "%" + filter + "%"
 		q = q.Where("(LOWER(links.title) LIKE ? ESCAPE '!' OR LOWER(links.url) LIKE ? ESCAPE '!')", pattern, pattern)
 	}
-	if lastID > 0 {
-		q = q.Where("history_links.id < ?", lastID)
-	}
-	err := q.Limit(limit).Find(&hs).Error
-	return hs, err
+	return q
 }
 
 func GetQuerySuggestion(userID uint, q string) string {
