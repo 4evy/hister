@@ -30,7 +30,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-const versionBase = "v0.16.0"
+const versionBase = "v0.17.0"
 
 var Version = func() string {
 	if info, ok := debug.ReadBuildInfo(); ok {

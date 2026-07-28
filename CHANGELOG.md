@@ -1,5 +1,167 @@
 # Changelog
 
+## v0.17.0
+
+### New Features
+
+#### Unified Imports
+
+The import interface is now grouped under `hister import`. In addition to local
+files and browser history, Hister can import bookmarks and archived content from
+Linkwarden, Karakeep, and Shaarli. Service imports preserve source dates and
+metadata, apply source specific or overridden labels, fetch missing page content
+and favicons, insert documents in batches, and continue from the latest imported
+update after an interruption.
+
+#### Persistent Crawl Job Tooling
+
+Persistent indexing jobs can now start from URL lists, and browser history
+imports use the same resumable crawl workflow. Jobs can be resumed with only a
+job ID. New `crawl show`, `crawl errors`, and `crawl queue` commands expose job
+state, failed URLs, queue contents, and queue counts.
+
+#### Expanded Query Language and Search Filters
+
+Documents now track an updated timestamp alongside their original added time.
+Search queries support `added` and `updated` filters with relative or absolute
+dates, visit count ranges, standalone wildcard expressions, and exact phrases
+within specific fields. The search interface represents filters directly in the
+query, making filtered searches easier to understand, edit, and share. Existing
+index entries have their updated value backfilled from their added time on
+startup.
+
+#### Durable Semantic Indexing
+
+Embedding work now uses a persistent queue and deduplicates pending documents.
+Token measurement is more precise, requests reserve capacity below provider
+limits, and batch size plus request timeout are configurable. Chunk construction
+also uses document structure and more useful metadata.
+
+#### Extensible File Types and DOCX Support
+
+Local file handling now uses an extensible file type interface. DOCX documents
+can be indexed with extracted text and metadata, and the documentation explains
+the supported local formats and configuration.
+
+#### Chinese, Japanese, and Korean Search
+
+Language detection and language specific indexes now support Chinese, Japanese,
+and Korean documents.
+
+#### GitHub Issue and Pull Request Extraction
+
+The GitHub extractor now understands issue and pull request pages. It indexes
+the title, body, open date, comments, repository metadata, and useful page text.
+
+#### Crawler Proxy Support
+
+HTTP and SOCKS5 proxy URLs can now be configured for every crawler backend. The
+new `--proxy` option also allows crawler backed index and import operations to
+override the configured proxy, including robots.txt requests.
+
+#### RFC Dataset
+
+A new RFC dataset and fetch command make it easier to build a searchable local
+collection of Internet standards.
+
+#### Qutebrowser DevTools Companion
+
+The new `hister companion qutebrowser` command connects to the Qt WebEngine
+DevTools interface and indexes rendered tabs from qutebrowser. It accesses the
+final document after client rendering without requiring a page userscript.
+
+### Enhancements
+
+1. **Search interface**: sort choice is preserved in the URL, result index
+   counts are visible, and the search input remains available while browsing
+   results.
+2. **Semantic results**: returned chunks are limited per document, metadata is
+   richer, and index metadata is stored with the index itself.
+3. **Language aware indexing**: `indexer.keep_stopwords` can retain common words
+   while preserving language detection, normalization, and stemming.
+4. **Crawler efficiency**: already skipped URLs no longer incur the configured
+   crawl delay.
+5. **Import performance**: imports use bulk insertion, retain useful imported
+   titles and processed state, apply labels, and retrieve missing favicons.
+6. **Favicon delivery**: favicons are served through a dedicated endpoint rather
+   than being embedded in document responses.
+7. **Mastodon extraction**: remote toot URLs are resolved to their canonical
+   locations before indexing.
+8. **Command line workflow**: search supports `--sort`, delete supports `--yes`,
+   list files supports `--relative`, and command descriptions are clearer.
+9. **History**: filtering now happens on the server and the selected filter is
+   represented in the page URL.
+10. **Rules interface**: multiple rules can be entered at once and rule lists use
+    descending order by default.
+11. **Browser extension**: pages may be submitted as public documents, Firefox
+    mobile capability differences are handled, and automatic indexing accepts
+    only HTML, XHTML, or plain text documents.
+12. **Website and documentation**: the landing page, onboarding, navigation,
+    accessibility, configuration reference, SEO metadata, and 404 page have been
+    refreshed.
+13. **Operations**: debug profile endpoints are available at debug log level, a
+    sample systemd unit is included, and crawler failure codes are retained for
+    inspection.
+14. **External tools**: `yt-dlp` installation uses upstream releases and
+    concurrent `yt-dlp` extraction is limited.
+15. **Dependencies**: Go modules, npm packages, Nix inputs, GitHub Actions, and
+    browser extension dependencies were updated.
+
+### Bug Fixes
+
+1. SQLite semantic search uses cosine scoring consistently.
+2. MCP search returns semantic results correctly.
+3. Embedding requests avoid provider token limits and reduce batch size when a
+   provider reports an oversized request.
+4. Index resources are closed when initialization fails, absent documents are
+   not deleted again, and document insertion avoids repeated lookups.
+5. Startup only warns about reindexing for analyzer changes when analyzer
+   configuration is present.
+6. Stored previews reject meta refresh redirects.
+7. Document domains no longer include ports, and invalid favicon schemes are
+   ignored.
+8. Public mode history is available to authenticated users and response headers
+   are no longer written more than once.
+9. Field specific phrase queries and a single wildcard query produce the
+   expected matches.
+10. Imports preserve existing titles when extraction finds no replacement, and
+    the JSON input scanner accepts larger records.
+11. The browser extension avoids unavailable command APIs on Firefox mobile and
+    uses a compatible badge text color.
+12. Search result and history titles and URLs retain usable space in narrow
+    layouts.
+
+### Backward Compatibility Notes
+
+The following changes require attention when upgrading from v0.16.0:
+
+1. **Import commands**: `hister import-browser` has been replaced by
+   `hister import browser`. File and directory imports now require the source
+   subcommand, as in `hister import file INPUT`. Imported JSON exports retain
+   their processed content without running extractors again. Browser imports now
+   use persistent crawl jobs and can prompt to resume an unfinished job.
+2. **Date behavior**: the structured `date_from` and `date_to` search parameters,
+   facet date ranges, export date flags, date sorting, history ordering, and
+   history RSS dates now use the document `updated` timestamp instead of
+   `added`. The web interface no longer reads `date_from` or `date_to` from its
+   page URL. Put `added:` or `updated:` expressions in the `q` parameter instead.
+   For newly indexed local files, `added` is the indexing time and `updated` is
+   the file modification time.
+3. **Favicon responses**: search and history results return `favicon_key` instead
+   of embedding stored favicon data. API clients should fetch the image from
+   `/api/favicon?key=FAVICON_KEY`. Legacy inline favicon values remain readable.
+4. **Domain normalization**: newly indexed and reindexed documents store only the
+   hostname in `domain`, without the port. Queries and integrations that expect a
+   host and port value must be adjusted.
+5. **Semantic search**: SQLite vector stores migrate from Euclidean distance to
+   cosine distance. Custom `similarity_threshold` values may need adjustment.
+   When omitted from configuration, the default context length changes from
+   4096 to 512, chunk overlap from 128 to 64, and embedding concurrency from 10
+   to 2.
+6. **Browser extension submissions**: the extension no longer submits images,
+   videos, or other unsupported document types. This content type restriction
+   also applies to manual submission.
+
 ## v0.16.0
 
 ### New Features
