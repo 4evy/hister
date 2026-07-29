@@ -2011,17 +2011,25 @@ type batchResponse struct {
 }
 
 const (
-	maxBatchOps = 100
-	batchOpAdd  = "add"
-	batchOpDel  = "delete"
-	batchOpGet  = "get"
+	maxBatchOps      = 100
+	maxBatchBodySize = 5 << 20
+	batchOpAdd       = "add"
+	batchOpDel       = "delete"
+	batchOpGet       = "get"
 )
 
 // TODO handle data dir updates
 func serveBatch(c *webContext) {
-	c.Request.Body = http.MaxBytesReader(c.Response, c.Request.Body, 5<<20) // 5 MB
+	c.Request.Body = http.MaxBytesReader(c.Response, c.Request.Body, maxBatchBodySize)
 	var req batchRequest
 	if err := json.NewDecoder(c.Request.Body).Decode(&req); err != nil {
+		var maxBytesErr *http.MaxBytesError
+		if errors.As(err, &maxBytesErr) {
+			c.JSONStatus(http.StatusRequestEntityTooLarge, batchResponse{
+				Error: fmt.Sprintf("request body exceeds the %d MiB limit", maxBytesErr.Limit>>20),
+			})
+			return
+		}
 		c.JSONStatus(http.StatusBadRequest, batchResponse{Error: "invalid JSON"})
 		return
 	}
