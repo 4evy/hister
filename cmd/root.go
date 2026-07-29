@@ -286,6 +286,7 @@ func init() {
 	importCmd.AddCommand(importLinkwardenCmd)
 	importCmd.AddCommand(importKarakeepCmd)
 	importCmd.AddCommand(importShaarliCmd)
+	importCmd.AddCommand(importWallabagCmd)
 	importCmd.PersistentFlags().String("label", "", "Label to attach to all imported documents")
 
 	listenCmd.Flags().StringP("address", "a", dcfg.Server.Address, "Listen address")
@@ -303,6 +304,7 @@ func init() {
 	addServiceImportFlags(importLinkwardenCmd, "Linkwarden", linkwardenTokenEnv)
 	addServiceImportFlags(importKarakeepCmd, "Karakeep", karakeepTokenEnv)
 	addServiceImportFlags(importShaarliCmd, "Shaarli", shaarliSecretEnv)
+	addServiceImportFlags(importWallabagCmd, "wallabag", wallabagTokenEnv)
 	addQutebrowserCompanionFlags(companionQutebrowserCmd)
 
 	exportCmd.Flags().String("start-date", "", "only export documents updated on or after this date (YYYY-MM-DD)")

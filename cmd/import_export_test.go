@@ -244,6 +244,7 @@ func TestImportCommandHierarchy(t *testing.T) {
 		"linkwarden": importLinkwardenCmd,
 		"karakeep":   importKarakeepCmd,
 		"shaarli":    importShaarliCmd,
+		"wallabag":   importWallabagCmd,
 	}
 	for name, want := range tests {
 		got, _, err := importCmd.Find([]string{name})
@@ -268,13 +269,13 @@ func TestImportSubcommandFlagOwnership(t *testing.T) {
 	if importCmd.PersistentFlags().Lookup("label") == nil {
 		t.Fatal("import is missing --label")
 	}
-	for _, importCommand := range []*cobra.Command{importFileCmd, importBrowserCmd, importLinkwardenCmd, importKarakeepCmd, importShaarliCmd} {
+	for _, importCommand := range []*cobra.Command{importFileCmd, importBrowserCmd, importLinkwardenCmd, importKarakeepCmd, importShaarliCmd, importWallabagCmd} {
 		if importCommand.InheritedFlags().Lookup("label") == nil {
 			t.Errorf("import %s does not inherit --label", importCommand.Name())
 		}
 	}
 	for _, name := range []string{"batch-size", "start-date", "end-date", "skip-existing", "global", "user-id"} {
-		for _, importCommand := range []*cobra.Command{importFileCmd, importLinkwardenCmd, importKarakeepCmd, importShaarliCmd} {
+		for _, importCommand := range []*cobra.Command{importFileCmd, importLinkwardenCmd, importKarakeepCmd, importShaarliCmd, importWallabagCmd} {
 			if importCommand.Flags().Lookup(name) == nil {
 				t.Errorf("import %s is missing --%s", importCommand.Name(), name)
 			}

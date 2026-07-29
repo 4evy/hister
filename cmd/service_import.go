@@ -486,7 +486,7 @@ func parseServiceTime(value string) int64 {
 	if value == "" {
 		return 0
 	}
-	for _, layout := range []string{time.RFC3339Nano, "2006-01-02"} {
+	for _, layout := range []string{time.RFC3339Nano, "2006-01-02T15:04:05-0700", "2006-01-02"} {
 		if parsed, err := time.Parse(layout, value); err == nil {
 			return parsed.Unix()
 		}

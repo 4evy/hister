@@ -20,6 +20,7 @@ The `hister import` command collects related import tools under one command. Eve
 | `hister import linkwarden INSTANCE_URL`     | A Linkwarden instance through its HTTP API | `linkwarden`  |
 | `hister import karakeep INSTANCE_URL`       | A Karakeep instance through its HTTP API   | `karakeep`    |
 | `hister import shaarli INSTANCE_URL`        | A Shaarli instance through its HTTP API    | `shaarli`     |
+| `hister import wallabag INSTANCE_URL`       | A wallabag instance through its HTTP API   | `wallabag`    |
 
 Use the global `--server-url` and `--token` flags when the destination Hister server differs from your configured server or requires authentication.
 
@@ -226,9 +227,41 @@ Shaarli stores bookmark descriptions rather than complete copies of linked pages
 
 Pagination and batch submission are automatic. Consult the [Shaarli API documentation](https://shaarli.github.io/api-documentation/) and [Shaarli REST API authentication guide](https://shaarli.readthedocs.io/en/master/REST-API.html) when troubleshooting API access.
 
+## Importing from wallabag
+
+Obtain an OAuth access token from wallabag, then store it in the environment before running the import:
+
+```bash
+export HISTER_IMPORT_WALLABAG_TOKEN='your-wallabag-access-token'
+hister import wallabag https://wallabag.example.com
+```
+
+You can use `--api-token` as a temporary override. The wallabag access token is separate from the global `--token` flag, which authenticates with the destination Hister server. Prefer the environment variable so the source token does not appear in shell history or process listings.
+
+### Incremental wallabag Imports
+
+Every imported wallabag document receives `source: wallabag` metadata. Hister searches for `metadata.source:wallabag` and reads the newest imported document timestamp before calling wallabag. If a previous import exists, Hister supplies that timestamp through the wallabag `since` filter and requests entries in ascending update order. Otherwise, it requests every entry.
+
+Deleted wallabag entries are not removed from Hister during an incremental import.
+
+### wallabag Data Mapping
+
+| wallabag value                                            | Hister value            |
+| --------------------------------------------------------- | ----------------------- |
+| URL                                                       | Normalized document URL |
+| Title                                                     | Title                   |
+| Stored article HTML, or downloaded page content           | Searchable text         |
+| Creation date                                             | Added timestamp         |
+| Update date                                               | Updated timestamp       |
+| Tags, authors, status values, reading time, and source ID | Document metadata       |
+
+Hister extracts the article HTML already stored by wallabag and preserves it for offline previews. If the stored content is empty or cannot be extracted, Hister downloads the original URL with the selected crawler backend. Pagination and batch submission are automatic.
+
+Consult the [wallabag OAuth documentation](https://doc.wallabag.org/developer/api/oauth/) and [wallabag API methods](https://doc.wallabag.org/developer/api/methods/) when troubleshooting API access.
+
 ## Service Import Options
 
-The following options apply to Linkwarden, Karakeep, and Shaarli imports:
+The following options apply to Linkwarden, Karakeep, Shaarli, and wallabag imports:
 
 Service imports preserve favicon data supplied by the source. When it is absent, Hister tries the favicon URL discovered while extracting the linked page, or the conventional `/favicon.ico` URL when no page icon is available. A favicon download failure does not stop the import.
 
