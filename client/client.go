@@ -1,11 +1,13 @@
 package client
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -21,6 +23,8 @@ type Client struct {
 	accessToken    string
 	targetUserID   *uint
 	allowSensitive bool
+	batchLimitOnce sync.Once
+	batchBodyBytes int64
 }
 
 type HTTPError struct {
@@ -60,6 +64,16 @@ func WithAllowSensitive() Option {
 	return func(c *Client) { c.allowSensitive = true }
 }
 
+// WithMaxBatchBodyBytes overrides batch capability discovery. It is primarily
+// useful for clients that already obtained the server limit out of band.
+func WithMaxBatchBodyBytes(limit int64) Option {
+	return func(c *Client) {
+		if limit > 0 {
+			c.batchBodyBytes = limit
+		}
+	}
+}
+
 // WithTargetUserID instructs the server to index submitted documents under the
 // given user ID instead of the authenticated caller's ID. The server only
 // honours this for admin users in multiuser mode.
@@ -76,6 +90,38 @@ func New(baseURL string, opts ...Option) *Client {
 		o(c)
 	}
 	return c
+}
+
+const legacyMaxBatchBodyBytes int64 = 5 << 20
+
+// MaxBatchBodyBytes returns the server advertised batch request limit. Servers
+// that predate capability discovery use the former 5 MiB limit.
+func (c *Client) MaxBatchBodyBytes() int64 {
+	c.batchLimitOnce.Do(func() {
+		if c.batchBodyBytes > 0 {
+			return
+		}
+		c.batchBodyBytes = legacyMaxBatchBodyBytes
+		req, err := c.newRequest(http.MethodGet, "/api/config", nil)
+		if err != nil {
+			return
+		}
+		resp, err := c.httpClient.Do(req)
+		if err != nil {
+			return
+		}
+		defer func() { _ = resp.Body.Close() }()
+		if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+			return
+		}
+		var capabilities struct {
+			MaxBatchBodyBytes int64 `json:"maxBatchBodyBytes"`
+		}
+		if err := json.NewDecoder(resp.Body).Decode(&capabilities); err == nil && capabilities.MaxBatchBodyBytes > 0 {
+			c.batchBodyBytes = capabilities.MaxBatchBodyBytes
+		}
+	})
+	return c.batchBodyBytes
 }
 
 func checkStatus(resp *http.Response) error {

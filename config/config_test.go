@@ -32,6 +32,43 @@ func TestServerDefaults(t *testing.T) {
 	if cfg.Server.BaseURL != DefaultServerBaseURL {
 		t.Fatalf("default server base_url=%q, want %q", cfg.Server.BaseURL, DefaultServerBaseURL)
 	}
+	if cfg.Server.MaxBatchBodySize != DefaultMaxBatchBodySize {
+		t.Fatalf("default server max_batch_body_size=%d, want %d", cfg.Server.MaxBatchBodySize, DefaultMaxBatchBodySize)
+	}
+	if cfg.Server.MaxBatchBodyBytes() != 40<<20 {
+		t.Fatalf("default server batch body bytes=%d, want %d", cfg.Server.MaxBatchBodyBytes(), 40<<20)
+	}
+}
+
+func TestServerMaxBatchBodySizeConfig(t *testing.T) {
+	cfg, err := parseConfig([]byte("server:\n  max_batch_body_size: 12\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Server.MaxBatchBodyBytes() != 12<<20 {
+		t.Fatalf("server batch body bytes=%d, want %d", cfg.Server.MaxBatchBodyBytes(), 12<<20)
+	}
+
+	if _, err := parseConfig([]byte("server:\n  max_batch_body_size: 0\n")); err == nil {
+		t.Fatal("zero server.max_batch_body_size was accepted")
+	}
+}
+
+func TestServerMaxBatchBodySizeEnvironmentOverride(t *testing.T) {
+	const envName = "HISTER__SERVER__MAX_BATCH_BODY_SIZE"
+	oldValue, existed := os.LookupEnv(envName)
+	t.Cleanup(func() { restoreEnv(envName, oldValue, existed) })
+	if err := os.Setenv(envName, "24"); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := parseConfig([]byte("server:\n  max_batch_body_size: 12\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Server.MaxBatchBodySize != 24 {
+		t.Fatalf("server.max_batch_body_size=%d, want environment value 24", cfg.Server.MaxBatchBodySize)
+	}
 }
 
 func TestIndexerDefaults(t *testing.T) {

@@ -414,10 +414,6 @@ func importJSONFile(
 
 func addDocumentBatch(c *client.Client, docs []*document.Document) (imported, errCount int) {
 	results, err := c.AddDocumentsJSON(docs)
-	if err != nil {
-		log.Warn().Err(err).Int("documents", len(docs)).Msg("Failed to add document batch")
-		return 0, len(docs)
-	}
 	for i, result := range results {
 		if result.Status >= 200 && result.Status < 300 {
 			imported++
@@ -425,6 +421,11 @@ func addDocumentBatch(c *client.Client, docs []*document.Document) (imported, er
 		}
 		log.Warn().Int("status", result.Status).Str("error", result.Error).Str("url", docs[i].URL).Msg("Failed to add document")
 		errCount++
+	}
+	if err != nil {
+		remaining := len(docs) - len(results)
+		log.Warn().Err(err).Int("documents", remaining).Msg("Failed to add document batch")
+		errCount += remaining
 	}
 	return imported, errCount
 }

@@ -3,6 +3,7 @@ package client
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -22,22 +23,125 @@ type addDocumentOperation struct {
 	*document.Document
 }
 
-// AddDocumentsJSON submits documents in one bulk request.
-func (c *Client) AddDocumentsJSON(docs []*document.Document) (_ []AddDocumentResult, err error) {
-	ops := make([]addDocumentOperation, len(docs))
+type encodedAddDocument struct {
+	data []byte
+}
+
+const maxBatchOperations = 100
+
+// AddDocumentsJSON submits documents in byte bounded bulk requests.
+func (c *Client) AddDocumentsJSON(docs []*document.Document) (results []AddDocumentResult, err error) {
+	if len(docs) == 0 {
+		return []AddDocumentResult{}, nil
+	}
+	ops := make([]encodedAddDocument, len(docs))
 	for i, doc := range docs {
 		if c.allowSensitive {
 			doc.SkipSensitiveCheck = true
 		}
-		ops[i] = addDocumentOperation{Op: "add", Document: doc}
+		data, err := json.Marshal(addDocumentOperation{Op: "add", Document: doc})
+		if err != nil {
+			return results, err
+		}
+		ops[i] = encodedAddDocument{data: data}
 	}
-	data, err := json.Marshal(struct {
-		Ops []addDocumentOperation `json:"ops"`
-	}{Ops: ops})
-	if err != nil {
+
+	limit := c.MaxBatchBodyBytes()
+	results = make([]AddDocumentResult, 0, len(docs))
+	for start := 0; start < len(ops); {
+		if size := encodedBatchSize(ops[start : start+1]); size > limit {
+			results = append(results, oversizedDocumentResult(size, limit))
+			start++
+			continue
+		}
+
+		end := start + 1
+		for end < len(ops) && end-start < maxBatchOperations {
+			if encodedBatchSize(ops[start:end+1]) > limit {
+				break
+			}
+			end++
+		}
+		batchResults, batchErr := c.submitAddDocumentBatch(ops[start:end])
+		results = append(results, batchResults...)
+		if batchErr != nil {
+			return results, batchErr
+		}
+		start = end
+	}
+	return results, nil
+}
+
+func encodedBatchSize(ops []encodedAddDocument) int64 {
+	size := int64(len(`{"ops":[]}`))
+	for i, op := range ops {
+		size += int64(len(op.data))
+		if i > 0 {
+			size++
+		}
+	}
+	return size
+}
+
+func encodeBatch(ops []encodedAddDocument) []byte {
+	var body bytes.Buffer
+	body.Grow(int(encodedBatchSize(ops)))
+	body.WriteString(`{"ops":[`)
+	for i, op := range ops {
+		if i > 0 {
+			body.WriteByte(',')
+		}
+		body.Write(op.data)
+	}
+	body.WriteString(`]}`)
+	return body.Bytes()
+}
+
+func oversizedDocumentResult(size, limit int64) AddDocumentResult {
+	return AddDocumentResult{
+		Status: http.StatusRequestEntityTooLarge,
+		Error:  fmt.Sprintf("encoded document request is %d bytes and exceeds the %d byte server limit", size, limit),
+	}
+}
+
+func (c *Client) submitAddDocumentBatch(ops []encodedAddDocument) ([]AddDocumentResult, error) {
+	data := encodeBatch(ops)
+	results, err := c.sendAddDocumentBatch(data, len(ops))
+	if err == nil {
+		return results, nil
+	}
+	var httpErr *HTTPError
+	if !errors.As(err, &httpErr) || httpErr.StatusCode != http.StatusRequestEntityTooLarge {
 		return nil, err
 	}
-	req, err := c.newRequest("POST", "/api/batch", bytes.NewReader(data))
+	if len(ops) == 1 {
+		message := fmt.Sprintf("server rejected encoded document request of %d bytes as too large", len(data))
+		var response struct {
+			Error      string `json:"error"`
+			LimitBytes int64  `json:"limit_bytes"`
+		}
+		if json.Unmarshal([]byte(httpErr.Detail), &response) == nil {
+			if response.Error != "" {
+				message = response.Error
+			}
+			if response.LimitBytes > 0 {
+				message = fmt.Sprintf("%s; encoded document request is %d bytes", message, len(data))
+			}
+		}
+		return []AddDocumentResult{{Status: http.StatusRequestEntityTooLarge, Error: message}}, nil
+	}
+
+	middle := len(ops) / 2
+	left, err := c.submitAddDocumentBatch(ops[:middle])
+	if err != nil {
+		return left, err
+	}
+	right, err := c.submitAddDocumentBatch(ops[middle:])
+	return append(left, right...), err
+}
+
+func (c *Client) sendAddDocumentBatch(data []byte, documentCount int) (_ []AddDocumentResult, err error) {
+	req, err := c.newRequest(http.MethodPost, "/api/batch", bytes.NewReader(data))
 	if err != nil {
 		return nil, err
 	}
@@ -56,8 +160,8 @@ func (c *Client) AddDocumentsJSON(docs []*document.Document) (_ []AddDocumentRes
 	if err = json.NewDecoder(resp.Body).Decode(&result); err != nil {
 		return nil, err
 	}
-	if len(result.Results) != len(docs) {
-		return nil, fmt.Errorf("batch response contained %d results for %d documents", len(result.Results), len(docs))
+	if len(result.Results) != documentCount {
+		return nil, fmt.Errorf("batch response contained %d results for %d documents", len(result.Results), documentCount)
 	}
 	return result.Results, nil
 }

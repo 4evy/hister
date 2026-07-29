@@ -758,6 +758,7 @@ func serveConfig(c *webContext) {
 		OAuthProviders      []string          `json:"oauthProviders,omitempty"`
 		OAuthOnly           bool              `json:"oauthOnly,omitempty"`
 		DisablePreviews     bool              `json:"disablePreviews,omitempty"`
+		MaxBatchBodyBytes   int64             `json:"maxBatchBodyBytes"`
 	}
 	authMode := "none"
 	authenticated := true
@@ -798,6 +799,7 @@ func serveConfig(c *webContext) {
 		OAuthProviders:      oauthProviders,
 		OAuthOnly:           c.Config.Server.OAuthOnly,
 		DisablePreviews:     c.Config.App.DisablePreviews,
+		MaxBatchBodyBytes:   c.Config.Server.MaxBatchBodyBytes(),
 	})
 }
 
@@ -2006,27 +2008,31 @@ type batchRequest struct {
 }
 
 type batchResponse struct {
-	Results []batchOpResult `json:"results,omitempty"`
-	Error   string          `json:"error,omitempty"`
+	Results    []batchOpResult `json:"results,omitempty"`
+	Error      string          `json:"error,omitempty"`
+	Code       string          `json:"code,omitempty"`
+	LimitBytes int64           `json:"limit_bytes,omitempty"`
 }
 
 const (
-	maxBatchOps      = 100
-	maxBatchBodySize = 5 << 20
-	batchOpAdd       = "add"
-	batchOpDel       = "delete"
-	batchOpGet       = "get"
+	maxBatchOps = 100
+	batchOpAdd  = "add"
+	batchOpDel  = "delete"
+	batchOpGet  = "get"
 )
 
 // TODO handle data dir updates
 func serveBatch(c *webContext) {
-	c.Request.Body = http.MaxBytesReader(c.Response, c.Request.Body, maxBatchBodySize)
+	maxBodyBytes := c.Config.Server.MaxBatchBodyBytes()
+	c.Request.Body = http.MaxBytesReader(c.Response, c.Request.Body, maxBodyBytes)
 	var req batchRequest
 	if err := json.NewDecoder(c.Request.Body).Decode(&req); err != nil {
 		var maxBytesErr *http.MaxBytesError
 		if errors.As(err, &maxBytesErr) {
 			c.JSONStatus(http.StatusRequestEntityTooLarge, batchResponse{
-				Error: fmt.Sprintf("request body exceeds the %d MiB limit", maxBytesErr.Limit>>20),
+				Error:      fmt.Sprintf("request body exceeds the %d MiB limit", maxBytesErr.Limit>>20),
+				Code:       "request_too_large",
+				LimitBytes: maxBytesErr.Limit,
 			})
 			return
 		}

@@ -820,7 +820,7 @@ func init() {
 			Method:       POST,
 			CSRFRequired: true,
 			Handler:      serveBatch,
-			Description:  "Execute up to 100 add/delete/get operations in a single request (5 MB body limit)",
+			Description:  "Execute up to 100 add/delete/get operations in a single request (body limit configured by server.max_batch_body_size, default 40 MiB)",
 			JSONSchema: []*JSONSchemaField{
 				{
 					Name:        "ops",

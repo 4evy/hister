@@ -114,6 +114,12 @@ title: 'Configuration Reference'
       description: 'SQLite filename relative to app.directory or a PostgreSQL DSN. See Database Backends below.',
     },
     {
+      name: 'max_batch_body_size',
+      type: 'int',
+      defaultValue: '40',
+      description: 'Maximum request body size in MiB accepted by the batch API. Import clients use this value to keep submitted batches within the server limit.',
+    },
+    {
       name: 'oauth',
       type: 'map',
       defaultValue: '(none)',

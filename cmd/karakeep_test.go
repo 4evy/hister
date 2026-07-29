@@ -149,7 +149,7 @@ func TestImportKarakeepPaginatesAndMapsContent(t *testing.T) {
 		}
 		return jsonHTTPResponse(req, http.StatusOK, response.String()), nil
 	})}
-	target := client.New("http://hister.example", client.WithHTTPClient(targetHTTPClient))
+	target := client.New("http://hister.example", client.WithHTTPClient(targetHTTPClient), client.WithMaxBatchBodyBytes(40<<20))
 
 	stats, err := importKarakeep(
 		context.Background(),

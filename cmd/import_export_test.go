@@ -153,7 +153,7 @@ func TestImportJSONFileUsesConfiguredBatchSize(t *testing.T) {
 	}
 
 	imported, skipped, errCount := importJSONFile(
-		client.New("http://hister.test", client.WithHTTPClient(httpClient)),
+		client.New("http://hister.test", client.WithHTTPClient(httpClient), client.WithMaxBatchBodyBytes(40<<20)),
 		inputFile,
 		false,
 		0,

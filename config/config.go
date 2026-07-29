@@ -76,12 +76,19 @@ var (
 	DefaultServerBaseURL = ""
 )
 
+const DefaultMaxBatchBodySize int64 = 40
+
 type Server struct {
-	Address   string                 `yaml:"address"     mapstructure:"address"`
-	BaseURL   string                 `yaml:"base_url"    mapstructure:"base_url"`
-	Database  string                 `yaml:"database"    mapstructure:"database"`
-	OAuth     map[string]*OAuthEntry `yaml:"oauth"       mapstructure:"oauth"`
-	OAuthOnly bool                   `yaml:"oauth_only"  mapstructure:"oauth_only"`
+	Address          string                 `yaml:"address"                  mapstructure:"address"`
+	BaseURL          string                 `yaml:"base_url"                 mapstructure:"base_url"`
+	Database         string                 `yaml:"database"                 mapstructure:"database"`
+	MaxBatchBodySize int64                  `yaml:"max_batch_body_size"      mapstructure:"max_batch_body_size"`
+	OAuth            map[string]*OAuthEntry `yaml:"oauth"                    mapstructure:"oauth"`
+	OAuthOnly        bool                   `yaml:"oauth_only"               mapstructure:"oauth_only"`
+}
+
+func (s Server) MaxBatchBodyBytes() int64 {
+	return s.MaxBatchBodySize << 20
 }
 
 // OAuthEntry holds configuration for a single OAuth 2.0 / OIDC provider.
@@ -488,9 +495,10 @@ func CreateDefaultConfig() *Config {
 			DisplayExtractorConfig: false,
 		},
 		Server: Server{
-			Address:  DefaultServerAddress,
-			BaseURL:  DefaultServerBaseURL,
-			Database: "db.sqlite3",
+			Address:          DefaultServerAddress,
+			BaseURL:          DefaultServerBaseURL,
+			Database:         "db.sqlite3",
+			MaxBatchBodySize: DefaultMaxBatchBodySize,
 		},
 		Indexer: Indexer{
 			DetectLanguages: true,
@@ -553,6 +561,10 @@ func parseConfig(rawConfig []byte) (*Config, error) {
 	c := CreateDefaultConfig()
 	if err := v.Unmarshal(&c); err != nil {
 		return nil, err
+	}
+	maxBatchBodySize := int64(^uint64(0)>>1) >> 20
+	if c.Server.MaxBatchBodySize < 1 || c.Server.MaxBatchBodySize > maxBatchBodySize {
+		return nil, fmt.Errorf("server.max_batch_body_size must be between 1 and %d", maxBatchBodySize)
 	}
 
 	if c.Server.BaseURL != "" {

@@ -124,7 +124,7 @@ func TestImportLinkwardenPaginatesAndMapsDocuments(t *testing.T) {
 		}
 		return jsonHTTPResponse(req, http.StatusOK, response.String()), nil
 	})}
-	target := client.New("http://hister.example", client.WithHTTPClient(targetHTTPClient))
+	target := client.New("http://hister.example", client.WithHTTPClient(targetHTTPClient), client.WithMaxBatchBodyBytes(40<<20))
 
 	stats, err := importLinkwarden(context.Background(), source, target, document.NewNullLanguageDetector(), nil, linkwardenImportOptions{BatchSize: 2})
 	if err != nil {
@@ -228,7 +228,7 @@ func TestImportLinkwardenDownloadsMissingURLContent(t *testing.T) {
 		received = body.Ops[0].Document
 		return jsonHTTPResponse(req, http.StatusOK, `{"results":[{"status":201}]}`), nil
 	})}
-	target := client.New("http://hister.example", client.WithHTTPClient(targetHTTPClient))
+	target := client.New("http://hister.example", client.WithHTTPClient(targetHTTPClient), client.WithMaxBatchBodyBytes(40<<20))
 
 	stats, err := importLinkwarden(
 		context.Background(),
@@ -342,7 +342,7 @@ func TestImportLinkwardenSkipsExistingNormalizedURL(t *testing.T) {
 		}
 		return jsonHTTPResponse(req, http.StatusOK, ""), nil
 	})}
-	target := client.New("http://hister.example", client.WithHTTPClient(targetHTTPClient))
+	target := client.New("http://hister.example", client.WithHTTPClient(targetHTTPClient), client.WithMaxBatchBodyBytes(40<<20))
 
 	stats, err := importLinkwarden(context.Background(), source, target, document.NewNullLanguageDetector(), nil, linkwardenImportOptions{
 		BatchSize:    10,

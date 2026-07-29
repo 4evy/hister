@@ -29,7 +29,7 @@ func TestServiceImportBufferDownloadsMissingFavicon(t *testing.T) {
 		received = body.Ops[0].Document
 		return jsonHTTPResponse(req, http.StatusOK, `{"results":[{"status":201}]}`), nil
 	})}
-	target := client.New("http://hister.example", client.WithHTTPClient(targetHTTPClient))
+	target := client.New("http://hister.example", client.WithHTTPClient(targetHTTPClient), client.WithMaxBatchBodyBytes(40<<20))
 	buffer, err := newServiceImportBuffer(
 		"test",
 		target,

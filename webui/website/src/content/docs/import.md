@@ -26,6 +26,8 @@ Use the global `--server-url` and `--token` flags when the destination Hister se
 
 Use `--label LABEL` with any import source to attach the same label to every imported document. Without this flag, labels stored in imported documents or resumed browser jobs are preserved. The default shown above is applied only when no label was supplied by the user or the imported document.
 
+Hister also limits each batch according to the byte limit advertised by the destination server. Documents are serialized before batching so stored HTML and other large fields are measured accurately. If another HTTP server imposes a smaller limit, Hister splits a rejected batch and retries it automatically. A document that exceeds the limit by itself is reported with its URL, encoded size, and the server limit when known.
+
 ## Importing Files
 
 Use `hister import file` with any number of files or directories:
@@ -51,7 +53,7 @@ The following options apply to file imports:
 | ------------------------- | ----------------------------------------------------------- |
 | `--skip-existing`         | Keep documents whose URL already exists in Hister           |
 | `--label LABEL`           | Override stored labels and the default `import` label       |
-| `--batch-size N`          | Submit from 1 through 100 documents per request             |
+| `--batch-size N`          | Submit at most 1 through 100 documents per request          |
 | `--start-date YYYY-MM-DD` | Import documents added on or after the date                 |
 | `--end-date YYYY-MM-DD`   | Import documents added on or before the date                |
 | `--global`                | Import for all users when authenticated as an administrator |
