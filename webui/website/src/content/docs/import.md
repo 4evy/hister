@@ -17,6 +17,7 @@ The `hister import` command collects related import tools under one command. Eve
 | ------------------------------------------- | ------------------------------------------ | ------------- |
 | `hister import file INPUT...`               | Hister exports, archives, and saved pages  | `import`      |
 | `hister import browser [BROWSER] [DB_PATH]` | Browser history databases                  | `browser`     |
+| `hister import linkding INSTANCE_URL`       | A Linkding instance through its HTTP API   | `linkding`    |
 | `hister import linkwarden INSTANCE_URL`     | A Linkwarden instance through its HTTP API | `linkwarden`  |
 | `hister import karakeep INSTANCE_URL`       | A Karakeep instance through its HTTP API   | `karakeep`    |
 | `hister import shaarli INSTANCE_URL`        | A Shaarli instance through its HTTP API    | `shaarli`     |
@@ -129,6 +130,42 @@ hister import browser \
 The `--backend-option`, `--header`, and `--cookie` flags can be repeated. Use `--proxy` with an `http://` or `socks5://` URL. Cookies use `Set-Cookie` syntax and require a `Domain` attribute. See [Website Crawler](crawler) for all crawler settings and backend limitations.
 
 Automated requests can be rejected by bot protection, expired sessions, removed pages, or network failures. Failed URLs remain visible through `hister crawl errors` and can be retried by continuing the job.
+
+## Importing from Linkding
+
+Copy the API token from the Linkding settings page, then store it in the environment before running the import:
+
+```bash
+export HISTER_IMPORT_LINKDING_TOKEN='your-linkding-token'
+hister import linkding https://linkding.example.com
+```
+
+You can use `--api-token` as a temporary override. The Linkding API token is separate from the global `--token` flag, which authenticates with the destination Hister server. Prefer the environment variable so the Linkding token does not appear in shell history or process listings.
+
+### Incremental Linkding Imports
+
+Every imported Linkding document receives `source: linkding` metadata. Hister searches for `metadata.source:linkding` and reads the newest imported document timestamp before calling Linkding. If a previous import exists, the importer supplies that timestamp through the `modified_since` filter for both active and archived bookmarks. Otherwise, it requests every bookmark.
+
+Deleted Linkding bookmarks are not removed from Hister during an incremental import.
+
+### Linkding Data Mapping
+
+| Linkding value                                     | Hister value            |
+| -------------------------------------------------- | ----------------------- |
+| URL                                                | Normalized document URL |
+| Title                                              | Title                   |
+| Description, notes, and downloaded page content    | Searchable text         |
+| Added date                                         | Added timestamp         |
+| Modification date                                  | Updated timestamp       |
+| Favicon                                            | Document favicon        |
+| Tags, archive state, unread state, sharing, and ID | Document metadata       |
+| Archive snapshot and preview image URLs            | Document metadata       |
+
+Records without a URL are skipped because every Hister document requires a URL. Active and archived pagination and batch submission are automatic.
+
+Linkding stores bookmark metadata rather than complete copies of linked pages. Hister therefore downloads every bookmarked page using the configured crawler backend and combines its extracted content with the stored description and notes.
+
+Consult the [Linkding API documentation](https://linkding.link/api/) when troubleshooting API access.
 
 ## Importing from Linkwarden
 
@@ -263,7 +300,7 @@ Consult the [wallabag OAuth documentation](https://doc.wallabag.org/developer/ap
 
 ## Service Import Options
 
-The following options apply to Linkwarden, Karakeep, Shaarli, and wallabag imports:
+The following options apply to Linkding, Linkwarden, Karakeep, Shaarli, and wallabag imports:
 
 Service imports preserve favicon data supplied by the source. When it is absent, Hister tries the favicon URL discovered while extracting the linked page, or the conventional `/favicon.ico` URL when no page icon is available. A favicon download failure does not stop the import.
 

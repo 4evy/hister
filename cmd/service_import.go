@@ -32,7 +32,8 @@ const (
 type serviceAPIClient struct {
 	name                string
 	baseURL             string
-	bearerTokenProvider func() string
+	authorizationScheme string
+	tokenProvider       func() string
 	tokenHint           string
 	httpClient          *http.Client
 }
@@ -44,9 +45,10 @@ func newServiceAPIClient(
 	tokenHint string,
 	httpClient *http.Client,
 ) (*serviceAPIClient, error) {
-	return newServiceAPIClientWithBearerToken(
+	return newServiceAPIClientWithAuthorization(
 		name,
 		instanceURL,
+		"Bearer",
 		func() string { return token },
 		tokenHint,
 		httpClient,
@@ -57,6 +59,24 @@ func newServiceAPIClientWithBearerToken(
 	name string,
 	instanceURL string,
 	bearerTokenProvider func() string,
+	tokenHint string,
+	httpClient *http.Client,
+) (*serviceAPIClient, error) {
+	return newServiceAPIClientWithAuthorization(
+		name,
+		instanceURL,
+		"Bearer",
+		bearerTokenProvider,
+		tokenHint,
+		httpClient,
+	)
+}
+
+func newServiceAPIClientWithAuthorization(
+	name string,
+	instanceURL string,
+	authorizationScheme string,
+	tokenProvider func() string,
 	tokenHint string,
 	httpClient *http.Client,
 ) (*serviceAPIClient, error) {
@@ -73,6 +93,13 @@ func newServiceAPIClientWithBearerToken(
 	}
 	if parsed.RawQuery != "" || parsed.Fragment != "" {
 		return nil, fmt.Errorf("invalid %s instance URL: query parameters and fragments are not supported", name)
+	}
+	authorizationScheme = strings.TrimSpace(authorizationScheme)
+	if authorizationScheme == "" || strings.ContainsAny(authorizationScheme, " \t\r\n") {
+		return nil, fmt.Errorf("invalid %s authorization scheme", name)
+	}
+	if tokenProvider == nil {
+		return nil, fmt.Errorf("missing %s token provider", name)
 	}
 	if httpClient == nil {
 		httpClient = &http.Client{
@@ -93,7 +120,8 @@ func newServiceAPIClientWithBearerToken(
 	return &serviceAPIClient{
 		name:                name,
 		baseURL:             strings.TrimRight(parsed.String(), "/"),
-		bearerTokenProvider: bearerTokenProvider,
+		authorizationScheme: authorizationScheme,
+		tokenProvider:       tokenProvider,
 		tokenHint:           tokenHint,
 		httpClient:          httpClient,
 	}, nil
@@ -110,7 +138,7 @@ func (c *serviceAPIClient) getJSON(ctx context.Context, endpoint string, query u
 		return fmt.Errorf("create %s request: %w", c.name, err)
 	}
 	req.Header.Set("Accept", "application/json")
-	req.Header.Set("Authorization", "Bearer "+c.bearerTokenProvider())
+	req.Header.Set("Authorization", c.authorizationScheme+" "+c.tokenProvider())
 	req.Header.Set("User-Agent", UserAgent)
 
 	resp, err := c.httpClient.Do(req)

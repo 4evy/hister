@@ -283,6 +283,7 @@ func init() {
 	companionCmd.AddCommand(companionQutebrowserCmd)
 	importCmd.AddCommand(importFileCmd)
 	importCmd.AddCommand(importBrowserCmd)
+	importCmd.AddCommand(importLinkdingCmd)
 	importCmd.AddCommand(importLinkwardenCmd)
 	importCmd.AddCommand(importKarakeepCmd)
 	importCmd.AddCommand(importShaarliCmd)
@@ -301,6 +302,7 @@ func init() {
 	crawlQueueCmd.Flags().BoolP("count", "c", false, "only print the number of queued URLs")
 
 	addDocumentImportFlags(importFileCmd)
+	addServiceImportFlags(importLinkdingCmd, "Linkding", linkdingTokenEnv)
 	addServiceImportFlags(importLinkwardenCmd, "Linkwarden", linkwardenTokenEnv)
 	addServiceImportFlags(importKarakeepCmd, "Karakeep", karakeepTokenEnv)
 	addServiceImportFlags(importShaarliCmd, "Shaarli", shaarliSecretEnv)
