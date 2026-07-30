@@ -35,6 +35,8 @@ func (g GoogleOAuth) GetRedirectURL(req *RedirectURIRequest) string {
 	params.Add("response_type", responseTypeCode.String())
 	params.Add("redirect_uri", req.redirectURI)
 	params.Add("state", req.state)
+	scopeName, defaultScopes := g.GetScope()
+	addScopes(*params, scopeName, defaultScopes, req.scopes)
 
 	return g.AuthURL + "?" + params.Encode()
 }

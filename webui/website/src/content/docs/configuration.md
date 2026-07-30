@@ -274,7 +274,7 @@ title: 'Configuration Reference'
       name: 'scopes',
       type: '[]string',
       requirement: 'Optional',
-      description: 'Additional OAuth scopes to request. Provider defaults are used when omitted.',
+      description: 'Additional OAuth scopes to request. Provider defaults are always included.',
     },
   ];
 

@@ -115,11 +115,8 @@ func (o *OIDCOAuth) GetRedirectURL(req *RedirectURIRequest) string {
 	params.Add("redirect_uri", req.redirectURI)
 	params.Add("state", req.state)
 
-	scopes := req.scopes
-	if len(scopes) == 0 {
-		scopes = []string{string(scopeOpenID), string(scopeProfile), string(scopeEmail)}
-	}
-	params.Add("scope", strings.Join(scopes, " "))
+	scopeName, defaultScopes := o.GetScope()
+	addScopes(*params, scopeName, defaultScopes, req.scopes)
 
 	return o.AuthURL + "?" + params.Encode()
 }

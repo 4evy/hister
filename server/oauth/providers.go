@@ -33,6 +33,8 @@ package oauth
 import (
 	"context"
 	"net/http"
+	"net/url"
+	"strings"
 )
 
 const (
@@ -109,9 +111,33 @@ func NewPrepareRequest(cURL string) *PrepareRequest {
 }
 
 // NewRedirectURIRequest creates a new RedirectURIRequest with the given parameters.
-// scopes is the list of OAuth scopes to request; if empty, the provider will use its defaults.
+// scopes is a list of additional OAuth scopes. Provider defaults are always included.
 func NewRedirectURIRequest(clientID string, redirectURI string, state string, scopes []string) *RedirectURIRequest {
 	return &RedirectURIRequest{clientID: clientID, redirectURI: redirectURI, state: state, scopes: scopes}
+}
+
+func addScopes(params url.Values, name ScopeName, defaults ScopeValue, configured []string) {
+	scopes := make([]string, 0, len(configured)+1)
+	seen := make(map[string]struct{}, cap(scopes))
+
+	add := func(value string) {
+		for scope := range strings.FieldsSeq(value) {
+			if _, ok := seen[scope]; ok {
+				continue
+			}
+			seen[scope] = struct{}{}
+			scopes = append(scopes, scope)
+		}
+	}
+
+	add(defaults.String())
+	for _, scope := range configured {
+		add(scope)
+	}
+
+	if len(scopes) > 0 {
+		params.Set(name.String(), strings.Join(scopes, " "))
+	}
 }
 
 // NewTokenRequest creates a new TokenRequest with the given parameters.

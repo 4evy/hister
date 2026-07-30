@@ -8,15 +8,11 @@ import (
 	"io"
 	"net/http"
 	"net/url"
-	"strings"
 
 	servererrors "github.com/asciimoo/hister/server/errors"
 )
 
-const (
-	scopeReadUser  ScopeValue = "read:user"
-	scopeUserEmail ScopeValue = "user:email"
-)
+const scopeReadUser ScopeValue = "read:user"
 
 // GitHubOAuth implements OAuth 2.0 authentication for GitHub.
 type GitHubOAuth struct {
@@ -32,10 +28,11 @@ func (g GitHubOAuth) GetRedirectURL(req *RedirectURIRequest) string {
 	params := &url.Values{}
 
 	params.Add("client_id", req.clientID)
-	params.Add("scope", scopeReadUser.String())
 	params.Add("response_type", responseTypeCode.String())
 	params.Add("redirect_uri", req.redirectURI)
 	params.Add("state", req.state)
+	scopeName, defaultScopes := g.GetScope()
+	addScopes(*params, scopeName, defaultScopes, req.scopes)
 
 	return g.AuthURL + "?" + params.Encode()
 }
@@ -106,11 +103,5 @@ func (g GitHubOAuth) GetUserInfo(ctx context.Context, response TokenResponse) (*
 
 // GetScope returns the OAuth scopes required for GitHub authentication.
 func (g GitHubOAuth) GetScope() (ScopeName, ScopeValue) {
-	str := &strings.Builder{}
-
-	str.WriteString(scopeReadUser.String())
-	str.WriteRune(' ')
-	str.WriteString(scopeUserEmail.String())
-
-	return scopeName, ScopeValue(str.String())
+	return scopeName, scopeReadUser
 }
