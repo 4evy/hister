@@ -57,11 +57,12 @@ type browserDB struct {
 }
 
 type importHistoryMultipleChoicePrompt struct {
-	choice string
-	urls   int
-	db     *sql.DB
-	q      string
-	c      *client.Client
+	choice  string
+	urls    int
+	skipped int
+	db      *sql.DB
+	q       string
+	c       *client.Client
 }
 
 type DBToImport struct {
@@ -219,14 +220,16 @@ func importDB(databases []DBToImport, cmd *cobra.Command) {
 			}
 		}
 
-		q := fmt.Sprintf("SELECT DISTINCT count(url) FROM %s WHERE url LIKE 'http://%%' OR url LIKE 'https://%%'", table)
-		if i, err := cmd.Flags().GetInt("min-visit"); err == nil && i > 1 {
-			q += fmt.Sprintf(" AND visit_count >= %d", i)
+		minVisit, err := cmd.Flags().GetInt("min-visit")
+		if err != nil {
+			log.Error().Err(err).Msg("Failed to read minimum visit count")
+			return
 		}
-		// TODO: apply skip rules to get a more precise count?
-		row := db.QueryRow(q)
-		var count int
-		if err := row.Scan(&count); err != nil {
+		q := browserImportURLQuery(table, minVisit)
+		count, skipped, err := countBrowserImportURLs(db, q, func(u string) bool {
+			return !cfg.App.UserHandling && cfg.Rules.IsSkip(u)
+		})
+		if err != nil {
 			log.Debug().Str("query", q).Msg("count query")
 			log.Error().Err(err).Msg("Failed to execute counting query")
 			return
@@ -235,7 +238,14 @@ func importDB(databases []DBToImport, cmd *cobra.Command) {
 		if count < 1 {
 			exit(1, "No URLs found to import")
 		}
-		dbsToImport = append(dbsToImport, importHistoryMultipleChoicePrompt{dbFile, count, db, q, c})
+		dbsToImport = append(dbsToImport, importHistoryMultipleChoicePrompt{
+			choice:  dbFile,
+			urls:    count,
+			skipped: skipped,
+			db:      db,
+			q:       q,
+			c:       c,
+		})
 		// if !yesNoPrompt(fmt.Sprintf("%d URLs found. Start import form "+dbFile, count), true) {
 		// 	return
 		// }
@@ -266,7 +276,6 @@ func importDB(databases []DBToImport, cmd *cobra.Command) {
 		count := database.count
 		db := database.db
 
-		q = strings.Replace(q, "count(url)", "url", 1)
 		q += " ORDER BY visit_count DESC"
 
 		rows, err := db.Query(q)
@@ -381,6 +390,38 @@ func importDB(databases []DBToImport, cmd *cobra.Command) {
 	if err := crawlAndIndex(job.id, job.startURL, cr, validator, job.label); err != nil {
 		log.Fatal().Err(err).Msg("Browser import crawl failed")
 	}
+}
+
+func browserImportURLQuery(table string, minVisit int) string {
+	q := fmt.Sprintf("SELECT DISTINCT url FROM %s WHERE (url LIKE 'http://%%' OR url LIKE 'https://%%')", table)
+	if minVisit > 1 {
+		q += fmt.Sprintf(" AND visit_count >= %d", minVisit)
+	}
+	return q
+}
+
+func countBrowserImportURLs(db *sql.DB, query string, isSkip func(string) bool) (count, skipped int, err error) {
+	rows, err := db.Query(query)
+	if err != nil {
+		return 0, 0, err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var u string
+		if err := rows.Scan(&u); err != nil {
+			return 0, 0, err
+		}
+		if isSkip != nil && isSkip(u) {
+			skipped++
+			continue
+		}
+		count++
+	}
+	if err := rows.Err(); err != nil {
+		return 0, 0, err
+	}
+	return count, skipped, nil
 }
 
 func ensureBrowserImportJob(job *browserImportJob, startURL string) error {
@@ -820,6 +861,9 @@ func multipleChoiceImport(choices []importHistoryMultipleChoicePrompt) []DBToImp
 	for i, choiceData := range choices {
 		prefix := getBrowserType(choiceData.choice)
 		choice := fmt.Sprint(strconv.Itoa(i), "  |  ", prefix, "  ", choiceData.choice, "  urls: ", choiceData.urls)
+		if choiceData.skipped > 0 {
+			choice += fmt.Sprintf("  skipped by rules: %d", choiceData.skipped)
+		}
 		println(choice)
 		returnDBs = append(returnDBs, DBToImport{
 			name:        prefix,
