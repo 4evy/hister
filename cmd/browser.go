@@ -405,7 +405,11 @@ func countBrowserImportURLs(db *sql.DB, query string, isSkip func(string) bool) 
 	if err != nil {
 		return 0, 0, err
 	}
-	defer rows.Close()
+	defer func() {
+		if closeErr := rows.Close(); err == nil && closeErr != nil {
+			err = closeErr
+		}
+	}()
 
 	for rows.Next() {
 		var u string
