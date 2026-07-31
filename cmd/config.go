@@ -3,6 +3,7 @@ package cmd
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 
 	"github.com/asciimoo/hister/config"
 
@@ -26,7 +27,7 @@ var createConfigCmd = &cobra.Command{
 			if _, err := os.Stat(fname); err == nil {
 				exit(1, fmt.Sprintf(`File "%s" already exists`, fname))
 			}
-			if err := os.WriteFile(fname, cb, 0o600); err != nil {
+			if err := writeDefaultConfigFile(fname, cb); err != nil {
 				exit(1, `Failed to create config file: `+err.Error())
 			}
 			fmt.Println(cliSuccessStyle.Render("✓") + " Config file created: " + cliInfoStyle.Render(fname))
@@ -34,4 +35,14 @@ var createConfigCmd = &cobra.Command{
 			fmt.Print(string(cb))
 		}
 	},
+}
+
+func writeDefaultConfigFile(filename string, content []byte) error {
+	if err := os.MkdirAll(filepath.Dir(filename), 0o700); err != nil {
+		return fmt.Errorf("create config directory: %w", err)
+	}
+	if err := os.WriteFile(filename, content, 0o600); err != nil {
+		return err
+	}
+	return nil
 }
