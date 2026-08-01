@@ -1,17 +1,49 @@
-import { defineConfig } from 'vite';
+import { build, defineConfig } from 'vite';
 import { svelte } from '@sveltejs/vite-plugin-svelte';
 import tailwindcss from '@tailwindcss/vite';
 import { resolve } from 'path';
 import { readFileSync, writeFileSync, mkdirSync, copyFileSync } from 'fs';
+import { Script } from 'vm';
 
-function extensionPlugin() {
+async function buildClassicBackground(root: string, distDir: string, mode: string) {
+  await build({
+    configFile: false,
+    root,
+    publicDir: false,
+    build: {
+      outDir: distDir,
+      emptyOutDir: false,
+      sourcemap: true,
+      minify: mode === 'production',
+      rolldownOptions: {
+        input: {
+          background: resolve(root, 'src/background/background.ts'),
+        },
+        output: {
+          format: 'iife',
+          entryFileNames: 'background.js',
+        },
+      },
+    },
+  });
+
+  const backgroundFile = resolve(distDir, 'background.js');
+  new Script(readFileSync(backgroundFile, 'utf-8'), { filename: backgroundFile });
+}
+
+function extensionPlugin(mode: string) {
   return {
     name: 'browser-extension',
-    writeBundle() {
+    buildStart() {
+      this.addWatchFile(resolve(import.meta.dirname, 'src/background/background.ts'));
+    },
+    async writeBundle() {
       const root = import.meta.dirname;
       const distDir = resolve(root, 'dist');
       const pkg = JSON.parse(readFileSync(resolve(root, 'package.json'), 'utf-8'));
       const base = JSON.parse(readFileSync(resolve(root, 'src/manifest.json'), 'utf-8'));
+
+      await buildClassicBackground(root, distDir, mode);
 
       // Chrome manifest
       const chrome = structuredClone(base);
@@ -61,7 +93,6 @@ export default defineConfig(({ mode }) => ({
     minify: mode === 'production',
     rolldownOptions: {
       input: {
-        background: resolve(import.meta.dirname, 'src/background/background.ts'),
         content: resolve(import.meta.dirname, 'src/content/content.ts'),
         popup: resolve(import.meta.dirname, 'src/popup/popup.ts'),
         options: resolve(import.meta.dirname, 'src/options/options.ts'),
@@ -78,5 +109,5 @@ export default defineConfig(({ mode }) => ({
       },
     },
   },
-  plugins: [tailwindcss(), svelte(), extensionPlugin()],
+  plugins: [tailwindcss(), svelte(), extensionPlugin(mode)],
 }));
