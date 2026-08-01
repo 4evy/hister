@@ -27,10 +27,18 @@ async function fetchFavicon(url: string): Promise<string> {
 
 const unauthorizedStatuses = new Set([401, 403]);
 
-async function getStoredServerCookies(): Promise<string> {
+type StoredAuth = {
+  cookieHeader: string;
+  accessToken: string;
+};
+
+async function getStoredAuth(): Promise<StoredAuth> {
   return new Promise((resolve) => {
-    chrome.storage.local.get(['histerCookies'], (data) => {
-      resolve(data['histerCookies'] || '');
+    chrome.storage.local.get(['histerCookies', 'histerToken'], (data) => {
+      resolve({
+        cookieHeader: data['histerCookies'] || '',
+        accessToken: data['histerToken'] || '',
+      });
     });
   });
 }
@@ -112,9 +120,14 @@ async function fetchAPI(
     body?: unknown;
     formData?: Record<string, string>;
     customHeaders?: { name: string; value: string }[];
+    accessToken?: string;
   } = {},
 ): Promise<Response> {
-  const cookieHeader = await getStoredServerCookies();
+  const storedAuth = await getStoredAuth();
+  const cookieHeader = storedAuth.cookieHeader;
+  const accessToken = (
+    options.accessToken === undefined ? storedAuth.accessToken : options.accessToken
+  ).trim();
   const headers: Record<string, string> = {};
 
   if (options.body !== undefined) {
@@ -124,6 +137,14 @@ async function fetchAPI(
   }
   for (const h of options.customHeaders ?? []) {
     if (h.name) headers[h.name] = h.value || '';
+  }
+  if (accessToken) {
+    for (const name of Object.keys(headers)) {
+      if (name.toLowerCase() === 'x-access-token') {
+        delete headers[name];
+      }
+    }
+    headers['X-Access-Token'] = accessToken;
   }
 
   let fetchBody: BodyInit | undefined;

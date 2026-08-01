@@ -361,9 +361,13 @@ chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
 
 chrome.storage.onChanged.addListener(async (changes, area) => {
   if (area !== 'local') return;
-  if (!('indexingEnabled' in changes || 'histerURL' in changes || 'showIndexedBadge' in changes))
-    return;
-  if ('histerURL' in changes) skipRulesCache = null;
+  const connectionChanged =
+    'histerURL' in changes ||
+    'histerToken' in changes ||
+    'histerCookies' in changes ||
+    'histerCustomHeaders' in changes;
+  if (!(connectionChanged || 'indexingEnabled' in changes || 'showIndexedBadge' in changes)) return;
+  if (connectionChanged) skipRulesCache = null;
   try {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
     if (tab?.id && tab.url) await updateTabIcon(tab.id, tab.url);

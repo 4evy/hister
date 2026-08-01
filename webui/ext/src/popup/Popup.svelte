@@ -15,6 +15,7 @@
   const defaultURL = 'http://127.0.0.1:4433/';
 
   let url = $state(defaultURL);
+  let accessToken = $state('');
   let customHeaders: { name: string; value: string }[] = $state([]);
   let indexingEnabled = $state(true);
   let showIndexedBadge = $state(false);
@@ -61,12 +62,12 @@
     }
   }
 
-  function checkAuth(serverURL: string): Promise<boolean> {
+  function checkAuth(serverURL: string, token = accessToken): Promise<boolean> {
     let authURL = serverURL;
     if (!authURL.endsWith('/')) {
       authURL += '/';
     }
-    return fetchAPI(authURL + 'api/profile', { customHeaders })
+    return fetchAPI(authURL + 'api/profile', { customHeaders, accessToken: token })
       .then(async (r) => {
         if (!r.ok) {
           authCheckPassed = false;
@@ -92,6 +93,7 @@
   chrome.storage.local.get(
     [
       'histerURL',
+      'histerToken',
       'histerCustomHeaders',
       'indexingEnabled',
       'histerLabel',
@@ -104,6 +106,7 @@
         chrome.storage.local.set({ histerURL: defaultURL });
       }
       url = data['histerURL'] || defaultURL;
+      accessToken = data['histerToken'] || '';
       customHeaders = Array.isArray(data['histerCustomHeaders']) ? data['histerCustomHeaders'] : [];
       indexingEnabled = data['indexingEnabled'] !== false;
       showIndexedBadge = data['showIndexedBadge'] === true;
@@ -171,7 +174,7 @@
     } catch (_) {}
   }
 
-  function save(e: Event) {
+  async function save(e: Event) {
     e.preventDefault();
 
     let verifyURL = url;
@@ -179,38 +182,44 @@
       verifyURL += '/';
     }
 
-    fetchAPI(verifyURL + 'api/config', { customHeaders })
-      .then((response) => {
-        if (response.status !== 200) {
-          setErrorMessage(`Server returned status ${response.status}`);
-          return;
-        }
-        return response
-          .json()
-          .then(() => {
-            chrome.storage.local
-              .set({
-                histerURL: url,
-                histerCustomHeaders: $state.snapshot(customHeaders),
-                submitPublicDocuments: isAuthenticated(profileUserID) && submitPublicDocuments,
-              })
-              .then(() => {
-                setSuccessMessage('Settings saved');
-
-                chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-                  if (tabs?.length) {
-                    chrome.action.setBadgeText({ text: '', tabId: tabs[0].id! });
-                  }
-                });
-              });
-          })
-          .catch(() => {
-            setErrorMessage('Server response is not valid JSON - probably invalid server URL.');
-          });
-      })
-      .catch((err) => {
-        setErrorMessage(err.message);
+    const tokenToSave = accessToken.trim();
+    try {
+      const response = await fetchAPI(verifyURL + 'api/config', {
+        customHeaders,
+        accessToken: tokenToSave,
       });
+      if (response.status !== 200) {
+        setErrorMessage(`Server returned status ${response.status}`);
+        return;
+      }
+      try {
+        await response.json();
+      } catch (_) {
+        setErrorMessage('Server response is not valid JSON - probably invalid server URL.');
+        return;
+      }
+      await chrome.storage.local.set({
+        histerURL: url,
+        histerToken: tokenToSave,
+        histerCustomHeaders: $state.snapshot(customHeaders),
+        submitPublicDocuments: isAuthenticated(profileUserID) && submitPublicDocuments,
+      });
+      accessToken = tokenToSave;
+      const authenticated = await checkAuth(url, tokenToSave);
+      if (tokenToSave && !authenticated) {
+        setErrorMessage('Settings saved, but the access token was rejected.');
+      } else {
+        setSuccessMessage('Settings saved');
+      }
+
+      chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+        if (tabs?.length) {
+          chrome.action.setBadgeText({ text: '', tabId: tabs[0].id! });
+        }
+      });
+    } catch (error) {
+      setErrorMessage((error as Error).message);
+    }
   }
 
   function toggleIndexing() {
@@ -339,6 +348,14 @@
       <Card.Content class="space-y-4 p-5">
         <form onsubmit={save} class="space-y-4">
           <SettingsInput label="Server URL" bind:value={url} placeholder="Server URL..." />
+
+          <SettingsInput
+            label="Access Token"
+            bind:value={accessToken}
+            type="password"
+            placeholder="Optional access token..."
+            description="Authenticate with a global or personal access token. Leave blank to use browser cookies."
+          />
 
           <Button
             type="submit"
@@ -510,7 +527,7 @@
           onclick={authenticate}
           class="border-brutal-border font-outfit hover:border-hister-indigo h-9 w-full border-[3px] text-sm font-bold tracking-wide transition-all hover:shadow-[3px_3px_0_var(--brutal-shadow)]"
         >
-          Authenticate Extension
+          Authenticate with Browser Session
         </Button>
       </div>
     {/if}

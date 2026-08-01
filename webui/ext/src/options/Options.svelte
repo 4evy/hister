@@ -12,6 +12,7 @@
   const defaultURL = 'http://127.0.0.1:4433/';
 
   let url = $state(defaultURL);
+  let accessToken = $state('');
   let customHeaders: { name: string; value: string }[] = $state([]);
   let submitPublicDocuments = $state(false);
   let profileUserID = $state(0);
@@ -23,12 +24,19 @@
   }
 
   chrome.storage.local.get(
-    ['histerURL', 'histerCustomHeaders', 'submitPublicDocuments', 'histerProfileUserID'],
+    [
+      'histerURL',
+      'histerToken',
+      'histerCustomHeaders',
+      'submitPublicDocuments',
+      'histerProfileUserID',
+    ],
     (data) => {
       if (!data['histerURL']) {
         chrome.storage.local.set({ histerURL: defaultURL });
       }
       url = data['histerURL'] || defaultURL;
+      accessToken = data['histerToken'] || '';
       customHeaders = Array.isArray(data['histerCustomHeaders']) ? data['histerCustomHeaders'] : [];
       submitPublicDocuments = data['submitPublicDocuments'] === true;
       profileUserID = Number(data['histerProfileUserID'] ?? 0);
@@ -48,6 +56,7 @@
   async function refreshProfileUserID(
     serverURL: string,
     headersList = customHeaders,
+    token = accessToken,
   ): Promise<boolean> {
     let profileURL = serverURL;
     if (!profileURL.endsWith('/')) {
@@ -56,15 +65,19 @@
     try {
       const response = await fetchAPI(profileURL + 'api/profile', {
         customHeaders: headersList,
+        accessToken: token,
       });
       if (!response.ok) {
         setProfileUserID(0);
         return false;
       }
-      const profile = await response.json();
-      const userID = Number(profile?.user_id ?? 0);
+      let userID = 0;
+      try {
+        const profile = await response.json();
+        userID = Number(profile?.user_id ?? 0);
+      } catch (_) {}
       setProfileUserID(userID);
-      return isAuthenticated(userID);
+      return true;
     } catch (_) {
       setProfileUserID(0);
       return false;
@@ -79,21 +92,26 @@
     customHeaders.splice(index, 1);
   }
 
-  function save(e: Event) {
+  async function save(e: Event) {
     e.preventDefault();
     const headersToSave = customHeaders.filter((h) => h.name.trim() !== '');
-    chrome.storage.local
-      .set({
-        histerURL: url,
-        histerCustomHeaders: $state.snapshot(headersToSave),
-        submitPublicDocuments: isAuthenticated(profileUserID) && submitPublicDocuments,
-      })
-      .then(() => {
-        customHeaders = headersToSave;
-        message = 'Settings saved';
-        messageType = 'success';
-        refreshProfileUserID(url, headersToSave);
-      });
+    const tokenToSave = accessToken.trim();
+    await chrome.storage.local.set({
+      histerURL: url,
+      histerToken: tokenToSave,
+      histerCustomHeaders: $state.snapshot(headersToSave),
+      submitPublicDocuments: isAuthenticated(profileUserID) && submitPublicDocuments,
+    });
+    customHeaders = headersToSave;
+    accessToken = tokenToSave;
+    const authenticated = await refreshProfileUserID(url, headersToSave, tokenToSave);
+    if (tokenToSave && !authenticated) {
+      message = 'Settings saved, but the access token was rejected.';
+      messageType = 'error';
+    } else {
+      message = 'Settings saved';
+      messageType = 'success';
+    }
   }
 
   function toggleSubmitPublicDocuments() {
@@ -185,6 +203,14 @@
             description="The full URL of your Hister server, including the port number."
           />
 
+          <SettingsInput
+            label="Access Token"
+            bind:value={accessToken}
+            type="password"
+            placeholder="Optional access token..."
+            description="Authenticate with a global or personal access token. Leave blank to use browser cookies."
+          />
+
           <!-- Custom Headers -->
           <div class="space-y-3">
             <div>
@@ -263,7 +289,7 @@
             onclick={authenticate}
             class="border-brutal-border font-outfit hover:border-hister-indigo h-12 w-full border-[3px] text-base font-bold tracking-wide transition-all"
           >
-            Authenticate Extension
+            Authenticate with Browser Session
           </Button>
         </form>
       </Card.Content>

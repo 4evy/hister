@@ -49,10 +49,12 @@ See the [OAuth-Only Mode section of the configuration docs](/docs/configuration#
 
 ### Browser Extension
 
-The extension authenticates by copying the session cookies from the already-logged-in web interface:
+The extension can authenticate with a personal access token. Enter the token in the popup settings or options page and save the settings.
+
+Alternatively, the extension can copy the session cookies from the logged in web interface:
 
 1. Log in to the Hister web interface in the same browser.
-2. Click the **Authenticate Extension** button in the extension popup (or options page).
+2. Click the **Authenticate with Browser Session** button in the extension popup or options page.
 
 The extension will copy the active session cookies from the web UI. All pages indexed through the extension are stored under your user account.
 

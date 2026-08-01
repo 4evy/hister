@@ -21,6 +21,12 @@ title: 'Browser Extension'
       description: 'Additional HTTP headers included with every request. Use them for reverse proxy authentication or other server requirements.',
     },
     {
+      name: 'Access Token',
+      type: 'string',
+      defaultValue: '(none)',
+      description: 'Optional global or personal access token used to authenticate extension requests.',
+    },
+    {
       name: 'Submit as public documents',
       type: 'bool',
       defaultValue: 'Off',
@@ -127,8 +133,8 @@ Clicking the extension icon opens the popup, which provides quick access to the 
 | -------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
 | **Automatic indexing** toggle                | Enable or disable automatic page indexing. The setting is saved immediately.                                          |
 | **Reindex Page** button                      | Force a re-submission of the current page to the server.                                                              |
-| **Authenticate Extension** button            | Copy session cookies from the logged-in Hister web UI to authenticate the extension (user handling only).             |
-| **Settings icon** (⚙)                        | Expand an inline form to view and update the Server URL without opening the full options page.                        |
+| **Authenticate with Browser Session** button | Copy session cookies from the logged in Hister web UI to authenticate the extension when no access token is used.     |
+| **Settings icon** (⚙)                        | Expand an inline form to view and update the Server URL and Access Token without opening the full options page.       |
 | **Show indicator for indexed pages** setting | Show a `✓` badge on pages that are already indexed. This is available after opening the settings view from the popup. |
 | **Submit as public documents** setting       | Store newly indexed pages as public documents with user id `0`. This appears after the extension is authenticated.    |
 
@@ -153,10 +159,12 @@ Click **Save Settings** to apply. The extension validates the connection by call
 
 ### Authentication
 
-When [user handling](/docs/user-handling) is enabled, the extension authenticates by sharing the session cookies from the Hister web interface:
+The extension supports access token and browser session authentication. To use a token, enter a global access token or a personal access token in the popup settings or options page, then save the settings.
+
+When [user handling](/docs/user-handling) is enabled, you can instead share the session cookies from the Hister web interface:
 
 1. Log in to the Hister web interface in the same browser.
-2. Click the **Authenticate Extension** button in the popup.
+2. Click the **Authenticate with Browser Session** button in the popup or options page.
 
 The extension copies the active session cookie, so it submits pages under your user account. You don't need to repeat this step if you log out in the web interface.
 
@@ -170,7 +178,7 @@ The last attempt to send page data to the server failed. Open the popup to see t
 
 - The Hister server is not running: start it with `hister listen`.
 - The **Server URL** is wrong: confirm it matches the address printed when the server starts (default `http://127.0.0.1:4433/`).
-- User handling is enabled but the extension is not authenticated: click **Authenticate Extension** in the popup after logging in to the web interface.
+- User handling is enabled but the extension is not authenticated: configure an access token, or click **Authenticate with Browser Session** after logging in to the web interface.
 
 **Pages are not being indexed**
 
