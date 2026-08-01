@@ -1,44 +1,32 @@
 ---
-date: '2026-02-13T10:59:19+01:00'
+date: '2026-08-01T00:00:00+02:00'
 draft: false
-title: 'Overview of Hister'
+title: 'What Hister Is'
 ---
 
-Hister works with a _client-server_ architecture: a single long-running _server_ program stores all of the indexed pages, and one or more _clients_ connect to it to submit pages.
-Note that the server _can_ run on the same machine as the client!
+Hister is a private, self hosted search engine for pages you visit and files you keep. It indexes their full contents so you can find information again from the web interface, terminal, API, or an AI assistant connected through MCP.
 
-The `hister` program can function both as a server and as a client; the Hister browser extension is solely a client.
+Hister searches your own collection. It is not a general web search engine or a managed cloud service.
 
-## Why a client-server architecture?
+## Who Hister Is For
 
-**Benefits**:
+Hister is for anyone who wants to create a searchable knowledge base from information they consider relevant or important. It brings content from different sources into one collection you control, including web pages, browser history, local files, and crawled sites.
 
-- Clients can be on a different machine than the server; this is especially useful so that...
-- Multiple clients can connect to the same server (e.g. your phone and laptop, or your Firefox and Chrome, both feed into and search from the same history)
+It is not a hosted service, automatic cloud sync system, or records management system. You operate the server and decide how its data is secured and retained.
 
-**Drawbacks**:
+## How It Works
 
-- The server must be started separately from any clients, and clients can't do anything if the server isn't up
-- The server is a background process that consumes some resources (few, and this can be mitigated if desired)
-- Slightly more complex setup
+Hister uses a client and server architecture. The server stores and searches documents. Clients collect content or run searches. The `hister` program can act as both, while the browser extension is a client. Everything can run on one computer, or several clients can connect to one server.
 
-## Privacy
+Content can come from the browser extension, imported browser history, watched directories, crawlers, or API clients. The extension captures rendered pages as you visit them. Browser history import reads older URLs and fetches their current contents. See [Browser Ingestion](browser-ingestion) for the distinction.
 
-Hister clients only communicate with the designated server, and the server _does not_ “phone home” or share any of your browsing history with anyone else.
-The source code is publicly accessible, so we can be audited by anyone who wants to check!
+## Privacy and Storage
 
-If you run the Hister server on the same machine as all clients, then there are no other concerns.
-However, if the Hister traffic is sent over a network, two _potential_ concerns emerge:
+Hister has no telemetry and requires no Hister cloud service. Indexed data is stored on the server you choose and is not encrypted by Hister. Use disk encryption when needed, and HTTPS when clients connect across an untrusted network.
 
-- Hister _does not_ encrypt the history data it stores.
-  This is only a problem if you don't trust the Hister server your clients are communicating with.
-- Hister only encrypts data it transfers if you use HTTPS.
-  Accessing the server over a network **should** be done exclusively via HTTPS and never plain HTTP.
+Documents have no automatic expiry or total storage quota. For retention, storage limits, deletion, versioning, and backups, see [Data Storage and Lifecycle](data-lifecycle).
 
-## Technical details
+## Get Started
 
-The Hister server never makes any requests itself; it expects clients to provide the (extracted) contents of the pages they want indexed, not just their URLs.
-In particular, this means that pages indexed via the browser extensions aren't affected by anti-bot checks... since they aren't performed by a bot!
-
-Indexing operations via the command-line tool (`hister index`, `hister import browser`...), however, are clearly bot-like (they advertise themselves as such!) so they can end up being rejected.
-The offending URLs can be visited manually from the browser afterwards.
+- Follow the [Quickstart](quickstart) for a local personal setup.
+- Review [Server Setup](server-setup) before allowing network access.

@@ -6,6 +6,7 @@
   import Seo from '$lib/Seo.svelte';
 
   let { data } = $props();
+  const featuredSlugs = new Set(['configuration']);
 </script>
 
 <Seo
@@ -52,7 +53,7 @@
 
       <ul class="m-0 flex list-none flex-col gap-3 p-0">
         {#each category.docs as doc}
-          {#if doc.slug !== 'configuration'}
+          {#if !featuredSlugs.has(doc.slug)}
             <li>
               <Card.Root href="/docs/{doc.slug}" class="bg-brutal-card p-5">
                 <h2
