@@ -44,6 +44,8 @@ import (
 // and other server responses can expose the running binary version.
 var Version = "unknown"
 
+const sessionMaxAge = 60 * 60 * 24 * 365
+
 var (
 	appSubFS         iofs.FS
 	staticFileServer http.Handler
@@ -170,13 +172,20 @@ func recParseStaticFiles(entries []iofs.DirEntry, dir, baseDir string) error {
 	return nil
 }
 
-func Listen(cfg *config.Config) {
-	sessionStore = sessions.NewCookieStore(cfg.SecretKey()[:32])
-	sessionStore.Options = &sessions.Options{
+func newSessionStore(secretKey []byte, maxAge int) *sessions.CookieStore {
+	store := sessions.NewCookieStore(secretKey[:32])
+	store.Options = &sessions.Options{
 		Path:     "/",
-		MaxAge:   60 * 60 * 24 * 365,
 		HttpOnly: true,
 	}
+	// CookieStore.MaxAge updates both the browser cookie options and the
+	// securecookie codec used to validate the signed value.
+	store.MaxAge(maxAge)
+	return store
+}
+
+func Listen(cfg *config.Config) {
+	sessionStore = newSessionStore(cfg.SecretKey(), sessionMaxAge)
 
 	// This is an ugly hack required to set the base path dynamically in svelte files.
 	// Svelte only supports build time specification of the base path and it accepts

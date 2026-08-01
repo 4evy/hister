@@ -5,7 +5,8 @@
   "scripts": {
     "clean": "rm -rf dist/*",
     "build": "vite build",
-    "dev": "vite build --watch --mode development"
+    "dev": "vite build --watch --mode development",
+    "test": "node src/modules/network.test.js"
   },
   "dependencies": {
     "@hister/components": "^1.0.0",

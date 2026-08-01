@@ -12,8 +12,6 @@ import (
 	"github.com/asciimoo/hister/server/model"
 	"github.com/asciimoo/hister/server/testutil"
 	"github.com/asciimoo/hister/server/timeline"
-
-	"github.com/gorilla/sessions"
 )
 
 func newPublicTokenTestServer(t *testing.T) (*config.Config, http.Handler) {
@@ -37,12 +35,7 @@ func newTokenTestServerWithLogLevel(t *testing.T, public bool, logLevel string) 
 	if err := cfg.SaveRules(); err != nil {
 		t.Fatal(err)
 	}
-	sessionStore = sessions.NewCookieStore([]byte(strings.Repeat("x", 32)))
-	sessionStore.Options = &sessions.Options{
-		Path:     "/",
-		MaxAge:   60 * 60 * 24 * 365,
-		HttpOnly: true,
-	}
+	sessionStore = newSessionStore([]byte(strings.Repeat("x", 32)), sessionMaxAge)
 	return cfg, registerEndpoints(cfg)
 }
 

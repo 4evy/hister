@@ -25,11 +25,83 @@ async function fetchFavicon(url: string): Promise<string> {
   });
 }
 
-async function getServerCookies(): Promise<string> {
+const unauthorizedStatuses = new Set([401, 403]);
+
+async function getStoredServerCookies(): Promise<string> {
   return new Promise((resolve) => {
     chrome.storage.local.get(['histerCookies'], (data) => {
       resolve(data['histerCookies'] || '');
     });
+  });
+}
+
+function serializeCookies(cookies: chrome.cookies.Cookie[]): string {
+  return cookies.map((cookie) => `${cookie.name}=${cookie.value}`).join('; ');
+}
+
+function normalizeCookieHeader(cookieHeader: string): string {
+  return cookieHeader
+    .split(';')
+    .map((cookie) => cookie.trim())
+    .filter(Boolean)
+    .sort()
+    .join(';');
+}
+
+async function getBrowserCookies(url: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    chrome.cookies.getAll({ url }, (cookies) => {
+      const error = chrome.runtime.lastError;
+      if (error) {
+        reject(new Error(error.message ?? 'Failed to read browser cookies'));
+        return;
+      }
+      resolve(serializeCookies(cookies));
+    });
+  });
+}
+
+async function syncServerCookies(url: string): Promise<string> {
+  const cookieHeader = await getBrowserCookies(url);
+  await chrome.storage.local.set({ histerCookies: cookieHeader });
+  return cookieHeader;
+}
+
+async function refreshServerCookies(
+  url: string,
+  rejectedCookieHeader: string,
+): Promise<string | null> {
+  try {
+    const cookieHeader = await getBrowserCookies(url);
+    if (normalizeCookieHeader(cookieHeader) === normalizeCookieHeader(rejectedCookieHeader)) {
+      return null;
+    }
+    await chrome.storage.local.set({ histerCookies: cookieHeader });
+    return cookieHeader;
+  } catch (_) {
+    return null;
+  }
+}
+
+async function fetchWithCookies(
+  url: string,
+  method: string,
+  headers: Record<string, string>,
+  body: BodyInit | undefined,
+  cookieHeader: string,
+): Promise<Response> {
+  const requestHeaders = { ...headers };
+  const hasCustomCookieHeader = Object.keys(requestHeaders).some(
+    (name) => name.toLowerCase() === 'cookie',
+  );
+  if (cookieHeader && !hasCustomCookieHeader) {
+    requestHeaders['Cookie'] = cookieHeader;
+  }
+  return fetch(url, {
+    method,
+    headers: requestHeaders,
+    body,
+    credentials: 'include',
   });
 }
 
@@ -42,16 +114,13 @@ async function fetchAPI(
     customHeaders?: { name: string; value: string }[];
   } = {},
 ): Promise<Response> {
-  const cookieHeader = await getServerCookies();
+  const cookieHeader = await getStoredServerCookies();
   const headers: Record<string, string> = {};
 
   if (options.body !== undefined) {
     headers['Content-type'] = 'application/json; charset=UTF-8';
   } else if (options.formData !== undefined) {
     headers['Content-type'] = 'application/x-www-form-urlencoded';
-  }
-  if (cookieHeader) {
-    headers['Cookie'] = cookieHeader;
   }
   for (const h of options.customHeaders ?? []) {
     if (h.name) headers[h.name] = h.value || '';
@@ -64,12 +133,17 @@ async function fetchAPI(
     fetchBody = new URLSearchParams(options.formData).toString();
   }
 
-  return fetch(url, {
-    method: options.method ?? (fetchBody !== undefined ? 'POST' : 'GET'),
-    headers,
-    body: fetchBody,
-    credentials: 'include',
-  });
+  const method = options.method ?? (fetchBody !== undefined ? 'POST' : 'GET');
+  const response = await fetchWithCookies(url, method, headers, fetchBody, cookieHeader);
+  if (!unauthorizedStatuses.has(response.status)) {
+    return response;
+  }
+
+  const refreshedCookieHeader = await refreshServerCookies(url, cookieHeader);
+  if (refreshedCookieHeader === null) {
+    return response;
+  }
+  return fetchWithCookies(url, method, headers, fetchBody, refreshedCookieHeader);
 }
 
 async function sendPageData(url, doc, customHeaders = []) {
@@ -94,4 +168,4 @@ async function sendPDFData(
   return fetchAPI(url, { body: { document: doc, pdf: pdfBase64 }, customHeaders });
 }
 
-export { fetchAPI, sendPageData, sendResult, sendPDFData };
+export { fetchAPI, sendPageData, sendResult, sendPDFData, syncServerCookies };

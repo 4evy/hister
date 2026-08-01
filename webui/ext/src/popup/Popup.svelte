@@ -10,6 +10,7 @@
   import { Settings, Sun, Moon, Save, Info, Check } from '@lucide/svelte';
   import { slide } from 'svelte/transition';
   import { ModeWatcher, toggleMode, mode } from 'mode-watcher';
+  import { fetchAPI, syncServerCookies } from '../modules/network';
 
   const defaultURL = 'http://127.0.0.1:4433/';
 
@@ -60,50 +61,32 @@
     }
   }
 
-  function checkAuth(serverURL: string, cookieStr?: string): Promise<boolean> {
+  function checkAuth(serverURL: string): Promise<boolean> {
     let authURL = serverURL;
     if (!authURL.endsWith('/')) {
       authURL += '/';
     }
-    const doCheck = (cookies: string) => {
-      const headers: HeadersInit = { 'Content-Type': 'application/json' };
-      if (cookies) {
-        headers['Cookie'] = cookies;
-      }
-      return fetch(authURL + 'api/profile', { headers, credentials: 'include' })
-        .then(async (r) => {
-          if (r.status === 403) {
-            authCheckPassed = false;
-            setProfileUserID(0);
-            return false;
-          }
-          if (!r.ok) {
-            authCheckPassed = false;
-            setProfileUserID(0);
-            return false;
-          }
-          try {
-            const profile = await r.json();
-            setProfileUserID(Number(profile?.user_id ?? 0));
-          } catch (_) {
-            setProfileUserID(0);
-          }
-          authCheckPassed = true;
-          return authCheckPassed;
-        })
-        .catch(() => {
+    return fetchAPI(authURL + 'api/profile', { customHeaders })
+      .then(async (r) => {
+        if (!r.ok) {
+          authCheckPassed = false;
           setProfileUserID(0);
           return false;
-        });
-    };
-    if (cookieStr !== undefined) {
-      return doCheck(cookieStr);
-    }
-    return new Promise((resolve) => {
-      chrome.storage.local.get(['histerCookies'], (data) => {
-        resolve(doCheck(data['histerCookies'] || ''));
+        }
+        try {
+          const profile = await r.json();
+          setProfileUserID(Number(profile?.user_id ?? 0));
+        } catch (_) {
+          setProfileUserID(0);
+        }
+        authCheckPassed = true;
+        return authCheckPassed;
+      })
+      .catch(() => {
+        authCheckPassed = false;
+        setProfileUserID(0);
+        return false;
       });
-    });
   }
 
   chrome.storage.local.get(
@@ -111,7 +94,6 @@
       'histerURL',
       'histerCustomHeaders',
       'indexingEnabled',
-      'histerCookies',
       'histerLabel',
       'showIndexedBadge',
       'submitPublicDocuments',
@@ -129,7 +111,7 @@
       profileUserID = Number(data['histerProfileUserID'] ?? 0);
       pageLabel = data['histerLabel'] || '';
 
-      checkAuth(url, data['histerCookies'] || '');
+      checkAuth(url);
 
       chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
         if (!tabs?.length) return;
@@ -197,14 +179,7 @@
       verifyURL += '/';
     }
 
-    const headers: HeadersInit = {};
-    for (const h of customHeaders) {
-      if (h.name) {
-        headers[h.name] = h.value || '';
-      }
-    }
-
-    fetch(verifyURL + 'api/config', { headers, credentials: 'include' })
+    fetchAPI(verifyURL + 'api/config', { customHeaders })
       .then((response) => {
         if (response.status !== 200) {
           setErrorMessage(`Server returned status ${response.status}`);
@@ -253,31 +228,29 @@
     });
   }
 
-  function authenticate() {
+  async function authenticate() {
     let authURL = url;
     if (!authURL.endsWith('/')) {
       authURL += '/';
     }
-    chrome.cookies.getAll({ url: authURL }, (cookies) => {
-      if (!cookies.length) {
+    try {
+      const cookieHeader = await syncServerCookies(authURL);
+      if (!cookieHeader) {
         setErrorMessage(
           'No cookies found for server URL. Make sure you are logged in to the Hister web app.',
         );
         return;
       }
-      const cookieStr = cookies.map((c) => `${c.name}=${c.value}`).join('; ');
-      chrome.storage.local.set({ histerCookies: cookieStr }).then(() => {
-        checkAuth(url, cookieStr).then((ok) => {
-          if (ok) {
-            setSuccessMessage('Authentication successful');
-          } else {
-            setErrorMessage(
-              'Authentication failed. Make sure you are logged in to the Hister web app.',
-            );
-          }
-        });
-      });
-    });
+      if (await checkAuth(url)) {
+        setSuccessMessage('Authentication successful');
+      } else {
+        setErrorMessage(
+          'Authentication failed. Make sure you are logged in to the Hister web app.',
+        );
+      }
+    } catch (error) {
+      setErrorMessage((error as Error).message ?? 'Failed to read browser cookies.');
+    }
   }
 
   function reindex() {
@@ -308,21 +281,11 @@
   }
 
   async function applyLabel() {
-    const cookieStr = await new Promise<string>((resolve) => {
-      chrome.storage.local.get(['histerCookies'], (data) => resolve(data['histerCookies'] ?? ''));
-    });
     const serverURL = url.endsWith('/') ? url.slice(0, -1) : url;
-    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-    if (cookieStr) headers['Cookie'] = cookieStr;
-    for (const h of customHeaders) {
-      if (h.name) headers[h.name] = h.value ?? '';
-    }
     try {
-      const res = await fetch(`${serverURL}/api/label`, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({ url: tabURL, label: pageLabel }),
-        credentials: 'include',
+      const res = await fetchAPI(`${serverURL}/api/label`, {
+        body: { url: tabURL, label: pageLabel },
+        customHeaders,
       });
       if (res.ok) {
         pageLabel = '';

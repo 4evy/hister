@@ -8,8 +8,6 @@ import (
 	"testing"
 
 	"github.com/asciimoo/hister/server/testutil"
-
-	"github.com/gorilla/sessions"
 )
 
 type statusCountingWriter struct {
@@ -25,7 +23,7 @@ func (w *statusCountingWriter) WriteHeader(statusCode int) {
 func TestAddFormAccessTokenDoesNotAuthenticate(t *testing.T) {
 	cfg := testutil.Config(t)
 	cfg.App.AccessToken = "secret"
-	sessionStore = sessions.NewCookieStore([]byte(strings.Repeat("x", 32)))
+	sessionStore = newSessionStore([]byte(strings.Repeat("x", 32)), sessionMaxAge)
 	called := false
 	h := endpointHandler(func(c *webContext) {
 		called = true
