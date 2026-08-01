@@ -38,6 +38,25 @@ if (typeof window.navigation !== 'undefined') {
   window.navigation.addEventListener('navigatesuccess', update);
 }
 
+// Submit the latest page state when the tab is being hidden or closed.
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden || !d || !isContextValid()) return;
+  let current;
+  try {
+    current = extractPageData();
+  } catch (_) {
+    return;
+  }
+  if (current.html != d.html || current.url != d.url || current.title != d.title) {
+    d = current;
+    chrome.runtime.sendMessage({ pageData: d }, (resp) => {
+      if (resp?.status_code === 406) {
+        skippedUrl = d.url;
+      }
+    });
+  }
+});
+
 function scheduleUpdate() {
   if (updateTimer !== null) {
     clearTimeout(updateTimer);
@@ -107,7 +126,7 @@ function update() {
     console.log('failed to extract page data', e);
     return;
   }
-  if (d2.html != d.html || d2.url != d.url) {
+  if (d2.html != d.html || d2.url != d.url || d2.title != d.title) {
     sleepTime = defaultSleepTime;
     d = d2;
     if (d2.url === skippedUrl) {
