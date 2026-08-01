@@ -55,6 +55,65 @@ func TestSearchSortsByMostVisited(t *testing.T) {
 	}
 }
 
+func TestSearchSortDirective(t *testing.T) {
+	idxCfg := testutil.Config(t)
+	if err := Init(idxCfg); err != nil {
+		t.Fatalf("failed to init indexer: %v", err)
+	}
+	defer i.Close()
+
+	older := &document.Document{
+		URL:       "https://a.example.com/sort-directive-older",
+		Domain:    "a.example.com",
+		Title:     "Sort directive document",
+		Text:      "Sort directive document text",
+		Updated:   100,
+		Processed: true,
+	}
+	newer := &document.Document{
+		URL:       "https://z.example.com/sort-directive-newer",
+		Domain:    "z.example.com",
+		Title:     "Sort directive document",
+		Text:      "Sort directive document text",
+		Updated:   200,
+		Processed: true,
+	}
+	for _, doc := range []*document.Document{older, newer} {
+		if err := Add(doc); err != nil {
+			t.Fatalf("Add failed: %v", err)
+		}
+	}
+
+	q := &Query{Text: "directive document sort:date", Sort: "domain", Limit: 1}
+	res, err := Search(idxCfg, q)
+	if err != nil {
+		t.Fatalf("Search failed: %v", err)
+	}
+	if len(res.Documents) != 1 || res.Documents[0].URL != newer.URL {
+		t.Fatalf("date sorted search returned %#v, want %q first", res.Documents, newer.URL)
+	}
+	if q.Sort != "date" {
+		t.Fatalf("effective sort = %q, want date", q.Sort)
+	}
+
+	q = &Query{Text: "sort:date", Limit: 1}
+	res, err = Search(idxCfg, q)
+	if err != nil {
+		t.Fatalf("directive only search failed: %v", err)
+	}
+	if len(res.Documents) != 1 || res.Documents[0].URL != newer.URL {
+		t.Fatalf("directive only search returned %#v, want %q first", res.Documents, newer.URL)
+	}
+
+	q = &Query{Text: "directive sort:relevance", Sort: "date"}
+	if _, err := Search(idxCfg, q); err != nil {
+		t.Fatalf("relevance directive search failed: %v", err)
+	}
+	if q.Sort != "" {
+		t.Fatalf("effective sort = %q, want relevance", q.Sort)
+	}
+}
+
 func TestSearchFiltersMetadataSourceByLatestUpdate(t *testing.T) {
 	idxCfg := testutil.Config(t)
 	if err := Init(idxCfg); err != nil {

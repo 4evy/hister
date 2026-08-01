@@ -43,6 +43,12 @@
     shiftISODate,
     updatedTimeFilters,
   } from '$lib/time-filters';
+  import {
+    removeSortDirectives,
+    replaceSortDirective,
+    sortDirectiveFromQuery,
+    sortValueFromQuery,
+  } from '$lib/sort-directive';
   import { animate } from 'animejs';
   import { Input } from '@hister/components/ui/input';
   import { Button } from '@hister/components/ui/button';
@@ -153,7 +159,7 @@
   let loadingMoreForQuery = $state('');
   let sentinelEl = $state<HTMLElement | undefined>();
   let highlightIdx = $state(0);
-  let currentSort = $state('');
+  const currentSort = $derived(sortValueFromQuery(query));
   let dateFrom = $state('');
   let dateTo = $state('');
   let showPopup = $state(false);
@@ -620,7 +626,6 @@
 
   function searchQueryOpts(pageKey = ''): SearchQueryOptions {
     return {
-      sort: currentSort,
       semantic: { enabled: semanticOn && config.semanticEnabled, threshold: similarityThreshold },
       pageKey,
       limit: RESULTS_PER_PAGE,
@@ -645,14 +650,18 @@
 
   // --- URL builders ---
 
-  function parseSortParam(value: string | null): string {
-    return value && sortValues.has(value) ? value : '';
+  function queryFromSearchParams(params: URLSearchParams): string {
+    let value = params.get('q') || '';
+    const legacySort = params.get('sort');
+    if (legacySort && sortValues.has(legacySort) && sortDirectiveFromQuery(value) === null) {
+      value = replaceSortDirective(value, legacySort);
+    }
+    return value;
   }
 
   function buildSearchUrl(): string {
     const params = new URLSearchParams();
     if (query) params.set('q', query);
-    if (currentSort) params.set('sort', currentSort);
     const search = params.toString();
     return `${base}/${search ? `?${search}` : ''}`;
   }
@@ -661,13 +670,13 @@
 
   function pushSearchHistory() {
     const url = buildSearchUrl();
-    history.pushState({ type: 'search', query, sort: currentSort }, '', url);
+    history.pushState({ type: 'search', query }, '', url);
     lastPushedEmpty = !query;
   }
 
   function replaceSearchHistory() {
     const url = buildSearchUrl();
-    history.replaceState({ type: 'search', query, sort: currentSort }, '', url);
+    history.replaceState({ type: 'search', query }, '', url);
     lastPushedEmpty = !query;
   }
 
@@ -700,8 +709,7 @@
     previewFullscreen = false;
     skipUrl.value = true;
     const params = new URLSearchParams(window.location.search);
-    query = params.get('q') || '';
-    currentSort = parseSortParam(params.get('sort'));
+    query = queryFromSearchParams(params);
     lastPushedEmpty = !query;
     if (query && connected) sendQuery(query);
     if (!query) {
@@ -774,8 +782,7 @@
 
   function setSort(sortId: string) {
     if (currentSort === sortId) return;
-    currentSort = sortId;
-    if (query) sendQuery(query);
+    query = replaceSortDirective(query, sortId);
   }
 
   function setDeleteError(msg: string) {
@@ -841,7 +848,8 @@
 
   async function deleteAllResults() {
     if (!config.canWrite) return;
-    const q = query + (getUserId() !== undefined ? ' user_id:' + getUserId() : '');
+    const searchText = removeSortDirectives(query) || '*';
+    const q = searchText + (getUserId() !== undefined ? ' user_id:' + getUserId() : '');
     const res = await apiFetch('/delete', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -1316,10 +1324,8 @@
   });
   $effect.pre(() => {
     const urlParams = new URLSearchParams(window.location.search);
-    const q = urlParams.get('q') || '';
-    const sort = urlParams.get('sort');
+    const q = queryFromSearchParams(urlParams);
     if (q) query = q;
-    currentSort = parseSortParam(sort);
     lastPushedEmpty = !q;
   });
 

@@ -13,7 +13,6 @@ interface SearchConfig {
 
 interface SearchMessage {
   text: string;
-  sort?: string;
   highlight?: string;
   semantic_enabled?: boolean;
   semantic_threshold?: number;
@@ -383,7 +382,6 @@ export class KeyHandler {
 export const RESULTS_PER_PAGE = 20;
 
 export interface SearchQueryOptions {
-  sort?: string;
   semantic?: { enabled: boolean; threshold: number };
   pageKey?: string;
   limit?: number;
@@ -392,7 +390,6 @@ export interface SearchQueryOptions {
 
 interface QueryParams {
   text: string;
-  sort?: string;
   highlight?: string;
   semantic_enabled?: boolean;
   semantic_threshold?: number;
@@ -402,11 +399,10 @@ interface QueryParams {
 }
 
 export function buildSearchQuery(text: string, opts: SearchQueryOptions = {}): QueryParams {
-  const { sort, semantic, pageKey, limit, facets } = opts;
+  const { semantic, pageKey, limit, facets } = opts;
   return {
     text,
     highlight: 'HTML',
-    ...(sort && { sort }),
     ...(semantic && { semantic_enabled: semantic.enabled, semantic_threshold: semantic.threshold }),
     ...(limit && { limit }),
     ...(pageKey && { page_key: pageKey }),

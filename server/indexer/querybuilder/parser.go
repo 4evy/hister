@@ -19,6 +19,8 @@ type Token struct {
 	Type  TokenType
 	Value string
 	Parts []Token
+	start int
+	end   int
 }
 
 type Lexer struct {
@@ -75,16 +77,38 @@ func (l *Lexer) skipWhitespace() {
 func (l *Lexer) NextToken() (Token, error) {
 	l.skipWhitespace()
 
+	start := l.offset()
+	var (
+		token Token
+		err   error
+	)
 	switch l.char {
 	case 0:
-		return Token{Type: TokenEOF}, nil
+		token = Token{Type: TokenEOF}
 	case '"':
-		return l.readQuoted()
+		token, err = l.readQuoted()
 	case '(':
-		return l.readAlternation()
+		token, err = l.readAlternation()
 	default:
-		return l.readWord()
+		token, err = l.readWord()
 	}
+	if err != nil {
+		return Token{}, err
+	}
+	token.start = start
+	token.end = l.offset()
+	return token, nil
+}
+
+func (l *Lexer) offset() int {
+	offset := l.pos - 1
+	if offset < 0 {
+		return 0
+	}
+	if offset > len(l.input) {
+		return len(l.input)
+	}
+	return offset
 }
 
 func (l *Lexer) readQuoted() (Token, error) {

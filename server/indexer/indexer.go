@@ -1452,7 +1452,11 @@ func DeleteByQuery(text string, userID *uint, onDelete func(url string, userID u
 
 func Search(cfg *config.Config, q *Query) (*Results, error) {
 	q.cfg = cfg
-	req := bleve.NewSearchRequest(q.create())
+	expression := querybuilder.ParseSearch(q.Text)
+	if expression.HasSort {
+		q.Sort = expression.Sort
+	}
+	req := bleve.NewSearchRequest(q.create(expression.Text))
 	req.Fields = allFields
 
 	if q.FacetsOnly {
@@ -1541,7 +1545,7 @@ func Search(cfg *config.Config, q *Query) (*Results, error) {
 	}
 
 	// Run semantic search if enabled and the embedding infrastructure is available.
-	semanticText := querybuilder.RemoveStandaloneWildcards(q.Text)
+	semanticText := querybuilder.RemoveStandaloneWildcards(expression.Text)
 	if q.SemanticEnabled && i.embedder != nil && i.vectorStore != nil &&
 		strings.TrimSpace(semanticText) != "" {
 		r.SemanticEnabled = true
@@ -1819,12 +1823,12 @@ func (idx *indexer) resFromHit(h *search.DocumentMatch, include resultInclude) *
 	return d
 }
 
-func (q *Query) create() query.Query {
+func (q *Query) create(text string) query.Query {
 	var sq query.Query
 	if q.MatchAll {
 		sq = query.NewMatchAllQuery()
 	} else {
-		sq = querybuilder.Build(q.Text)
+		sq = querybuilder.Build(text)
 	}
 
 	if q.DateFrom != 0 && q.DateTo == 0 {

@@ -47,6 +47,10 @@
       <code>YYYY-MM-DD</code> date, such as <code>updated:&gt;90d</code> or
       <code>added:&gt;=2026-04-01</code>.
     </p>
+    <p>
+      Use <code>sort:date</code>, <code>sort:visits</code>, <code>sort:domain</code>, or
+      <code>sort:relevance</code> to control result order.
+    </p>
 
     <h3>Examples</h3>
     <p>
@@ -68,6 +72,7 @@
       <code>updated:&gt;=2026-04-01 updated:&lt;2026-05-01</code>: Search pages updated during April
       2026. Absolute dates represent midnight UTC.
     </p>
+    <p><code>golang sort:date</code>: Search for golang and show the newest results first.</p>
 
     <h2>Search Aliases</h2>
     {#if canWrite}

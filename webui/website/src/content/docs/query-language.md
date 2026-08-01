@@ -138,6 +138,28 @@ added:<7d domain:example.com
 user_id:3 domain:example.com
 ```
 
+## Sorting Results
+
+Use a `sort:` directive anywhere in the query to control result order. The directive controls
+ordering and is not matched against document content.
+
+```textplain
+golang sort:date
+```
+
+`sort:relevance` uses the default relevance order. `sort:date` shows the most recently updated
+documents first. `sort:visits` shows the most visited documents first. `sort:domain` groups results
+by domain.
+
+A query containing only a sort directive matches all documents:
+
+```textplain
+sort:date
+```
+
+When a query contains more than one valid sort directive, the final directive takes precedence.
+Quoted text such as `"sort:date"` remains searchable text rather than changing the result order.
+
 ## Wildcard Searches
 
 Use asterisks (`*`) for wildcard matching:
