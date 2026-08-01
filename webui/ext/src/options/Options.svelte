@@ -8,10 +8,9 @@
   import { Plus, Trash2, Sun, Moon } from '@lucide/svelte';
   import { ModeWatcher, toggleMode, mode } from 'mode-watcher';
   import { fetchAPI, syncServerCookies } from '../modules/network';
+  import { DEFAULT_SERVER_URL } from '../modules/settings';
 
-  const defaultURL = 'http://127.0.0.1:4433/';
-
-  let url = $state(defaultURL);
+  let url = $state(DEFAULT_SERVER_URL);
   let accessToken = $state('');
   let customHeaders: { name: string; value: string }[] = $state([]);
   let submitPublicDocuments = $state(false);
@@ -33,9 +32,9 @@
     ],
     (data) => {
       if (!data['histerURL']) {
-        chrome.storage.local.set({ histerURL: defaultURL });
+        chrome.storage.local.set({ histerURL: DEFAULT_SERVER_URL });
       }
-      url = data['histerURL'] || defaultURL;
+      url = data['histerURL'] || DEFAULT_SERVER_URL;
       accessToken = data['histerToken'] || '';
       customHeaders = Array.isArray(data['histerCustomHeaders']) ? data['histerCustomHeaders'] : [];
       submitPublicDocuments = data['submitPublicDocuments'] === true;

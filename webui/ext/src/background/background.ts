@@ -1,4 +1,7 @@
 import { fetchAPI, sendPageData, sendPDFData, sendResult } from '../modules/network';
+import { ensureDefaultServerURL } from '../modules/settings';
+
+void ensureDefaultServerURL();
 
 const missingURLMsg = {
   error: 'Missing or invalid Hister server URL. Configure it in the addon popup.',

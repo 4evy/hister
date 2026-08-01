@@ -11,10 +11,9 @@
   import { slide } from 'svelte/transition';
   import { ModeWatcher, toggleMode, mode } from 'mode-watcher';
   import { fetchAPI, syncServerCookies } from '../modules/network';
+  import { DEFAULT_SERVER_URL } from '../modules/settings';
 
-  const defaultURL = 'http://127.0.0.1:4433/';
-
-  let url = $state(defaultURL);
+  let url = $state(DEFAULT_SERVER_URL);
   let accessToken = $state('');
   let customHeaders: { name: string; value: string }[] = $state([]);
   let indexingEnabled = $state(true);
@@ -103,9 +102,9 @@
     ],
     (data) => {
       if (!data['histerURL']) {
-        chrome.storage.local.set({ histerURL: defaultURL });
+        chrome.storage.local.set({ histerURL: DEFAULT_SERVER_URL });
       }
-      url = data['histerURL'] || defaultURL;
+      url = data['histerURL'] || DEFAULT_SERVER_URL;
       accessToken = data['histerToken'] || '';
       customHeaders = Array.isArray(data['histerCustomHeaders']) ? data['histerCustomHeaders'] : [];
       indexingEnabled = data['indexingEnabled'] !== false;
