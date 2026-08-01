@@ -51,7 +51,7 @@ func sortDirective(token Token) (string, bool) {
 	switch value {
 	case "relevance":
 		return "", true
-	case "date", "domain", "visits":
+	case "date", "domain", "visits", "-relevance", "-date", "-domain", "-visits":
 		return value, true
 	default:
 		return "", false

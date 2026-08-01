@@ -124,8 +124,11 @@
   const sortOptions = [
     { value: '', label: 'Relevance' },
     { value: 'visits', label: 'Most visited' },
+    { value: '-visits', label: 'Least visited' },
     { value: 'date', label: 'Date (newest first)' },
-    { value: 'domain', label: 'Domain' },
+    { value: '-date', label: 'Date (oldest first)' },
+    { value: 'domain', label: 'Domain (A to Z)' },
+    { value: '-domain', label: 'Domain (Z to A)' },
   ] as const;
   const sortValues = new Set<string>(sortOptions.map((option) => option.value));
 

@@ -147,6 +147,7 @@ func mcpToolList(semanticSearchEnabled bool) []map[string]any {
 						"description": `Search query. Supports plain keywords, "exact phrases", ` +
 							`field filters (url:, domain:, title:, text:, language:, type:web/local), ` +
 							`sorting (sort:relevance, sort:date, sort:domain, sort:visits), ` +
+							`reverse sorting by prefixing a sort value with a minus sign (sort:-date), ` +
 							`negation (-term), wildcards (term*), and disjunction (a|b|c).`,
 					},
 					"limit": map[string]any{

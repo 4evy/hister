@@ -1484,10 +1484,19 @@ func Search(cfg *config.Config, q *Query) (*Results, error) {
 	switch q.Sort {
 	case "domain":
 		req.SortBy([]string{"domain", "_id"})
+	case "-domain":
+		req.SortBy([]string{"-domain", "_id"})
 	case "date":
 		req.SortBy([]string{"-updated", "_id"})
+	case "-date":
+		req.SortBy([]string{"updated", "_id"})
 	case "visits":
 		req.SortBy([]string{"-add_count", "-updated", "_id"})
+	case "-visits":
+		req.SortBy([]string{"add_count", "updated", "_id"})
+	case "-relevance":
+		sortByScore = true
+		req.SortBy([]string{"_score", "updated", "_id"})
 	default:
 		sortByScore = true
 		req.SortBy([]string{"-_score", "-updated", "_id"})

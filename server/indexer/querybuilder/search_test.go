@@ -29,6 +29,13 @@ func TestParseSearch(t *testing.T) {
 			hasSort: true,
 		},
 		{
+			name:    "reverse directive",
+			input:   "golang sort:-date",
+			text:    "golang",
+			sort:    "-date",
+			hasSort: true,
+		},
+		{
 			name:    "last directive wins",
 			input:   "sort:date golang sort:domain",
 			text:    "golang",
@@ -84,6 +91,15 @@ func TestParseSearch(t *testing.T) {
 				t.Fatalf("ParseSearch(%q) = %#v, want text %q, sort %q, hasSort %v", test.input, got, test.text, test.sort, test.hasSort)
 			}
 		})
+	}
+}
+
+func TestParseReverseSortDirectives(t *testing.T) {
+	for _, sortMode := range []string{"-relevance", "-date", "-domain", "-visits"} {
+		expression := ParseSearch("sort:" + sortMode)
+		if expression.Text != "*" || expression.Sort != sortMode || !expression.HasSort {
+			t.Errorf("ParseSearch for %q = %#v", sortMode, expression)
+		}
 	}
 }
 

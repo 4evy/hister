@@ -53,6 +53,14 @@ func TestSearchSortsByMostVisited(t *testing.T) {
 	if res.Documents[1].URL != lessVisitedURL {
 		t.Fatalf("second result URL = %q, want %q", res.Documents[1].URL, lessVisitedURL)
 	}
+
+	res, err = Search(idxCfg, &Query{Text: "* sort:-visits"})
+	if err != nil {
+		t.Fatalf("reverse visit search failed: %v", err)
+	}
+	if len(res.Documents) < 2 || res.Documents[0].URL != lessVisitedURL {
+		t.Fatalf("reverse visit search returned %#v, want %q first", res.Documents, lessVisitedURL)
+	}
 }
 
 func TestSearchSortDirective(t *testing.T) {
@@ -96,6 +104,27 @@ func TestSearchSortDirective(t *testing.T) {
 		t.Fatalf("effective sort = %q, want date", q.Sort)
 	}
 
+	q = &Query{Text: "directive document sort:-date", Limit: 1}
+	res, err = Search(idxCfg, q)
+	if err != nil {
+		t.Fatalf("reverse date search failed: %v", err)
+	}
+	if len(res.Documents) != 1 || res.Documents[0].URL != older.URL {
+		t.Fatalf("reverse date search returned %#v, want %q first", res.Documents, older.URL)
+	}
+	if q.Sort != "-date" {
+		t.Fatalf("effective sort = %q, want -date", q.Sort)
+	}
+
+	q = &Query{Text: "directive document sort:-domain", Limit: 1}
+	res, err = Search(idxCfg, q)
+	if err != nil {
+		t.Fatalf("reverse domain search failed: %v", err)
+	}
+	if len(res.Documents) != 1 || res.Documents[0].URL != newer.URL {
+		t.Fatalf("reverse domain search returned %#v, want %q first", res.Documents, newer.URL)
+	}
+
 	q = &Query{Text: "sort:date", Limit: 1}
 	res, err = Search(idxCfg, q)
 	if err != nil {
@@ -111,6 +140,25 @@ func TestSearchSortDirective(t *testing.T) {
 	}
 	if q.Sort != "" {
 		t.Fatalf("effective sort = %q, want relevance", q.Sort)
+	}
+
+	q = &Query{Text: "directive sort:-relevance", Limit: 1}
+	firstPage, err := Search(idxCfg, q)
+	if err != nil {
+		t.Fatalf("reverse relevance search failed: %v", err)
+	}
+	if q.Sort != "-relevance" {
+		t.Fatalf("effective sort = %q, want -relevance", q.Sort)
+	}
+	if len(firstPage.Documents) != 1 || firstPage.PageKey == "" {
+		t.Fatalf("reverse relevance first page = %#v, want one document and a page key", firstPage)
+	}
+	secondPage, err := Search(idxCfg, q)
+	if err != nil {
+		t.Fatalf("reverse relevance second page failed: %v", err)
+	}
+	if len(secondPage.Documents) != 1 || secondPage.Documents[0].URL == firstPage.Documents[0].URL {
+		t.Fatalf("reverse relevance second page = %#v, want the other document", secondPage.Documents)
 	}
 }
 

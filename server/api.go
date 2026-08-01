@@ -85,7 +85,7 @@ func init() {
 					Name:        "q",
 					Type:        "string",
 					Required:    false,
-					Description: "Search query, including filters and directives such as sort:date",
+					Description: "Search query, including filters and directives such as sort:date or sort:-date",
 				},
 				{
 					Name:        "query",
@@ -121,7 +121,7 @@ func init() {
 					Name:        "sort",
 					Type:        "string",
 					Required:    false,
-					Description: "Legacy sort order. Prefer a sort directive in q, such as sort:date",
+					Description: "Legacy sort order. Prefer a sort directive in q. Prefix a value with a minus sign to reverse it",
 				},
 				{
 					Name:        "semantic",
@@ -171,7 +171,7 @@ func init() {
 					Name:        "sort",
 					Type:        "string",
 					Required:    false,
-					Description: "Legacy sort order. Prefer a sort directive in text, such as sort:date",
+					Description: "Legacy sort order. Prefer a sort directive in text. Prefix a value with a minus sign to reverse it",
 				},
 				{
 					Name:        "limit",

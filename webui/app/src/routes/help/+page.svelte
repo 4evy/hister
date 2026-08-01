@@ -51,6 +51,10 @@
       Use <code>sort:date</code>, <code>sort:visits</code>, <code>sort:domain</code>, or
       <code>sort:relevance</code> to control result order.
     </p>
+    <p>
+      Prefix the sort value with a minus sign to reverse its direction. For example,
+      <code>sort:-date</code> shows the oldest results first.
+    </p>
 
     <h3>Examples</h3>
     <p>
@@ -73,6 +77,7 @@
       2026. Absolute dates represent midnight UTC.
     </p>
     <p><code>golang sort:date</code>: Search for golang and show the newest results first.</p>
+    <p><code>golang sort:-date</code>: Search for golang and show the oldest results first.</p>
 
     <h2>Search Aliases</h2>
     {#if canWrite}

@@ -151,6 +151,15 @@ golang sort:date
 documents first. `sort:visits` shows the most visited documents first. `sort:domain` groups results
 by domain.
 
+Prefix any sort value with a minus sign to reverse its direction. For example, `sort:-date` shows
+the oldest documents first, `sort:-visits` shows the least visited documents first, and
+`sort:-domain` orders domains from Z to A. `sort:-relevance` places the least relevant results
+first.
+
+```textplain
+golang sort:-date
+```
+
 A query containing only a sort directive matches all documents:
 
 ```textplain

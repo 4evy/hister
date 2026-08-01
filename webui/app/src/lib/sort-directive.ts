@@ -1,7 +1,17 @@
-export type SortDirective = 'relevance' | 'visits' | 'date' | 'domain';
+export type SortDirective =
+  'relevance' | 'visits' | 'date' | 'domain' | '-relevance' | '-visits' | '-date' | '-domain';
 
-const sortDirectivePattern = /(?:^|\s)sort:(relevance|visits|date|domain)(?=\s|$)/g;
-const sortDirectiveValues = new Set<string>(['relevance', 'visits', 'date', 'domain']);
+const sortDirectivePattern = /(?:^|\s)sort:(-?(?:relevance|visits|date|domain))(?=\s|$)/g;
+const sortDirectiveValues = new Set<string>([
+  'relevance',
+  'visits',
+  'date',
+  'domain',
+  '-relevance',
+  '-visits',
+  '-date',
+  '-domain',
+]);
 
 function isInsideQuotedText(text: string, offset: number): boolean {
   return [...text.slice(0, offset).matchAll(/(?<!\\)(?:\\\\)*"/g)].length % 2 === 1;
