@@ -58,7 +58,7 @@ type GitHubExtractor struct {
 func (e *GitHubExtractor) Name() string { return "GitHub" }
 
 func (e *GitHubExtractor) Description() string {
-	return "Extracts repository metadata (description, stars, topics, languages) and README content from GitHub project pages."
+	return "Extracts repository, issue, issue list, and pull request content from GitHub project pages."
 }
 
 func (e *GitHubExtractor) GetConfig() *config.Extractor {

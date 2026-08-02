@@ -5,9 +5,21 @@ package mastodon
 import (
 	"testing"
 
+	"github.com/asciimoo/hister/config"
 	"github.com/asciimoo/hister/server/document"
 	"github.com/asciimoo/hister/server/types"
 )
+
+func TestSetConfigRejectsUnknownOptions(t *testing.T) {
+	e := &MastodonExtractor{}
+	err := e.SetConfig(&config.Extractor{
+		Enable:  true,
+		Options: map[string]any{"unknown": true},
+	})
+	if err == nil {
+		t.Fatal("SetConfig accepted an unknown option")
+	}
+}
 
 func TestOriginalStatusURL(t *testing.T) {
 	tests := []struct {

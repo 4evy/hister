@@ -40,6 +40,9 @@ func (e *MastodonExtractor) GetConfig() *config.Extractor {
 }
 
 func (e *MastodonExtractor) SetConfig(c *config.Extractor) error {
+	for k := range c.Options {
+		return fmt.Errorf("unknown option %q", k)
+	}
 	e.cfg = c
 	return nil
 }
