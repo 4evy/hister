@@ -33,10 +33,10 @@ If someone else already operates the Hister server you use and you only search t
 5. Start the server:
 
    ```bash
-   ./hister
+   ./hister listen
    ```
 
-   On Windows, run `hister.exe` instead.
+   On Windows, run `hister.exe listen` instead.
 
 6. Open <http://127.0.0.1:4433> in your browser, then continue with the [quickstart](quickstart) to install the browser extension and begin indexing.
 
@@ -64,10 +64,10 @@ The official container is published at [GitHub Container Registry](https://githu
 
 ### Quick usage
 
-Run Hister directly from the repository:
+Run the Hister server directly from the repository:
 
 ```nix
-nix run github:asciimoo/hister
+nix run github:asciimoo/hister -- listen
 ```
 
 Add Hister to the current shell:
