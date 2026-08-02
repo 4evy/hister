@@ -16,10 +16,10 @@ When you are ready to customize it, start with [Creating a Config File](configur
 Open a terminal, and start the server:
 
 ```bash
-./hister
+./hister listen
 ```
 
-On Windows, run `.\hister.exe` in PowerShell instead.
+On Windows, run `.\hister.exe listen` in PowerShell instead.
 
 The server will start on http://127.0.0.1:4433 and thus be accessible only from the same machine.
 This is perfect for personal use on a single computer.

@@ -44,8 +44,8 @@ documentation, or a trusted source before other results.
 
 Versioning rules tell Hister to **track changes** to a document every time it
 is re-indexed. When a URL matches a versioning pattern and the document content
-differs from the previously indexed version, Hister stores a unified diff of
-the changes in the database.
+differs from the previously indexed version, Hister stores diff match patch
+records for the HTML and text changes in the database.
 
 **Use cases**: monitor pages for edits (privacy policies, documentation, news
 articles), build a personal changelog of sites you follow, or audit when a
@@ -58,14 +58,10 @@ trusted resource last changed.
 
 #### Viewing stored versions
 
-Once Hister has recorded at least one version diff for a document, a **version
-count badge** appears on the document's card in the search results and in the
-offline preview popup. Clicking it opens a changelog that shows each recorded
-diff with its timestamp.
-
-Previous versions are also checked when you open the offline preview of a
-document: if the stored HTML has changed since the previous visit, the diff is
-shown inline in the preview.
+Once Hister has recorded at least one version diff for a document, the preview
+panel shows a previous version count. Clicking it opens a changelog with each
+recorded diff and timestamp. From there you can inspect a diff or reconstruct
+and display an archived version.
 
 #### API
 

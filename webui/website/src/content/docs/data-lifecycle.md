@@ -133,7 +133,7 @@ Normal updates and deletions already attempt to remove unreferenced assets. Clea
 
 ## Crawl Job Lifecycle
 
-Persistent crawls and browser imports keep queue state in the SQL database so they can resume after interruption. Completed and failed job records remain available for inspection.
+Persistent crawls and browser imports keep queue state in the SQL database so they can resume after interruption. Completed and interrupted job records remain available for inspection, together with their completed and failed URL rows.
 
 List and remove them explicitly:
 

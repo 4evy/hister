@@ -44,7 +44,9 @@ You can search within specific fields using the `field:value` syntax:
 - **text:** - Search in page content only
 - **url:** - Search in URLs only (bare file paths without `://` are automatically resolved to absolute `file://` URLs)
 - **domain:** - Search in domain names only
+- **label:** - Search in document labels only
 - **language:** - Filter by detected language (e.g., `en`, `de`, `fr`. Use `unknown` for languages Hister doesn't support)
+- **metadata.KEY:** - Match an exact metadata value, such as `metadata.source:linkding`
 - **type:** - Filter by document type (`web` for websites, `file` or `local` for local files)
 - **visits:** - Filter by visit count, with exact values (`visits:1`), bounded ranges (`visits:2..4`), or open ranges (`visits:10..`)
 - **added:** Filter by when a document was first added, using a relative duration such as `added:>90d` or an absolute date such as `added:>=2026-04-01`
@@ -82,6 +84,18 @@ language:en
 ```
 
 Finds pages detected as English language.
+
+```textplain
+label:research
+```
+
+Finds documents with a matching label.
+
+```textplain
+metadata.source:linkding
+```
+
+Finds documents imported from Linkding.
 
 ```textplain
 type:file

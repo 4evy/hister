@@ -4,7 +4,7 @@ draft: false
 title: 'User Handling'
 ---
 
-User handling enables multiple independent users to share a single Hister instance. Each user has their own credentials, their own isolated search index, and their own access token for API clients. User handling is disabled by default, making Hister fully backward compatible. Existing single-user setups require no changes.
+User handling enables multiple independent users to share a single Hister instance. Each user has their own credentials, document collection, scoped search results, and access token for API clients. The server uses shared index files and enforces ownership during searches. User handling is disabled by default, making Hister fully backward compatible. Existing single user setups require no changes.
 
 ## Activation
 
@@ -31,9 +31,9 @@ If OAuth providers are configured, the login page also shows **Sign in with &lt;
 
 Hister supports signing in via GitHub, Google, or any OpenID Connect provider when `server.oauth` is configured. No password is required for OAuth accounts.
 
-When a user signs in via OAuth for the first time, Hister automatically creates a local account linked to their provider identity (GitHub login name, Google email, or OIDC preferred username). Subsequent logins with the same provider identity reuse the same account.
+When a user signs in via OAuth for the first time, Hister automatically creates a local account linked to their provider identity. GitHub uses the login name. Google uses the account name with the full email address as a fallback. OIDC uses `preferred_username` with the full email address as a fallback. Subsequent logins with the same provider identity reuse the same account.
 
-OAuth accounts work identically to password accounts: they have their own isolated search index, personal access token, rules, and aliases. An OAuth user can generate a personal access token from their profile page to use with the CLI or browser extension.
+OAuth accounts work identically to password accounts: they have scoped documents and search results, a personal access token, rules, and aliases. An OAuth user can generate a personal access token from their profile page to use with the CLI or browser extension.
 
 See the [OAuth section of the configuration docs](/docs/configuration#oauth) for setup instructions.
 
@@ -43,7 +43,7 @@ Setting `server.oauth_only: true` disables password logins entirely. Only OAuth 
 
 This is useful when you want to enforce a single sign-on policy and prevent users from bypassing it with locally-set passwords.
 
-The global `app.access_token` and per-user personal access tokens continue to work even when `oauth_only` is enabled, so API clients and CLI tools are unaffected.
+Personal access tokens continue to work when `oauth_only` is enabled, so API clients and CLI tools can authenticate without a browser login. In multiple user mode, `app.access_token` is a client default and must contain a user's personal token to authenticate.
 
 See the [OAuth-Only Mode section of the configuration docs](/docs/configuration#oauth-only-mode) for the full configuration reference.
 
@@ -74,7 +74,7 @@ hister -t <your-token> search "query"
 
 ## User Management Commands
 
-All user management commands require `user_handling: true` in the configuration and direct access to the Hister server host (they operate on the database directly, not over the API).
+All user management commands require `user_handling: true` and direct access to the server host because they update the user database directly. The `delete-user` command also contacts the configured running Hister server to search for owned documents and, with `--purge`, delete them through the API.
 
 ### `create-user`
 
@@ -90,11 +90,15 @@ hister create-user USERNAME [--admin]
 
 ### `delete-user`
 
-Permanently delete a user account (soft delete).
+Soft delete a user account. If the server finds indexed documents owned by that user, the command refuses to continue unless `--purge` is supplied. Purging removes the documents found by the preflight before soft deleting the account. It is not complete data erasure, as explained in [Data Lifecycle and Retention](data-lifecycle#multi-user-ownership).
 
 ```bash
-hister delete-user USERNAME
+hister delete-user USERNAME [--purge]
 ```
+
+| Flag      | Description                                                       |
+| --------- | ----------------------------------------------------------------- |
+| `--purge` | Delete indexed documents found for the user before deleting them. |
 
 ### `show-user`
 
@@ -145,7 +149,7 @@ When user handling is enabled, each user has their own set of rules and aliases 
 
 Users can view and edit their rules and aliases through the **Rules** tab in the web interface, or via the API endpoints.
 
-In single-user mode (user handling disabled), rules and aliases continue to be read from and written to the configuration file on disk.
+In single user mode, rules and aliases continue to be read from and written to `rules.json` in the application data directory.
 
 ## Regexp
 
@@ -162,6 +166,7 @@ Skip rules apply upon the **full** URL (from protocol to the query-string parame
 Admin users have access to privileged operations. Currently, the following endpoints require admin privileges:
 
 - **`POST /api/reindex`** rebuilds the entire full-text search index.
+- **`POST /api/cleanup`** removes stored HTML and favicon files that no current document references.
 
 Non-admin users receive `403 Forbidden` when attempting to call admin-only endpoints.
 
@@ -215,5 +220,5 @@ The `/api/profile` endpoint returns information about the currently authenticate
 - Personal access tokens bypass session cookies and can be used in scripts. Keep them secret and regenerate them if compromised.
 - OAuth state tokens are single-use random values stored in the session cookie. They prevent cross-site request forgery during the OAuth redirect flow.
 - OAuth accounts have no password set. If you need to disable an OAuth user's access, use `hister delete-user` or remove the provider from the configuration.
-- Enable `server.oauth_only: true` to enforce OAuth-only login and prevent password authentication. Per-user access tokens and the global `app.access_token` remain valid for API and CLI access.
+- Enable `server.oauth_only: true` to enforce OAuth login and prevent password authentication. Personal access tokens remain valid for API and CLI access. In multiple user mode, `app.access_token` must contain a user's personal token.
 - User handling is intended for a trusted group of users on a shared instance (family, team). For public-facing deployments, place Hister behind a reverse proxy with HTTPS and only index content that may be shown publicly.

@@ -19,7 +19,7 @@ These flags are available on every command:
 | `--search-url URL` / `-s`  | Default search engine URL with `{query}` placeholder                                            |
 | `--client-timeout N`       | HTTP client timeout in seconds for server communication (0 = no timeout; default if unset: 10s) |
 
-Example: index a slow extractor (e.g. `yt-dlp` with a longer timeout:
+Example: index a slow extractor, such as `yt-dlp`, with a longer timeout:
 
 ```bash
 hister --client-timeout 20 index https://example.com
@@ -58,7 +58,7 @@ You can limit the export to documents matching a search query by passing it afte
 output file (see the [query language](query-language) reference):
 
 ```bash
-hister export rust.json "rust lang:en"
+hister export rust.json "rust language:en"
 ```
 
 Each document is written as a single JSON line; lines that do not start with `{` are
@@ -66,7 +66,7 @@ structural markers (`[`, `]`, `,`) and can be safely skipped by parsers. Pass `-
 output file to write to standard output instead, which can be piped into other tools:
 
 ```bash
-hister export | gzip > backup.json.gz
+hister export - | gzip > backup.json.gz
 ```
 
 Use `--start-date` / `--end-date` (`YYYY-MM-DD`) to only export documents whose `updated`
@@ -149,22 +149,22 @@ hister search
 
 The TUI uses the following keybindings by default:
 
-| Key           | Action          | Description                                    |
-| ------------- | --------------- | ---------------------------------------------- |
-| `ctrl+c`      | quit            | Exit the TUI                                   |
-| `f1`          | toggle_help     | Show/hide keybindings help overlay             |
-| `tab`, `esc`  | toggle_focus    | Switch between search input and results list   |
-| `up`, `k`     | scroll_up       | Navigate up in results                         |
-| `down`, `j`   | scroll_down     | Navigate down in results                       |
-| `enter`       | open_result     | Open the selected result in your browser       |
-| `ctrl+d`, `d` | delete_result   | Delete the selected result from the index      |
-| `ctrl+t`, `t` | toggle_theme    | Open the interactive theme picker              |
-| `ctrl+s`, `s` | toggle_settings | Open the keybinding editor overlay             |
-| `ctrl+o`, `o` | toggle_sort     | Toggle domain-based sorting for search results |
-| `alt+1`       | tab_search      | Switch to the Search tab                       |
-| `alt+2`       | tab_history     | Switch to the History tab                      |
-| `alt+3`       | tab_rules       | Switch to the Rules tab                        |
-| `alt+4`       | tab_add         | Switch to the Add tab                          |
+| Key          | Action          | Description                                    |
+| ------------ | --------------- | ---------------------------------------------- |
+| `ctrl+c`     | quit            | Exit the TUI                                   |
+| `f1`         | toggle_help     | Show/hide keybindings help overlay             |
+| `tab`, `esc` | toggle_focus    | Switch between search input and results list   |
+| `up`, `k`    | scroll_up       | Navigate up in results                         |
+| `down`, `j`  | scroll_down     | Navigate down in results                       |
+| `enter`      | open_result     | Open the selected result in your browser       |
+| `ctrl+d`     | delete_result   | Delete the selected result from the index      |
+| `ctrl+t`     | toggle_theme    | Open the interactive theme picker              |
+| `ctrl+s`     | toggle_settings | Open the keybinding editor overlay             |
+| `ctrl+o`     | toggle_sort     | Toggle domain-based sorting for search results |
+| `alt+1`      | tab_search      | Switch to the Search tab                       |
+| `alt+2`      | tab_history     | Switch to the History tab                      |
+| `alt+3`      | tab_rules       | Switch to the Rules tab                        |
+| `alt+4`      | tab_add         | Switch to the Add tab                          |
 
 ### Mouse Controls
 
@@ -177,14 +177,14 @@ The TUI uses the following keybindings by default:
 
 TUI settings are stored in a separate `tui.yaml` file alongside your main config file. This file is automatically created with default values when you first run `hister search`.
 
-**TUI config location**: `~/.config/hister/tui.yaml`
+On a typical Linux setup the path is `~/.config/hister/tui.yaml`. On other platforms, or when a custom config path is selected, `tui.yaml` is stored beside the main config file.
 
 #### tui.yaml Structure
 
 ```yaml
 # Theme settings
-dark_theme: 'dracula'
-light_theme: 'gruvbox'
+dark_theme: 'tokyonight'
+light_theme: 'catppuccin-latte'
 color_scheme: 'auto'
 # themes_dir: "/path/to/custom/themes"  # optional
 
