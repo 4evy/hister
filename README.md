@@ -21,10 +21,10 @@ Hister is a private search engine for the pages you visit and the files you keep
 3. Start Hister on Linux or macOS:
 
    ```bash
-   ./hister
+   ./hister listen
    ```
 
-   On Windows, run `.\hister.exe` in PowerShell.
+   On Windows, run `.\hister.exe listen` in PowerShell.
 
 4. Open <http://127.0.0.1:4433> and install the browser extension for [Firefox](https://addons.mozilla.org/en-US/firefox/addon/hister/) or [Chrome](https://chromewebstore.google.com/detail/hister/cciilamhchpmbdnniabclekddabkifhb).
 
@@ -39,7 +39,7 @@ No configuration is required for a local personal setup. See the [complete quick
 - **Optional semantic search**: Find documents by meaning through an embeddings endpoint you configure.
 - **Crawler and browser import**: Index websites or bring in existing browser history.
 - **Web, terminal, and MCP clients**: Search from the browser, TUI, command line, or an AI assistant.
-- **Multi user support**: Host separate indexes for a household, community, or team.
+- **Multi user support**: Keep each user's documents and search results separate on a shared server.
 
 ![Hister terminal interface](webui/website/src/lib/assets/demo.gif)
 
