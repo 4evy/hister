@@ -34,7 +34,6 @@ import (
 	"github.com/asciimoo/hister/server/timeline"
 	"github.com/asciimoo/hister/server/types"
 
-	"github.com/gorilla/sessions"
 	"github.com/gorilla/websocket"
 	"github.com/rs/zerolog/log"
 	"github.com/sergi/go-diff/diffmatchpatch"
@@ -44,12 +43,12 @@ import (
 // and other server responses can expose the running binary version.
 var Version = "unknown"
 
-const sessionMaxAge = 60 * 60 * 24 * 365
+const sessionMaxAge = 60 * 60 * 24 * 30
 
 var (
 	appSubFS         iofs.FS
 	staticFileServer http.Handler
-	sessionStore     *sessions.CookieStore
+	sessionStore     *databaseSessionStore
 	errCSRFMismatch  = errors.New("CSRF token mismatch")
 	storeName        = "hister"
 	tokName          = "csrf_token"
@@ -172,20 +171,8 @@ func recParseStaticFiles(entries []iofs.DirEntry, dir, baseDir string) error {
 	return nil
 }
 
-func newSessionStore(secretKey []byte, maxAge int) *sessions.CookieStore {
-	store := sessions.NewCookieStore(secretKey[:32])
-	store.Options = &sessions.Options{
-		Path:     "/",
-		HttpOnly: true,
-	}
-	// CookieStore.MaxAge updates both the browser cookie options and the
-	// securecookie codec used to validate the signed value.
-	store.MaxAge(maxAge)
-	return store
-}
-
 func Listen(cfg *config.Config) {
-	sessionStore = newSessionStore(cfg.SecretKey(), sessionMaxAge)
+	sessionStore = newSessionStore(cfg.SecretKey(), cfg.BaseURL(""), sessionMaxAge)
 
 	// This is an ugly hack required to set the base path dynamically in svelte files.
 	// Svelte only supports build time specification of the base path and it accepts
@@ -317,6 +304,12 @@ func createHandler(cfg *config.Config, h func(*webContext)) func(w http.Response
 		} else {
 			c.Authenticated = true
 		}
+		if c.Authenticated && sessionStore != nil {
+			if err := sessionStore.Refresh(c.Request, c.Response, storeName); err != nil {
+				serve500(c)
+				return
+			}
+		}
 		h(c)
 	}
 }
@@ -332,77 +325,66 @@ func requestAccessToken(c *webContext) string {
 }
 
 func populateTokenContext(c *webContext) {
-	session, err := sessionStore.Get(c.Request, storeName)
-	if err == nil && session != nil {
-		if t, ok := session.Values["access_token"].(string); ok && t == c.Config.App.AccessToken {
-			c.Authenticated = true
-			return
-		}
-	}
 	if tok := requestAccessToken(c); tok != "" && tok == c.Config.App.AccessToken {
 		c.Authenticated = true
+		return
+	}
+	session, err := sessionStore.Get(c.Request, storeName)
+	if err == nil && session != nil {
+		if sessionStore.tokenAuthenticated(session, c.Config.App.AccessToken) {
+			c.Authenticated = true
+		}
 	}
 }
 
 func withTokenAuth(handler endpointHandler) endpointHandler {
 	return func(c *webContext) {
-		session, err := sessionStore.Get(c.Request, storeName)
-		if err != nil && session == nil {
-			serve403(c)
-			return
-		}
-		if t, ok := session.Values["access_token"].(string); ok && t == c.Config.App.AccessToken {
+		if tok := requestAccessToken(c); tok != "" && tok == c.Config.App.AccessToken {
 			c.Authenticated = true
 			handler(c)
 			return
 		}
-		tok := requestAccessToken(c)
-		if tok != c.Config.App.AccessToken {
-			serve403(c)
-			return
-		}
-		session.Values["access_token"] = c.Config.App.AccessToken
-		err = session.Save(c.Request, c.Response)
+		session, err := sessionStore.Get(c.Request, storeName)
 		if err != nil {
 			serve500(c)
 			return
 		}
-		c.Authenticated = true
-		handler(c)
+		if sessionStore.tokenAuthenticated(session, c.Config.App.AccessToken) {
+			c.Authenticated = true
+			handler(c)
+			return
+		}
+		serve403(c)
 	}
 }
 
 func populateUserContext(c *webContext) {
 	session, err := sessionStore.Get(c.Request, storeName)
-	if err != nil && session == nil {
+	if err != nil {
 		return
 	}
 	if uid, ok := session.Values["user_id"].(uint); ok && uid > 0 {
-		c.UserID = uid
-		c.Authenticated = true
-	}
-	if name, ok := session.Values["username"].(string); ok {
-		c.Username = name
-	}
-	if c.UserID == 0 {
-		tok := requestAccessToken(c)
-		if tok != "" {
-			if u, err := model.GetUserByToken(tok); err == nil {
-				c.UserID = u.ID
-				c.Username = u.Username
-				c.IsAdmin = u.IsAdmin
-				c.Authenticated = true
-				if rules, err := u.ParseRules(); err == nil {
-					c.userRules = rules
-				}
+		if u, err := model.GetUserByID(uid); err == nil {
+			c.UserID = u.ID
+			c.Username = u.Username
+			c.IsAdmin = u.IsAdmin
+			c.Authenticated = true
+			if rules, err := u.ParseRules(); err == nil {
+				c.userRules = rules
 			}
+			return
 		}
-		return
 	}
-	if u, err := model.GetUserByID(c.UserID); err == nil {
-		c.IsAdmin = u.IsAdmin
-		if rules, err := u.ParseRules(); err == nil {
-			c.userRules = rules
+	tok := requestAccessToken(c)
+	if tok != "" {
+		if u, err := model.GetUserByToken(tok); err == nil {
+			c.UserID = u.ID
+			c.Username = u.Username
+			c.IsAdmin = u.IsAdmin
+			c.Authenticated = true
+			if rules, err := u.ParseRules(); err == nil {
+				c.userRules = rules
+			}
 		}
 	}
 }
@@ -506,7 +488,7 @@ func withCSRF(handler endpointHandler) endpointHandler {
 		}
 
 		session, err := sessionStore.Get(c.Request, storeName)
-		if err != nil && session == nil {
+		if err != nil {
 			http.Error(c.Response, err.Error(), http.StatusInternalServerError)
 			return
 		}
@@ -516,7 +498,7 @@ func withCSRF(handler endpointHandler) endpointHandler {
 		if method != http.MethodGet && method != http.MethodHead && !safeRequest {
 			sToken, ok := session.Values[tokName].(string)
 			if !ok {
-				http.Error(c.Response, errCSRFMismatch.Error(), http.StatusInternalServerError)
+				http.Error(c.Response, errCSRFMismatch.Error(), http.StatusForbidden)
 				return
 			}
 			token := c.Request.PostFormValue(tokName)
@@ -524,7 +506,7 @@ func withCSRF(handler endpointHandler) endpointHandler {
 				token = c.Request.Header.Get("X-CSRF-Token")
 			}
 			if token != sToken {
-				http.Error(c.Response, errCSRFMismatch.Error(), http.StatusInternalServerError)
+				http.Error(c.Response, errCSRFMismatch.Error(), http.StatusForbidden)
 				return
 			}
 		}
@@ -664,12 +646,15 @@ func serveLogin(c *webContext) {
 		return
 	}
 	session, err := sessionStore.Get(c.Request, storeName)
-	if err != nil && session == nil {
+	if err != nil {
 		serve500(c)
 		return
 	}
-	session.Values["user_id"] = user.ID
-	session.Values["username"] = user.Username
+	if err := sessionStore.Rotate(session); err != nil {
+		serve500(c)
+		return
+	}
+	sessionStore.authenticateUser(session, user.ID)
 	if err := session.Save(c.Request, c.Response); err != nil {
 		serve500(c)
 		return
@@ -690,11 +675,15 @@ func serveTokenLogin(c *webContext) {
 		return
 	}
 	session, err := sessionStore.Get(c.Request, storeName)
-	if err != nil && session == nil {
+	if err != nil {
 		serve500(c)
 		return
 	}
-	session.Values["access_token"] = c.Config.App.AccessToken
+	if err := sessionStore.Rotate(session); err != nil {
+		serve500(c)
+		return
+	}
+	sessionStore.authenticateToken(session, c.Config.App.AccessToken)
 	if err := session.Save(c.Request, c.Response); err != nil {
 		serve500(c)
 		return
@@ -704,13 +693,12 @@ func serveTokenLogin(c *webContext) {
 
 func serveLogout(c *webContext) {
 	session, err := sessionStore.Get(c.Request, storeName)
-	if err != nil && session == nil {
+	if err != nil {
 		serve500(c)
 		return
 	}
-	delete(session.Values, "user_id")
-	delete(session.Values, "username")
-	delete(session.Values, "access_token")
+	session.Values = make(map[any]any)
+	session.Options.MaxAge = -1
 	if err := session.Save(c.Request, c.Response); err != nil {
 		serve500(c)
 		return

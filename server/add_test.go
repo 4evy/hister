@@ -23,7 +23,7 @@ func (w *statusCountingWriter) WriteHeader(statusCode int) {
 func TestAddFormAccessTokenDoesNotAuthenticate(t *testing.T) {
 	cfg := testutil.Config(t)
 	cfg.App.AccessToken = "secret"
-	sessionStore = newSessionStore([]byte(strings.Repeat("x", 32)), sessionMaxAge)
+	sessionStore = newSessionStore([]byte(strings.Repeat("x", 32)), cfg.BaseURL(""), sessionMaxAge)
 	called := false
 	h := endpointHandler(func(c *webContext) {
 		called = true

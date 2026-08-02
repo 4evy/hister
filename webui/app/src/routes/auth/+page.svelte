@@ -5,7 +5,7 @@
   import * as Card from '@hister/components/ui/card';
   import { Lock } from '@lucide/svelte';
   import { toast } from '@hister/components/ui/sonner';
-  import { login, loginWithToken, resetConfig } from '$lib/api';
+  import { fetchConfig, login, loginWithToken, resetConfig } from '$lib/api';
   import { setFlashMessage, showFlashMessage } from '$lib/flash';
   import { base } from '$app/paths';
 
@@ -26,8 +26,7 @@
   async function initializeAuthPage() {
     const flashShown = await showFlashMessage();
 
-    fetch(`${base}/api/config`, { credentials: 'include' })
-      .then((r) => r.json())
+    fetchConfig()
       .then((cfg) => {
         authMode = cfg.authMode ?? 'token';
         oauthProviders = cfg.oauthProviders ?? [];
@@ -54,7 +53,7 @@
     error = '';
     loading = true;
     try {
-      await loginWithToken(token.trim());
+      await loginWithToken(token);
       resetConfig();
       setFlashMessage('Signed in successfully.');
       window.location.href = base + '/';
@@ -86,7 +85,7 @@
     if (e.key === 'Enter') {
       if (authMode === 'user') {
         handleLogin();
-      } else if (token.trim() && !loading) {
+      } else if (token && !loading) {
         handleTokenSave();
       }
     }
@@ -226,7 +225,7 @@
           </div>
           <Button
             onclick={handleTokenSave}
-            disabled={!token.trim() || loading}
+            disabled={!token || loading}
             class="bg-hister-indigo hover:bg-hister-indigo/90 border-brutal-border font-space h-12 w-full rounded-none border-[3px] font-bold tracking-wider uppercase shadow-[4px_4px_0px_var(--brutal-shadow)] transition-all hover:translate-x-0.5 hover:translate-y-0.5 hover:shadow-[2px_2px_0px_var(--brutal-shadow)] active:translate-x-1 active:translate-y-1 active:shadow-none disabled:cursor-not-allowed disabled:opacity-50"
           >
             {loading ? 'Signing in…' : 'Sign In'}

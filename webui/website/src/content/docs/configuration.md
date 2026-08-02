@@ -830,7 +830,7 @@ app:
   access_token: 'your-secret-token-here'
 ```
 
-The web UI automatically prompts for and stores the access token when configured. The access token has to be added to the browser extension as well.
+The web UI prompts for the access token and exchanges it for an opaque browser session. It does not retain the access token in the cookie or in browser storage. The access token has to be added to the browser extension separately when the extension uses token authentication.
 
 ## Public Mode
 
@@ -863,7 +863,7 @@ For command-line usage with `curl` or similar tools, include the header in your 
 curl -H "X-Access-Token: your-secret-token-here" http://localhost:4433/api/config
 ```
 
-**Security note**: The access token is transmitted in plain text with each request. When exposing Hister over the network, always use HTTPS (via reverse proxy) to encrypt the token in transit. The token provides basic access control but does not replace proper authentication systems for multi-user scenarios.
+**Security note**: API clients transmit the access token in plain text with each request, and the web UI transmits it during login. When exposing Hister over the network, always use HTTPS through a reverse proxy to encrypt credentials and sessions in transit. The token provides basic access control but does not replace proper authentication systems for multiple user scenarios.
 
 ## OAuth
 

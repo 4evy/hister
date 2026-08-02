@@ -83,6 +83,7 @@ func automigrate() error {
 		&CrawlURL{},
 		&DocumentVersion{},
 		&EmbeddingJob{},
+		&WebSession{},
 	)
 }
 

@@ -6,6 +6,7 @@ package model
 
 import (
 	"github.com/rs/zerolog/log"
+	"gorm.io/gorm"
 )
 
 type migration struct {
@@ -18,6 +19,22 @@ var migrations = []migration{
 		post: func() error {
 			// UpdateColumn (not Update) so the backfill does not bump UpdatedAt.
 			return DB.Model(&HistoryLink{}).Where("pinned = ?", false).UpdateColumn("pinned", true).Error
+		},
+	},
+	{
+		post: func() error {
+			// Earlier server side sessions used a required last_seen_at column.
+			// Rolling expiration no longer uses it, and leaving the required column
+			// behind makes inserts from the current model fail on upgraded databases.
+			if !DB.Migrator().HasColumn("web_sessions", "last_seen_at") {
+				return nil
+			}
+			return DB.Transaction(func(tx *gorm.DB) error {
+				if err := tx.Exec("DROP INDEX IF EXISTS idx_web_sessions_last_seen_at").Error; err != nil {
+					return err
+				}
+				return tx.Exec("ALTER TABLE web_sessions DROP COLUMN last_seen_at").Error
+			})
 		},
 	},
 }

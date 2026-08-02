@@ -60,7 +60,7 @@ func serveOAuthRedirect(c *webContext) {
 		return
 	}
 	session, err := sessionStore.Get(c.Request, storeName)
-	if err != nil && session == nil {
+	if err != nil {
 		serve500(c)
 		return
 	}
@@ -91,7 +91,7 @@ func serveOAuthCallback(c *webContext) {
 	code := c.Request.URL.Query().Get("code")
 	state := c.Request.URL.Query().Get("state")
 	session, err := sessionStore.Get(c.Request, storeName)
-	if err != nil && session == nil {
+	if err != nil {
 		serve500(c)
 		return
 	}
@@ -157,8 +157,11 @@ func serveOAuthCallback(c *webContext) {
 			return
 		}
 	}
-	session.Values["user_id"] = user.ID
-	session.Values["username"] = user.Username
+	if err := sessionStore.Rotate(session); err != nil {
+		serve500(c)
+		return
+	}
+	sessionStore.authenticateUser(session, user.ID)
 	if err := session.Save(c.Request, c.Response); err != nil {
 		serve500(c)
 		return

@@ -23,7 +23,9 @@ After enabling user handling, restart the server and create at least one user ac
 
 ### Web Interface
 
-When user handling is enabled, the web interface presents a login page to unauthenticated visitors. Enter your username and password to log in. Your session is maintained via a secure HTTP-only cookie valid for one year.
+When user handling is enabled, the web interface presents a login page to unauthenticated visitors. Enter your username and password to log in. Your session uses an HTTP only cookie containing a random opaque identifier. Sessions expire thirty days after the most recent valid request. Each valid request refreshes the session and cookie expiry to thirty days from that request.
+
+The cookie uses `SameSite=Lax`. Its `Secure` attribute is enabled when `server.base_url` uses HTTPS and disabled when that URL uses HTTP, so loopback HTTP instances continue to work. Plain HTTP cannot protect a session from interception on the network. Use HTTPS for every network exposed instance.
 
 If OAuth providers are configured, the login page also shows **Sign in with &lt;Provider&gt;** buttons. See [OAuth Login](#oauth-login) below.
 
@@ -216,9 +218,9 @@ The `/api/profile` endpoint returns information about the currently authenticate
 ## Security Considerations
 
 - Passwords are hashed with bcrypt before storage and are never returned by any API.
-- Sessions are stored in signed HTTP-only cookies. The signing key is derived from Hister's secret key file.
+- Browser cookies contain only random session identifiers. Session data and identifier hashes are stored in the configured SQL database. Logout revokes the database record immediately.
 - Personal access tokens bypass session cookies and can be used in scripts. Keep them secret and regenerate them if compromised.
-- OAuth state tokens are single-use random values stored in the session cookie. They prevent cross-site request forgery during the OAuth redirect flow.
+- OAuth state tokens are single use random values stored in the server side session. They prevent cross site request forgery during the OAuth redirect flow.
 - OAuth accounts have no password set. If you need to disable an OAuth user's access, use `hister delete-user` or remove the provider from the configuration.
 - Enable `server.oauth_only: true` to enforce OAuth login and prevent password authentication. Personal access tokens remain valid for API and CLI access. In multiple user mode, `app.access_token` must contain a user's personal token.
 - User handling is intended for a trusted group of users on a shared instance (family, team). For public-facing deployments, place Hister behind a reverse proxy with HTTPS and only index content that may be shown publicly.

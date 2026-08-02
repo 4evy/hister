@@ -35,7 +35,9 @@ func newTokenTestServerWithLogLevel(t *testing.T, public bool, logLevel string) 
 	if err := cfg.SaveRules(); err != nil {
 		t.Fatal(err)
 	}
-	sessionStore = newSessionStore([]byte(strings.Repeat("x", 32)), sessionMaxAge)
+	cfg.Server.Database = "file::memory:"
+	testutil.InitModelWithConfig(t, cfg)
+	sessionStore = newSessionStore([]byte(strings.Repeat("x", 32)), cfg.BaseURL(""), sessionMaxAge)
 	return cfg, registerEndpoints(cfg)
 }
 
@@ -167,6 +169,31 @@ func TestTokenLoginSetsHttpOnlySessionCookieAndAuthenticates(t *testing.T) {
 	if !sessionCookie.HttpOnly {
 		t.Fatal("session cookie HttpOnly = false, want true")
 	}
+	if sessionCookie.Secure {
+		t.Fatal("HTTP session cookie Secure = true, want false")
+	}
+	if sessionCookie.SameSite != http.SameSiteLaxMode {
+		t.Fatalf("session cookie SameSite = %v, want %v", sessionCookie.SameSite, http.SameSiteLaxMode)
+	}
+	if sessionCookie.MaxAge != sessionMaxAge {
+		t.Fatalf("session cookie MaxAge = %d, want %d", sessionCookie.MaxAge, sessionMaxAge)
+	}
+	if !validSessionToken(sessionCookie.Value) {
+		t.Fatalf("session cookie does not contain an opaque %d byte identifier", sessionTokenBytes)
+	}
+	if strings.Contains(sessionCookie.Value, "secret") {
+		t.Fatal("session cookie contains the application access token")
+	}
+	storedSession, err := model.GetWebSession(sessionTokenHash(sessionCookie.Value))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if storedSession.TokenHash == sessionCookie.Value {
+		t.Fatal("database stores the raw session identifier")
+	}
+	if strings.Contains(string(storedSession.Data), "secret") {
+		t.Fatal("server side session data contains the application access token")
+	}
 
 	req := httptest.NewRequest(http.MethodGet, "/api/add", nil)
 	req.AddCookie(sessionCookie)
@@ -202,9 +229,7 @@ func TestTokenLoginSetsHttpOnlySessionCookieAndAuthenticates(t *testing.T) {
 }
 
 func TestPublicModeEnablesHistoryForAuthenticatedCallers(t *testing.T) {
-	cfg, handler := newPublicTokenTestServer(t)
-	cfg.Server.Database = "file::memory:"
-	testutil.InitModelWithConfig(t, cfg)
+	_, handler := newPublicTokenTestServer(t)
 	anonymousRec := testutil.ServeHTTP(t, handler, http.MethodPost, "/api/history", strings.NewReader(`{"query":"q","url":"https://example.com","title":"Example"}`), map[string]string{
 		"Origin": "hister://",
 	})
@@ -271,9 +296,7 @@ func TestPublicModeEnablesHistoryForAuthenticatedCallers(t *testing.T) {
 }
 
 func TestMCPGetHistoryOpenedMode(t *testing.T) {
-	cfg, handler := newTokenTestServer(t, false)
-	cfg.Server.Database = "file::memory:"
-	testutil.InitModelWithConfig(t, cfg)
+	_, handler := newTokenTestServer(t, false)
 	if err := model.UpdateHistory(0, "hister mcp", "https://example.com/mcp", "MCP result"); err != nil {
 		t.Fatal(err)
 	}

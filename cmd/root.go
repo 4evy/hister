@@ -170,8 +170,8 @@ var listenCmd = &cobra.Command{
 				exit(1, `Failed to set server address: `+err.Error())
 			}
 		}
-		if cfg.App.AccessToken != "" && strings.HasPrefix(cfg.BaseURL(""), "http://") {
-			log.Warn().Msg("Using authentication token without https. Token is sent plain-text in network requests.")
+		if (cfg.App.AccessToken != "" || cfg.App.UserHandling) && strings.HasPrefix(cfg.BaseURL(""), "http://") {
+			log.Warn().Msg("Using authentication without https. Credentials and sessions are sent in plain text network requests.")
 		}
 		if len(cfg.Indexer.Directories) > 0 {
 			fileQueue := indexer.NewFileIndexQueue()

@@ -23,19 +23,21 @@ Hister keeps current searchable documents until you replace or delete them. It d
 
 The `app.directory` setting is the main Hister data directory. A default SQLite deployment stores these items there:
 
-| Location                       | Contents                                                                              |
-| ------------------------------ | ------------------------------------------------------------------------------------- |
-| `index.db` and `index_LANG.db` | Searchable document fields and full text indexes                                      |
-| `data/html/`                   | Compressed HTML previews, addressed by content hash                                   |
-| `data/favicon/`                | Compressed favicons, addressed by content hash                                        |
-| `db.sqlite3`                   | Users, search result history, crawl jobs, version differences, and internal job state |
-| `vectors.sqlite3`              | Semantic search chunks and vectors when semantic search uses SQLite                   |
-| `rules.json`                   | Rules and aliases in single user mode                                                 |
-| `.secret_key`                  | The secret used to sign sessions                                                      |
+| Location                       | Contents                                                                                                |
+| ------------------------------ | ------------------------------------------------------------------------------------------------------- |
+| `index.db` and `index_LANG.db` | Searchable document fields and full text indexes                                                        |
+| `data/html/`                   | Compressed HTML previews, addressed by content hash                                                     |
+| `data/favicon/`                | Compressed favicons, addressed by content hash                                                          |
+| `db.sqlite3`                   | Users, browser sessions, search result history, crawl jobs, version differences, and internal job state |
+| `vectors.sqlite3`              | Semantic search chunks and vectors when semantic search uses SQLite                                     |
+| `rules.json`                   | Rules and aliases in single user mode                                                                   |
+| `.secret_key`                  | The secret used to derive authentication proofs for global token sessions                               |
 
 Language detection can create more than one `index_LANG.db` directory. Identical HTML or favicons share the same content addressed file, which reduces duplicate storage.
 
 When `server.database` is a PostgreSQL connection string, SQL data is stored in PostgreSQL instead of `db.sqlite3`. Semantic vectors are also stored in PostgreSQL. The Bleve search indexes and HTML and favicon data remain under `app.directory`.
+
+Browser session records contain session state and a hash of the random identifier sent to the browser. They never contain the configured application access token or the raw session identifier. Sessions expire thirty days after the most recent valid request or immediately after logout. Each valid request refreshes both the database expiry and browser cookie expiry. Expired records are removed during session activity.
 
 Configuration files can live outside `app.directory`. Source files in watched directories are not copied into the SQL database, but their extracted content is placed in the search index.
 
