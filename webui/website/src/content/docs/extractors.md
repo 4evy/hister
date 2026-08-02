@@ -117,6 +117,9 @@ type Extractor interface {
     // Name returns a human-readable identifier used in logs and config.
     Name() string
 
+    // Description returns a short human-readable summary for clients.
+    Description() string
+
     // Match reports whether this extractor applies to the given document.
     // Extract and Preview are only called when Match returns true.
     Match(*document.Document) bool
@@ -159,7 +162,7 @@ const (
 ### `Document`
 
 The whole [`document.Document`](https://github.com/asciimoo/hister/blob/main/server/document/document.go)
-struct passed to `Match`, `Extract`, and `Preview`.
+struct is passed to `Match`, `Extract`, and `Preview`.
 
 ### `PreviewResponse`
 
@@ -223,10 +226,10 @@ extractor is omitted from the config, its built-in defaults apply.
 
 Controls whether the extractor participates in the chain.
 
-| Value   | Effect                                              |
-| ------- | --------------------------------------------------- |
-| `true`  | Extractor is active (the default for all built-ins) |
-| `false` | Extractor is skipped for both indexing and preview  |
+| Value   | Effect                                                            |
+| ------- | ----------------------------------------------------------------- |
+| `true`  | Extractor is active. This is the default except for `ytdlp`.      |
+| `false` | Extractor is skipped for automatic indexing and preview selection |
 
 ### `options`
 
@@ -278,6 +281,32 @@ The extractors below are tried in the order listed. The first one that returns
 `ExtractorContinue` act as metadata enrichers, they annotate the document
 and then pass control to the next extractor in the chain.
 
+### `markdown`
+
+Provides sanitized HTML previews for locally indexed Markdown files. The file
+indexer renders `.md` and `.markdown` source into HTML before the extractor
+chain runs, so this extractor leaves indexed text unchanged and handles the
+preview.
+
+**Matches:** `file://` URLs ending in `.md` or `.markdown`.
+
+### `orgmode`
+
+Provides sanitized HTML previews for locally indexed Org mode files. The file
+indexer renders `.org` source into HTML before the extractor chain runs, so this
+extractor leaves indexed text unchanged and handles the preview.
+
+**Matches:** `file://` URLs ending in `.org`.
+
+### `embeddedvideo`
+
+Scans `iframe`, `video`, `embed`, and `object` elements for embedded video URLs.
+Discovered entries are stored as JSON in the document's `videos` metadata. It
+always returns `ExtractorContinue`, allowing a later extractor to produce the
+searchable body and preview.
+
+**Matches:** pages whose raw HTML contains a supported embedding element.
+
 ### `jsonld`
 
 Parses every `<script type="application/ld+json">` block in the page and writes
@@ -286,7 +315,7 @@ the `@type` (content classification) and `headline` fields that the Readability
 extractor does not expose.
 
 Always returns `ExtractorContinue`, it enriches metadata but never produces
-body text on its own. The `Readability` or `Default` extractor further down the
+body text on its own. The `Readability` or `Basic` extractor further down the
 chain handles text extraction.
 
 **Matches:** any page that contains the `application/ld+json` substring.
@@ -322,14 +351,15 @@ extractor.
 
 ### `github`
 
-Extracts repository metadata and README content from GitHub project pages.
-Produces searchable text from the repository description, star count, topics,
-programming languages, and README plain text. The preview pane renders the
-description summary card plus the sanitized README HTML.
+Extracts searchable content and previews from GitHub repository roots, issue
+pages, issue lists, and pull request pages. Repository results include the
+description, star count, topics, programming languages, and README. Issue and
+pull request results include their page specific metadata and discussion
+content.
 
-**Matches:** `https://github.com/{owner}/{repo}` URLs (repository root pages
-only; non-repository system paths such as `/settings`, `/topics`, and `/explore`
-are excluded).
+**Matches:** `https://github.com/{owner}/{repo}`, its `/issues` list, individual
+`/issues/{number}` pages, and individual `/pull/{number}` pages. GitHub system
+paths such as `/settings`, `/topics`, and `/explore` are excluded.
 
 ### `lobsters`
 
@@ -366,6 +396,16 @@ marker in the page HTML, or for a `type: toot` metadata flag set by a previous
 pass.
 
 **Matches:** any Mastodon instance page containing the Mastodon source marker.
+
+### `notion`
+
+Extracts the title and rendered block content of Notion pages and produces a
+sanitized preview. Notion renders content in the browser, so indexing requires
+the `chromedp` or `bidi` crawler backend. The extractor aborts when the rendered
+block tree is missing so that Hister does not index the empty application shell.
+
+**Matches:** nonroot pages on `notion.so`, `www.notion.so`, and any
+`*.notion.site` domain.
 
 ### `ytdlp`
 
@@ -415,7 +455,7 @@ tags.
 **Matches:** every page. Acts as the primary fallback for all content that no
 specialist extractor handles.
 
-### `default`
+### `basic`
 
 Ultimate fallback. Walks the raw HTML token stream and collects all visible text
 inside `<body>`, discarding `<script>`, `<style>`, and `<noscript>` elements.
