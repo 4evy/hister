@@ -54,7 +54,7 @@ title: 'Configuration Reference'
       name: 'log_level',
       type: 'string',
       defaultValue: 'info',
-      description: 'Log verbosity. Supported values are debug, info, warn, and error.',
+      description: 'Log verbosity. Supported values are error, warning, info, debug, and trace. The err and warn aliases are also accepted.',
     },
     {
       name: 'log_format',
@@ -85,6 +85,12 @@ title: 'Configuration Reference'
       type: 'bool',
       defaultValue: 'true',
       description: 'Redirects to the configured search_url when a query returns no results. Disable it to remain within Hister.',
+    },
+    {
+      name: 'display_extractor_config',
+      type: 'bool',
+      defaultValue: 'false',
+      description: 'Includes extractor option definitions in the extractor API response so clients can display configuration details.',
     },
     {
       name: 'disable_previews',
@@ -129,7 +135,7 @@ title: 'Configuration Reference'
       name: 'oauth_only',
       type: 'bool',
       defaultValue: 'false',
-      description: 'Disables password login. OAuth, the global app access token, and personal access tokens remain accepted.',
+      description: 'Disables password login. OAuth and token based API access remain accepted. In multiple user mode, a token must belong to a user.',
     },
   ];
 
@@ -625,6 +631,7 @@ hotkeys:
     'alt+k': 'select_previous_result'
     'alt+o': 'open_query_in_search_engine'
     'alt+v': 'view_result_popup'
+    'alt+d': 'delete_result'
     'tab': 'autocomplete'
     '?': 'show_hotkeys'
 
@@ -727,7 +734,7 @@ TUI settings are configured in a separate `tui.yaml` file located in the same di
 
 <ConfigReference items={tuiThemeOptions} />
 
-**Built-in themes**: catppuccin-mocha, catppuccin-frappe, catppuccin-macchiato, catppuccin-latte, dracula, gruvbox, nord, rose-pine, tokyonight.
+**Built-in themes**: catppuccin-frappe, catppuccin-latte, catppuccin-macchiato, catppuccin-mocha, dracula, gruvbox, gruvbox-light, material-lighter, nord, nord-light, one-light, rose-pine, rose-pine-dawn, solarized-light, tokyonight, and tomorrow.
 
 ## `indexer` Section
 
@@ -772,7 +779,7 @@ indexer:
       filetypes: ['txt', 'md']
     - path: '/shared/docs'
       # no user = global, visible to all
-      filetypes: ['pdf', 'doc']
+      filetypes: ['pdf', 'docx']
 ```
 
 Visibility rules:
@@ -814,7 +821,7 @@ app:
 
 ## Access Token
 
-The `app.access_token` setting provides a simple authentication mechanism to secure your Hister instance. When configured, clients must include the token in API requests using the `X-Access-Token` HTTP header. This is particularly useful when exposing Hister to the network or internet, preventing unauthorized access to your browsing history and search index.
+The `app.access_token` setting provides a simple authentication mechanism to secure your Hister instance. When configured, clients must include the token in API requests using the `X-Access-Token` header or the `Authorization: Bearer TOKEN` header. This is particularly useful when exposing Hister to the network or internet, preventing unauthorized access to your browsing history and search index.
 
 To use the access token, set it in your configuration file:
 
@@ -909,7 +916,7 @@ server:
       configuration_url: 'https://accounts.example.com/.well-known/openid-configuration'
 ```
 
-If your provider does not publish a discovery document, set `auth_url` and `token_url` directly and omit `configuration_url`:
+If your provider does not publish a discovery document, set `auth_url`, `token_url`, and `userinfo_url` directly and omit `configuration_url`:
 
 ```yaml
 server:
@@ -919,6 +926,7 @@ server:
       client_secret: 'your-client-secret'
       auth_url: 'https://accounts.example.com/oauth/authorize'
       token_url: 'https://accounts.example.com/oauth/token'
+      userinfo_url: 'https://accounts.example.com/oauth/userinfo'
 ```
 
 ### How It Works
@@ -927,7 +935,7 @@ server:
 2. Clicking the button redirects the user to the provider's authorization page.
 3. After the user grants access the provider redirects back to `/api/oauth/callback?provider=<name>`.
 4. Hister verifies the state token, exchanges the authorization code for a token, and fetches the user's identity from the provider.
-5. If no local account is linked to that identity, one is created automatically using the provider's username (or email prefix for OIDC).
+5. If no local account is linked to that identity, one is created automatically. GitHub uses the login name, Google uses the account name with the full email address as a fallback, and OIDC uses `preferred_username` with the full email address as a fallback.
 6. The user is logged in and redirected to the home page.
 
 > **Note**: OAuth login requires `app.user_handling: true`. The buttons only appear on the login page when user handling is active and at least one provider is configured.
@@ -945,11 +953,11 @@ server:
       client_secret: 'your-github-client-secret'
 ```
 
-The global `app.access_token` and per-user personal access tokens continue to work regardless of this setting, so API clients, the CLI, and the browser extension are unaffected.
+Personal access tokens continue to work regardless of this setting, so API clients, the CLI, and the browser extension can authenticate without a browser login. In multiple user mode, `app.access_token` is a client default and must contain a user's personal token to authenticate.
 
 The login page hides the username/password form when `oauth_only` is active, showing only the OAuth provider buttons.
 
-> **Note**: `oauth_only` only takes effect when `app.user_handling: true` and at least one OAuth provider is configured. Enabling it without any OAuth providers configured would leave users with no way to log in.
+> **Note**: Use `oauth_only` with `app.user_handling: true` and at least one configured OAuth provider. Enabling it without a provider leaves users with no browser login path.
 
 ## Language Detection
 
@@ -982,6 +990,7 @@ Defines keyboard shortcuts for the web interface. Each entry maps a key combinat
 | `select_previous_result`      | Move selection to the previous result                           |
 | `open_query_in_search_engine` | Open the current query in the configured fallback search engine |
 | `view_result_popup`           | Open the offline preview popup for the selected result          |
+| `delete_result`               | Delete the selected result                                      |
 | `autocomplete`                | Accept the autocomplete suggestion                              |
 | `show_hotkeys`                | Show the keyboard shortcuts help overlay                        |
 
@@ -1146,7 +1155,7 @@ crawler:
 
 ## `sensitive_content_patterns` Section
 
-A map of named [Go regular expression](https://pkg.go.dev/regexp/syntax) patterns. Any indexed page containing a match will have that field redacted before storage. Useful for preventing accidental indexing of secrets, tokens, or credentials.
+A map of named [Go regular expression](https://pkg.go.dev/regexp/syntax) patterns. Hister rejects a web page or local file when its HTML or extracted text matches any pattern. The content is not redacted or indexed. Indexing commands that support `--allow-sensitive` can explicitly bypass this check.
 
 ```yaml
 sensitive_content_patterns:
@@ -1170,9 +1179,10 @@ For example:
 - `HISTER__APP__LOG_FILE=/var/log/hister.log` overrides `app.log_file`
 - `HISTER__SERVER__ADDRESS=0.0.0.0:8080` overrides `server.address`
 
-Two special-purpose variables are also supported:
+Three special purpose variables are also supported:
 
-| Variable          | Description                                                            |
-| ----------------- | ---------------------------------------------------------------------- |
-| `HISTER_PORT`     | Override the port only (keeps the existing host from `server.address`) |
-| `HISTER_DATA_DIR` | Override `app.directory`                                               |
+| Variable          | Description                                                                  |
+| ----------------- | ---------------------------------------------------------------------------- |
+| `HISTER_CONFIG`   | Select a config file when `--config` is not supplied                         |
+| `HISTER_PORT`     | Override the port only while keeping the existing host from `server.address` |
+| `HISTER_DATA_DIR` | Override `app.directory`                                                     |
