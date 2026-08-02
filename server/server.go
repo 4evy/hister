@@ -999,13 +999,6 @@ func doSearch(query *indexer.Query, cfg *config.Config, rules *config.Rules, use
 	return res, nil
 }
 
-// computeDocumentDiff returns a diff-match-patch patch string representing the
-// changes between old and new. It diffs HTML when both documents have HTML,
-// otherwise it diffs the plain text fields. Returns an empty string when the
-// content is identical.
-// computeDocumentDiff returns unified diff-match-patch patch strings for the
-// HTML and Text fields independently. Either return value may be empty when
-// the corresponding content is absent or identical between the two versions.
 // applyPatchReverse reconstructs an older document by inverting the stored
 // patch and applying the result to the current content. The diff-match-patch
 // Patch struct has an unexported diffs field, so we work at the text level:
@@ -1046,6 +1039,9 @@ func applyPatchReverse(patchText, content string) string {
 	return result
 }
 
+// computeDocumentDiff returns diff match patch strings for the HTML and text
+// fields independently. Either value may be empty when its content is
+// identical between the two versions.
 func computeDocumentDiff(old, new *document.Document) (htmlDiff, textDiff string) {
 	dmp := diffmatchpatch.New()
 	makePatch := func(oldContent, newContent string) string {
