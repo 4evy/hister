@@ -191,6 +191,13 @@ that provider as part of the conversation context. That can expose private
 browsing data, indexed documents, page titles, URLs, snippets, and stored page
 content.
 
+Indexed pages are also untrusted input. A malicious page can contain prompt
+injection instructions aimed at the assistant. Hister marks source fields as
+untrusted structured content, returns HTML only when requested, strips invisible
+control characters, and labels the exact untrusted data boundary. The consuming
+assistant must still treat every returned field as data, sanitize HTML before
+rendering it, and request confirmation before using another tool to act on it.
+
 Use a local model when you want to avoid sending that material to an external
 AI provider. This keeps both the assistant and Hister on infrastructure you
 control. You can also add skip rules to keep private or sensitive pages out of

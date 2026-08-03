@@ -313,7 +313,8 @@ func TestMCPGetHistoryOpenedMode(t *testing.T) {
 	}
 	var body struct {
 		Result struct {
-			Content []mcpTextContent `json:"content"`
+			Content           []mcpTextContent    `json:"content"`
+			StructuredContent mcpStructuredResult `json:"structuredContent"`
 		} `json:"result"`
 		Error *mcpRPCError `json:"error"`
 	}
@@ -326,13 +327,26 @@ func TestMCPGetHistoryOpenedMode(t *testing.T) {
 	if len(body.Result.Content) != 1 {
 		t.Fatalf("content length = %d, want 1", len(body.Result.Content))
 	}
-	text := body.Result.Content[0].Text
+	if !strings.HasPrefix(body.Result.Content[0].Text, "SECURITY NOTICE:") {
+		t.Fatalf("text fallback lacks security notice: %s", body.Result.Content[0].Text)
+	}
+	if body.Result.StructuredContent.Trusted["mode"] != "opened" {
+		t.Fatalf("history mode = %#v, want opened", body.Result.StructuredContent.Trusted["mode"])
+	}
+	if len(body.Result.StructuredContent.UntrustedContent) != 2 {
+		t.Fatalf("untrusted history length = %d, want 2", len(body.Result.StructuredContent.UntrustedContent))
+	}
+	encodedContent, err := json.Marshal(body.Result.StructuredContent.UntrustedContent)
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(encodedContent)
 	for _, want := range []string{
-		"Opened history items: 2",
-		"Query: hister mcp",
-		"URL: https://example.com/mcp",
-		"Query: history view",
-		"URL: https://example.com/history",
+		`"trust":"untrusted"`,
+		`"query":"hister mcp"`,
+		`"url":"https://example.com/mcp"`,
+		`"query":"history view"`,
+		`"url":"https://example.com/history"`,
 	} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("history response missing %q in:\n%s", want, text)
@@ -351,7 +365,8 @@ func TestMCPGetHistoryDefaultsToIndexedMode(t *testing.T) {
 	}
 	var body struct {
 		Result struct {
-			Content []mcpTextContent `json:"content"`
+			Content           []mcpTextContent    `json:"content"`
+			StructuredContent mcpStructuredResult `json:"structuredContent"`
 		} `json:"result"`
 		Error *mcpRPCError `json:"error"`
 	}
@@ -364,8 +379,8 @@ func TestMCPGetHistoryDefaultsToIndexedMode(t *testing.T) {
 	if len(body.Result.Content) != 1 {
 		t.Fatalf("content length = %d, want 1", len(body.Result.Content))
 	}
-	if !strings.Contains(body.Result.Content[0].Text, "indexed history items") {
-		t.Fatalf("default history response did not use indexed mode:\n%s", body.Result.Content[0].Text)
+	if body.Result.StructuredContent.Trusted["mode"] != "indexed" {
+		t.Fatalf("default history mode = %#v, want indexed", body.Result.StructuredContent.Trusted["mode"])
 	}
 }
 

@@ -18,6 +18,27 @@ POST /mcp
 The endpoint follows the MCP Streamable HTTP transport. Every interaction is a
 `POST` request with a JSON-RPC 2.0 body. The server responds with a JSON object.
 
+## Untrusted Content And Prompt Injection
+
+Every indexed title, URL, metadata value, document body, and history field is
+untrusted source data. A page can contain instructions aimed at the assistant
+that reads it. Those instructions must never override the user request, cause
+secret disclosure, or trigger another tool.
+
+Tool responses place source controlled values under
+`structuredContent.untrusted_content`. Every record has `trust: "untrusted"`
+and `trust_scope: "all values in fields"`. A security instruction identifies
+the exact untrusted path. The required text content block contains the same
+structured JSON after a security notice.
+
+Hister removes invisible control characters. HTML is returned only when
+explicitly requested by `search`, or as a rendered preview from `get_preview`.
+It remains inside the untrusted structured record. These controls reduce risk
+but cannot guarantee that every consuming model will resist prompt injection.
+MCP clients must sanitize HTML before rendering it and should require user
+confirmation before any action outside read only retrieval, especially before
+using file, shell, browser, email, or network tools.
+
 ## Authentication
 
 The default Hister configuration does not require authentication. Authentication
@@ -78,15 +99,15 @@ true` falls back to normal keyword search.
 By default the response includes title, URL, added and updated dates, and a short text
 snippet per result. Pass `fields` to include additional data:
 
-| Field value | Description                                         |
-| ----------- | --------------------------------------------------- |
-| `text`      | Full stored article text instead of a short snippet |
-| `html`      | Raw HTML                                            |
-| `language`  | Detected language code (e.g. `en`, `de`)            |
-| `label`     | User-defined label                                  |
-| `domain`    | Domain name                                         |
-| `score`     | Relevance score                                     |
-| `type`      | Document type: `web` or `local`                     |
+| Field value | Description                                      |
+| ----------- | ------------------------------------------------ |
+| `text`      | Full stored article text instead of a snippet    |
+| `html`      | Raw HTML in an untrusted structured field        |
+| `language`  | Detected language code, for example `en` or `de` |
+| `label`     | User defined label                               |
+| `domain`    | Domain name                                      |
+| `score`     | Relevance score                                  |
+| `type`      | Document type, either `web` or `local`           |
 
 Example: to summarize articles on a topic without re-fetching any URLs:
 
@@ -104,16 +125,17 @@ Example with a date range:
 
 Retrieve the stored preview for an indexed document by exact URL.
 
-| Argument    | Type   | Required | Default | Description                                     |
-| ----------- | ------ | -------- | ------- | ----------------------------------------------- |
-| `url`       | string | yes      |         | Exact URL of the indexed document to preview    |
-| `extractor` | string | no       |         | Extractor name to use for rendering the preview |
+| Argument    | Type   | Required | Default | Description                                    |
+| ----------- | ------ | -------- | ------- | ---------------------------------------------- |
+| `url`       | string | yes      |         | Exact URL of the indexed document to preview   |
+| `extractor` | string | no       |         | Extractor name used to render the HTML preview |
 
-The response is a text block containing the document title, URL, added and updated dates,
-available preview metadata, and extracted content. Metadata can include author,
-published date, modified date, description, site name, type, language, image,
-JSON LD structured data, and embedded video URLs. If stored HTML is unavailable,
-or the requested extractor fails, Hister falls back to the stored text.
+The response contains the document title, URL, added and updated dates,
+available preview metadata, complete stored plain text, and complete rendered
+HTML when available. Metadata can include author, published date, modified date,
+description, site name, type, language, image, JSON LD structured data, and
+embedded video URLs. Rendered HTML remains untrusted data and clients must
+sanitize it before placing it in a browser or another HTML renderer.
 
 Example:
 
@@ -211,7 +233,7 @@ Hister's config.
 curl -s -X POST http://127.0.0.1:4433/mcp \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer <your-access-token>" \
-  -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"curl","version":"0"}}}'
+  -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"curl","version":"0"}}}'
 ```
 
 **List tools:**
@@ -281,7 +303,7 @@ on the server.
 
 ## Protocol Details
 
-The endpoint implements MCP specification version `2024-11-05` with the
+The endpoint implements MCP specification version `2025-06-18` with the
 following methods:
 
 | Method                      | Description                                                 |
@@ -292,3 +314,8 @@ following methods:
 | `tools/call`                | Executes a tool by name with the provided arguments         |
 | `notifications/initialized` | Acknowledged with 202 when sent as a notification           |
 | `notifications/cancelled`   | Acknowledged with 202 when sent as a notification           |
+
+Every tool advertises an `outputSchema`. Tool call results include the required
+`content` field and a `structuredContent` object conforming to that schema.
+Clients should use `structuredContent` and enforce the `untrusted_content`
+trust markers when placing results into model context.
