@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
+  import { onMount, tick } from 'svelte';
   import type { Action } from 'svelte/action';
 
   const focusInput: Action<HTMLElement> = (node) => {
@@ -183,6 +183,10 @@
       return;
     }
     await loadRules();
+    await tick();
+    if (window.location.hash) {
+      document.getElementById(window.location.hash.slice(1))?.scrollIntoView({ block: 'start' });
+    }
   });
 
   async function loadRules() {
@@ -569,7 +573,7 @@
   {:else}
     <div class="grid grid-cols-1 gap-6 lg:grid-cols-2">
       <!-- Search Aliases Card -->
-      <Card.Root>
+      <Card.Root id="search-aliases" class="scroll-mt-6">
         <Card.Header color="hister-indigo">
           <div class="flex h-12 w-12 shrink-0 items-center justify-center bg-white/20">
             <Link2 class="size-6 text-white" />
@@ -726,7 +730,7 @@
       </Card.Root>
 
       <!-- Indexing Rules Card -->
-      <Card.Root>
+      <Card.Root id="indexing-rules" class="scroll-mt-6">
         <Card.Header color="hister-coral">
           <div class="flex h-12 w-12 shrink-0 items-center justify-center bg-white/20">
             <Shield class="size-6 text-white" />

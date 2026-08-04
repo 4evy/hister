@@ -214,6 +214,8 @@
   let rulesCount = $state(0);
   let aliasesCount = $state(0);
   let historyCount = $state(0);
+  let statsLoaded = $state(false);
+  let statsAvailable = $state(false);
 
   let displayHistoryCount = $state(0);
   let displayRulesCount = $state(0);
@@ -1134,6 +1136,7 @@
   }
 
   async function loadHomeStats() {
+    statsAvailable = false;
     try {
       const statsRes = await apiFetch('/stats', { headers: { Accept: 'application/json' } });
 
@@ -1142,6 +1145,7 @@
         rulesCount = stats.rule_count ?? 0;
         aliasesCount = stats.alias_count ?? 0;
         historyCount = stats.doc_count ?? 0;
+        statsAvailable = true;
         recentSearches = [];
         if (stats.recent_searches) {
           const deletedSearches: string[] = JSON.parse(
@@ -1153,12 +1157,10 @@
         }
       }
     } catch (e) {
-      console.log('Failed to retreive stats', e);
+      console.log('Failed to retrieve stats', e);
     }
     statsLoaded = true;
   }
-
-  let statsLoaded = $state(false);
 
   function addAnimation(target: HTMLElement | null | undefined, options: any) {
     if (!target) {
@@ -1241,7 +1243,7 @@
   });
 
   $effect(() => {
-    if (statsLoaded && !isSearching) {
+    if (statsLoaded && statsAvailable && !isSearching) {
       tick().then(() => animateCounters());
     }
   });
@@ -2442,23 +2444,53 @@
     <div
       bind:this={statsRowEl}
       class="home-stats flex shrink-0 flex-col items-center gap-3 md:flex-row md:gap-4"
+      aria-live="polite"
+      aria-busy={!statsLoaded}
     >
-      <div class="home-stat-pill text-hister-indigo">
-        <History class="size-3.5 md:size-4" />
-        <span class="font-outfit text-xl font-extrabold">{displayHistoryCount}</span>
-        <span class="font-inter text-text-brand-secondary text-sm">pages</span>
-      </div>
-      {#if !config.public || config.canWrite}
-        <div class="home-stat-pill text-hister-teal">
-          <Shield class="size-3.5 md:size-4" />
-          <span class="font-outfit text-xl font-extrabold">{displayRulesCount}</span>
-          <span class="font-inter text-text-brand-secondary text-sm">rules</span>
-        </div>
-        <div class="home-stat-pill text-hister-coral">
-          <Link2 class="size-3.5 md:size-4" />
-          <span class="font-outfit text-xl font-extrabold">{displayAliasesCount}</span>
-          <span class="font-inter text-text-brand-secondary text-sm">aliases</span>
-        </div>
+      {#if !statsLoaded}
+        {#each Array(!config.public || config.canWrite ? 3 : 1) as _}
+          <div class="home-stat-pill" aria-hidden="true">
+            <span class="bg-muted-surface size-4"></span>
+            <span class="bg-muted-surface h-5 w-10"></span>
+            <span class="bg-muted-surface h-3 w-12"></span>
+          </div>
+        {/each}
+      {:else if statsAvailable}
+        <a
+          href="{base}/?q=*"
+          class="home-stat-pill home-stat-link text-hister-indigo"
+          aria-label="Browse all indexed pages"
+          onclick={(event) => {
+            event.preventDefault();
+            clickChip('*');
+          }}
+        >
+          <History class="size-3.5 md:size-4" />
+          <span class="font-outfit text-xl font-extrabold">{displayHistoryCount}</span>
+          <span class="font-inter text-text-brand-secondary text-sm">pages</span>
+        </a>
+        {#if !config.public || config.canWrite}
+          <a
+            href="{base}/rules#indexing-rules"
+            class="home-stat-pill home-stat-link text-hister-teal"
+            aria-label="Open indexing rules"
+          >
+            <Shield class="size-3.5 md:size-4" />
+            <span class="font-outfit text-xl font-extrabold">{displayRulesCount}</span>
+            <span class="font-inter text-text-brand-secondary text-sm">rules</span>
+          </a>
+          <a
+            href="{base}/rules#search-aliases"
+            class="home-stat-pill home-stat-link text-hister-coral"
+            aria-label="Open search aliases"
+          >
+            <Link2 class="size-3.5 md:size-4" />
+            <span class="font-outfit text-xl font-extrabold">{displayAliasesCount}</span>
+            <span class="font-inter text-text-brand-secondary text-sm">aliases</span>
+          </a>
+        {/if}
+      {:else}
+        <p class="font-inter text-text-brand-muted text-sm" role="status">Statistics unavailable</p>
       {/if}
     </div>
   </div>
@@ -2528,6 +2560,20 @@
       var(--card-surface);
     padding: 0.5rem 0.875rem;
     box-shadow: 2px 2px 0 var(--brutal-shadow);
+  }
+
+  .home-stat-link {
+    cursor: pointer;
+    text-decoration: none;
+    transition:
+      box-shadow 150ms ease,
+      transform 150ms ease;
+  }
+
+  .home-stat-link:hover {
+    text-decoration: none;
+    transform: translate(1px, 1px);
+    box-shadow: 1px 1px 0 var(--brutal-shadow);
   }
 
   .home-stat-pill::before {
