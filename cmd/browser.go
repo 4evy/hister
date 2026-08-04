@@ -35,6 +35,9 @@ Browser types supported for automatic detection: firefox, chrome, chromium, brav
 
 The Firefox URL database is usually located at ~/.mozilla/firefox/*.default/places.sqlite
 The Chrome/Chromium URL database is usually located at ~/.config/chromium/Default/History
+
+Use --start-date (format: YYYY-MM-DD) to only import URLs whose most recent
+recorded visit is on or after the given date.
 `,
 	Args: cobra.RangeArgs(0, 2),
 	PreRun: func(_ *cobra.Command, _ []string) {
@@ -92,6 +95,11 @@ func importHistory(cmd *cobra.Command, args []string) {
 	cfg.Crawler.UserAgent = UserAgent
 	applyCrawlerBackendFlags(cmd)
 
+	startDate, err := browserImportStartDate(cmd)
+	if err != nil {
+		exit(1, err.Error())
+	}
+
 	switch len(args) {
 	case 0:
 		// Auto-detect all installed browsers.
@@ -108,15 +116,15 @@ func importHistory(cmd *cobra.Command, args []string) {
 				})
 			}
 		}
-		importDB(databases, cmd)
+		importDB(databases, cmd, startDate)
 
 	case 1, 2:
 		if len(args) == 1 {
 			// check if args[0] is a file or not and call the correct function
 			if _, err := os.Stat(args[0]); os.IsNotExist(err) {
-				importBrowser(strings.ToLower(args[0]), cmd)
+				importBrowser(strings.ToLower(args[0]), cmd, startDate)
 			} else {
-				importHistoryFile(args[0], cmd)
+				importHistoryFile(args[0], cmd, startDate)
 			}
 		} else {
 			browser := args[0]
@@ -131,22 +139,16 @@ func importHistory(cmd *cobra.Command, args []string) {
 					databaseFile: args[1],
 				},
 			},
-				cmd)
+				cmd,
+				startDate)
 		}
 
 	default:
 		log.Fatal().Msg(cmd.Long)
 	}
-
-	// TODO optional date filter
-	//vf := "last_visit_time"
-	//if browser == "firefox" {
-	//	vf = "last_visit_date"
-	//}
-	//q += fmt.Sprintf(" AND %s >= datetime('now', 'localtime', '-1 month')", vf)
 }
 
-func importBrowser(browser string, cmd *cobra.Command) {
+func importBrowser(browser string, cmd *cobra.Command, startDate *time.Time) {
 	var found bool
 
 	for _, db := range getDBPaths() {
@@ -159,7 +161,8 @@ func importBrowser(browser string, cmd *cobra.Command) {
 						databaseFile: path,
 					},
 				},
-					cmd)
+					cmd,
+					startDate)
 			}
 		}
 	}
@@ -168,7 +171,7 @@ func importBrowser(browser string, cmd *cobra.Command) {
 	}
 }
 
-func importHistoryFile(file_path string, cmd *cobra.Command) {
+func importHistoryFile(file_path string, cmd *cobra.Command, startDate *time.Time) {
 	var table string
 
 	if strings.HasSuffix(file_path, "places.sqlite") {
@@ -187,10 +190,11 @@ func importHistoryFile(file_path string, cmd *cobra.Command) {
 			databaseFile: file_path,
 		},
 	},
-		cmd)
+		cmd,
+		startDate)
 }
 
-func importDB(databases []DBToImport, cmd *cobra.Command) {
+func importDB(databases []DBToImport, cmd *cobra.Command, startDate *time.Time) {
 	var dbsToImport []importHistoryMultipleChoicePrompt
 	for _, database := range databases {
 		dbFile := database.databaseFile
@@ -225,7 +229,11 @@ func importDB(databases []DBToImport, cmd *cobra.Command) {
 			log.Error().Err(err).Msg("Failed to read minimum visit count")
 			return
 		}
-		q := browserImportURLQuery(table, minVisit)
+		q, err := browserImportURLQuery(table, minVisit, startDate)
+		if err != nil {
+			log.Error().Err(err).Msg("Failed to create browser history query")
+			return
+		}
 		count, skipped, err := countBrowserImportURLs(db, q, func(u string) bool {
 			return !cfg.App.UserHandling && cfg.Rules.IsSkip(u)
 		})
@@ -392,12 +400,56 @@ func importDB(databases []DBToImport, cmd *cobra.Command) {
 	}
 }
 
-func browserImportURLQuery(table string, minVisit int) string {
+type browserHistoryTimestampSchema struct {
+	column             string
+	unitsPerSecond     int64
+	epochOffsetSeconds int64
+}
+
+var browserHistoryTimestampSchemas = map[string]browserHistoryTimestampSchema{
+	"history": {
+		column:         "last_visited_time",
+		unitsPerSecond: 1_000,
+	},
+	"moz_places": {
+		column:         "last_visit_date",
+		unitsPerSecond: 1_000_000,
+	},
+	"urls": {
+		column:             "last_visit_time",
+		unitsPerSecond:     1_000_000,
+		epochOffsetSeconds: 11_644_473_600,
+	},
+}
+
+func browserImportStartDate(cmd *cobra.Command) (*time.Time, error) {
+	value, err := cmd.Flags().GetString("start-date")
+	if err != nil || value == "" {
+		return nil, err
+	}
+	startDate, err := time.Parse("2006-01-02", value)
+	if err != nil {
+		return nil, fmt.Errorf("invalid --start-date: %w", err)
+	}
+	return &startDate, nil
+}
+
+func browserImportURLQuery(table string, minVisit int, startDate *time.Time) (string, error) {
 	q := fmt.Sprintf("SELECT DISTINCT url FROM %s WHERE (url LIKE 'http://%%' OR url LIKE 'https://%%')", table)
 	if minVisit > 1 {
 		q += fmt.Sprintf(" AND visit_count >= %d", minVisit)
 	}
-	return q
+	if startDate == nil {
+		return q, nil
+	}
+
+	schema, ok := browserHistoryTimestampSchemas[strings.ToLower(table)]
+	if !ok {
+		return "", fmt.Errorf("start date filtering is not supported for browser history table %q", table)
+	}
+	startTimestamp := (startDate.Unix() + schema.epochOffsetSeconds) * schema.unitsPerSecond
+	q += fmt.Sprintf(" AND %s >= %d", schema.column, startTimestamp)
+	return q, nil
 }
 
 func countBrowserImportURLs(db *sql.DB, query string, isSkip func(string) bool) (count, skipped int, err error) {

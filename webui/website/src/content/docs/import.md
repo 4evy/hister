@@ -92,6 +92,15 @@ hister import browser firefox ~/.mozilla/firefox/example.default/places.sqlite
 Firefox stores history in `places.sqlite` inside its profile directory. Chromium based browsers usually store it in a file named `History` inside their profile directory.
 
 Use `--min-visit N` to import only URLs that have at least `N` recorded visits.
+Use `--start-date YYYY-MM-DD` to import only URLs whose most recent recorded
+visit is on or after that date:
+
+```bash
+hister import browser --start-date 2025-01-01
+```
+
+The date filter uses timestamps from the browser database. The indexed
+document timestamp still describes when Hister fetched the page.
 
 Browser history documents receive the `browser` label by default. Use `--label LABEL` to replace it. Resumed browser import jobs reuse their stored label unless this flag is supplied again.
 

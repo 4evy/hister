@@ -36,7 +36,11 @@ hister import browser
 
 Hister detects a supported browser database, reads qualifying URLs, and asks its crawler to fetch the pages that exist now. The resulting indexed content can differ from what you originally saw. A page may have changed, disappeared, moved, or started requiring authentication.
 
-The `--min-visit` option can use the browser's visit count to choose URLs, but the import does not recreate the browser's original visit timeline or preserve every historical visit as a Hister record. The indexed document timestamps describe the imported page fetch.
+The `--min-visit` option can use the browser's visit count to choose URLs. The
+`--start-date` option selects URLs whose most recent recorded browser visit is
+on or after the given date. These filters do not recreate the browser's
+original visit timeline or preserve every historical visit as a Hister record.
+The indexed document timestamps describe the imported page fetch.
 
 The import does not inherit the browser session. Sites that need login cookies may return a login page or reject the request. You can select a browser based crawler backend and provide cookies explicitly when appropriate. Treat exported cookies as secrets.
 

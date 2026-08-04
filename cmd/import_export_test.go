@@ -281,9 +281,12 @@ func TestImportSubcommandFlagOwnership(t *testing.T) {
 				t.Errorf("import %s is missing --%s", importCommand.Name(), name)
 			}
 		}
-		if importBrowserCmd.Flags().Lookup(name) != nil {
+		if name != "start-date" && importBrowserCmd.Flags().Lookup(name) != nil {
 			t.Errorf("import browser unexpectedly has --%s", name)
 		}
+	}
+	if importBrowserCmd.Flags().Lookup("start-date") == nil {
+		t.Error("import browser is missing --start-date")
 	}
 	if importBrowserCmd.Flags().Lookup("min-visit") == nil {
 		t.Error("import browser is missing --min-visit")
