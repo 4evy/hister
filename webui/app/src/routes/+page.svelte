@@ -201,9 +201,6 @@
     parseFloat(localStorage.getItem('hister-semantic-weight') ?? 'NaN') || 0.4,
   );
 
-  let contextMenuSearch: string | null = $state(null);
-  let contextMenuPos = $state({ x: 0, y: 0 });
-
   let showDeleteConfirm = $state(false);
   let deleteConfirmUrl = $state('');
   let deleteConfirmSkip = $state(false);
@@ -224,7 +221,6 @@
 
   let heroTitleEl: HTMLElement | undefined = $state();
   let searchBoxEl: HTMLElement | undefined = $state();
-  let chipsContainerEl: HTMLElement | undefined = $state();
   let statsRowEl: HTMLElement | undefined = $state();
   let kbdEl: HTMLElement | null = $state(null);
   let underlineEl: HTMLElement | undefined = $state();
@@ -1101,11 +1097,6 @@
         e.preventDefault();
         return;
       }
-      if (contextMenuSearch) {
-        contextMenuSearch = null;
-        e.preventDefault();
-        return;
-      }
       if (closePopup()) {
         e.preventDefault();
         return;
@@ -1116,7 +1107,6 @@
         return;
       }
     }
-    contextMenuSearch = null;
   }
 
   function clickChip(q: string) {
@@ -1130,7 +1120,6 @@
       'deletedSearches',
       JSON.stringify([...JSON.parse(localStorage.getItem('deletedSearches') || '[]'), q]),
     );
-    contextMenuSearch = null;
   }
 
   function deleteAllRecentSearches() {
@@ -1142,12 +1131,6 @@
       ]),
     );
     recentSearches = [];
-  }
-
-  function showChipContextMenu(e: MouseEvent, q: string) {
-    e.preventDefault();
-    contextMenuSearch = q;
-    contextMenuPos = { x: e.clientX, y: e.clientY };
   }
 
   async function loadHomeStats() {
@@ -2405,31 +2388,55 @@
     </div>
 
     {#if recentSearches.length > 0}
-      <div
-        bind:this={chipsContainerEl}
-        class="home-recents relative flex max-w-[900px] shrink-0 flex-wrap items-center justify-center gap-2"
+      <section
+        class="home-recents flex w-full max-w-[900px] shrink-0 flex-col gap-2"
+        aria-labelledby="recent-searches-title"
       >
-        {#each recentSearches.slice(0, 8) as search, i}
-          {@const chip = chipColors[i % chipColors.length]}
-          <Button
-            variant="outline"
-            class="border-[2px] {chip.border} {chip.bg} font-inter h-auto cursor-pointer rounded-none px-3 py-1.5 text-sm font-semibold {chip.text} hover:translate-x-px hover:translate-y-px hover:shadow-[2px_2px_0_var(--brutal-shadow)]"
-            onclick={() => clickChip(search)}
-            oncontextmenu={(e) => showChipContextMenu(e, search)}
+        <div class="flex items-center justify-between gap-4">
+          <h2
+            id="recent-searches-title"
+            class="font-inter text-text-brand-secondary flex items-center gap-2 text-sm font-semibold"
           >
-            {search}
+            <History class="text-hister-indigo size-4" />
+            Recent searches
+          </h2>
+          <Button
+            variant="ghost"
+            size="sm"
+            class="font-inter text-text-brand-muted hover:text-hister-rose h-auto cursor-pointer px-2 py-1 text-xs"
+            onclick={deleteAllRecentSearches}
+            title="Clear all recent searches"
+          >
+            Clear all
           </Button>
-        {/each}
-        <Button
-          variant="ghost"
-          size="sm"
-          class="font-inter text-text-brand-muted hover:text-hister-rose h-auto cursor-pointer px-2 py-1 text-xs"
-          onclick={deleteAllRecentSearches}
-          title="Clear all recent searches"
-        >
-          Clear
-        </Button>
-      </div>
+        </div>
+        <div class="flex flex-wrap items-center justify-center gap-2">
+          {#each recentSearches.slice(0, 8) as search, i}
+            {@const chip = chipColors[i % chipColors.length]}
+            <div
+              class="flex max-w-full min-w-0 items-stretch border-[2px] shadow-[2px_2px_0_var(--brutal-shadow)] {chip.border} {chip.bg}"
+            >
+              <button
+                type="button"
+                class="font-inter max-w-80 min-w-0 cursor-pointer truncate px-3 py-1.5 text-left text-sm font-semibold transition-colors hover:bg-black/5 dark:hover:bg-white/5 {chip.text}"
+                title={search}
+                onclick={() => clickChip(search)}
+              >
+                {search}
+              </button>
+              <button
+                type="button"
+                class="hover:bg-hister-rose/10 hover:text-hister-rose flex w-8 shrink-0 cursor-pointer items-center justify-center border-l transition-colors {chip.border} {chip.text}"
+                aria-label="Remove recent search: {search}"
+                title="Remove recent search"
+                onclick={() => deleteRecentSearch(search)}
+              >
+                <X class="size-3.5" />
+              </button>
+            </div>
+          {/each}
+        </div>
+      </section>
     {/if}
 
     <div
@@ -2454,43 +2461,6 @@
         </div>
       {/if}
     </div>
-
-    {#if contextMenuSearch}
-      <div
-        class="fixed inset-0 z-40"
-        role="presentation"
-        onclick={() => {
-          contextMenuSearch = null;
-        }}
-        oncontextmenu={(e) => {
-          e.preventDefault();
-          contextMenuSearch = null;
-        }}
-      ></div>
-      <div
-        class="border-brutal-border bg-card-surface fixed z-50 min-w-[160px] border-[3px] py-1 shadow-[4px_4px_0_var(--brutal-shadow)]"
-        style="left: {contextMenuPos.x}px; top: {contextMenuPos.y}px;"
-      >
-        <Button
-          variant="ghost"
-          class="font-inter text-text-brand hover:bg-muted-surface h-auto w-full justify-start gap-2 rounded-none px-3 py-2 text-sm"
-          onclick={() => {
-            clickChip(contextMenuSearch!);
-            contextMenuSearch = null;
-          }}
-        >
-          <Search class="size-3.5" /> Search "{contextMenuSearch}"
-        </Button>
-        <Separator class="bg-border-brand-muted mx-2" />
-        <Button
-          variant="ghost"
-          class="font-inter text-hister-rose hover:bg-hister-rose/10 h-auto w-full justify-start gap-2 rounded-none px-3 py-2 text-sm"
-          onclick={() => deleteRecentSearch(contextMenuSearch!)}
-        >
-          <Trash2 class="size-3.5" /> Remove
-        </Button>
-      </div>
-    {/if}
   </div>
 {/if}
 
