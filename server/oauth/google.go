@@ -16,6 +16,7 @@ import (
 const (
 	scopeUserinfoEmail   ScopeValue = "https://www.googleapis.com/auth/userinfo.email"
 	scopeUserinfoProfile ScopeValue = "https://www.googleapis.com/auth/userinfo.profile"
+	googleUserInfoURL               = "https://www.googleapis.com/oauth2/v3/userinfo"
 )
 
 // GoogleOAuth implements OAuth 2.0 authentication for Google.
@@ -73,17 +74,10 @@ func (g GoogleOAuth) GetUserInfo(ctx context.Context, response TokenResponse) (*
 		return nil, errors.New("google: access token not found")
 	}
 
-	req, err := http.NewRequestWithContext(
-		ctx,
-		http.MethodGet,
-		"https://www.googleapis.com/oauth2/v3/userinfo?access_token="+bearer.AccessToken,
-		nil,
-	)
+	req, err := newGoogleUserInfoRequest(ctx, bearer.AccessToken)
 	if err != nil {
 		return nil, fmt.Errorf("google: failed to create UserInfo request: %w", err)
 	}
-
-	req.Header.Set("Authorization", "Bearer "+bearer.AccessToken)
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
@@ -111,6 +105,15 @@ func (g GoogleOAuth) GetUserInfo(ctx context.Context, response TokenResponse) (*
 		Email:    uData.Email,
 		Username: uData.Name,
 	}, nil
+}
+
+func newGoogleUserInfoRequest(ctx context.Context, accessToken string) (*http.Request, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, googleUserInfoURL, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+	return req, nil
 }
 
 // GetScope returns the OAuth scopes required for Google authentication.

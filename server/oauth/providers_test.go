@@ -1,11 +1,27 @@
 package oauth
 
 import (
+	"context"
 	"net/url"
 	"slices"
 	"strings"
 	"testing"
 )
+
+func TestGoogleUserInfoRequestKeepsTokenOutOfURL(t *testing.T) {
+	t.Parallel()
+
+	req, err := newGoogleUserInfoRequest(context.Background(), "access-token")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if req.URL.RawQuery != "" {
+		t.Errorf("user info URL contains query parameters: %q", req.URL.RawQuery)
+	}
+	if got := req.Header.Get("Authorization"); got != "Bearer access-token" {
+		t.Errorf("Authorization = %q, want %q", got, "Bearer access-token")
+	}
+}
 
 func TestRedirectURLScopes(t *testing.T) {
 	t.Parallel()
