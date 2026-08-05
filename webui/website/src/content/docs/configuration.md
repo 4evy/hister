@@ -208,6 +208,12 @@ title: 'Configuration Reference'
       description: 'Directory path to index. Paths beginning with ~/ are expanded to the home directory.',
     },
     {
+      name: 'label',
+      type: 'string',
+      defaultValue: '""',
+      description: 'Label applied automatically to every file indexed from this directory.',
+    },
+    {
       name: 'filetypes',
       type: 'string[]',
       defaultValue: '(none)',
@@ -606,6 +612,7 @@ indexer:
   keep_stopwords: false
   directories:
     - path: '~/notes'
+      label: 'notes'
       filetypes: ['txt', 'md']
 
 crawler:
@@ -767,9 +774,13 @@ indexer:
       patterns: ['doc_*']
       excludes: ['*secret*']
     - path: '~/Documents/wiki'
+      label: 'wiki'
     - path: '/path/to/project'
+      label: 'project'
       filetypes: ['go', 'py', 'js']
 ```
+
+Set `label` on a directory to apply the same searchable label to every file indexed from it. Changing a nonempty configured label updates existing files during the next startup scan, even when their contents have not changed. Leaving it empty preserves labels assigned manually.
 
 ### User-scoped directories
 

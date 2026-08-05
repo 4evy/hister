@@ -653,9 +653,13 @@ func Reindex(basePath string, rules *config.Rules, skipSensitiveChecks bool, det
 							log.Warn().Str("URL", d.URL).Msg("Skipping document, file not found")
 							continue
 						}
-						if files.FindMatchingDir(dirs, pu.Path) == nil {
+						dir := files.FindMatchingDir(dirs, pu.Path)
+						if dir == nil {
 							log.Warn().Str("URL", d.URL).Msg("Skipping document, directory no longer configured")
 							continue
+						}
+						if dir.Label != "" {
+							d.Label = dir.Label
 						}
 					}
 				}

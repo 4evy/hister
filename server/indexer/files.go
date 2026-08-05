@@ -208,6 +208,14 @@ func walkDirectoryFiles(dir string, cfg *config.Directory, callback func(path st
 	return processed, skipped, err
 }
 
+func configuredFileLabel(dirs []*config.Directory, path string) string {
+	dir := files.FindMatchingDir(dirs, path)
+	if dir == nil {
+		return ""
+	}
+	return dir.Label
+}
+
 func IndexFile(path string, userID uint) error {
 	info, err := os.Stat(path)
 	if err != nil {
@@ -226,11 +234,16 @@ func IndexFile(path string, userID uint) error {
 		return err
 	}
 	fileURL := files.PathToFileURL(absPath)
+	label := configuredFileLabel(i.directories, absPath)
 
 	// Skip if already indexed with the same modification time
 	existing := GetByURLAndUser(fileURL, userID)
 	if existing != nil && existing.Updated == info.ModTime().Unix() {
-		return nil
+		if label == "" || existing.Label == label {
+			return nil
+		}
+		existing.Label = label
+		return Save(existing)
 	}
 
 	content, err := os.ReadFile(path)
@@ -244,6 +257,7 @@ func IndexFile(path string, userID uint) error {
 		URL:     fileURL,
 		Updated: info.ModTime().Unix(),
 		UserID:  userID,
+		Label:   label,
 	}
 
 	return indexFileContent(path, doc, content)

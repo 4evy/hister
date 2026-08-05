@@ -26,6 +26,7 @@ The `filetypes` setting on a watched directory is an extension filter. Use names
 indexer:
   directories:
     - path: '~/Documents'
+      label: 'documents'
       filetypes: ['pdf', 'docx', 'md', 'txt']
 ```
 
@@ -35,6 +36,7 @@ Other directory rules still apply:
 
 | Rule                         | Behavior                                                                                  |
 | ---------------------------- | ----------------------------------------------------------------------------------------- |
+| `label`                      | Applies the same searchable label to every file indexed from the directory.               |
 | `include_hidden`             | Hidden files and directories are skipped unless this is enabled.                          |
 | `excludes`                   | Matching paths are skipped.                                                               |
 | `patterns`                   | When set, only matching files are considered.                                             |

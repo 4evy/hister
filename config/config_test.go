@@ -89,6 +89,19 @@ func TestIndexerDefaults(t *testing.T) {
 	}
 }
 
+func TestDirectoryLabelConfig(t *testing.T) {
+	cfg, err := parseConfig([]byte("indexer:\n  directories:\n    - path: /srv/docs\n      label: reference\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(cfg.Indexer.Directories) != 1 {
+		t.Fatalf("directory count=%d, want 1", len(cfg.Indexer.Directories))
+	}
+	if got := cfg.Indexer.Directories[0].Label; got != "reference" {
+		t.Fatalf("directory label=%q, want %q", got, "reference")
+	}
+}
+
 func TestSemanticSearchRequestDefaults(t *testing.T) {
 	cfg, err := parseConfig([]byte("semantic_search:\n  max_context_length: 256\n"))
 	if err != nil {

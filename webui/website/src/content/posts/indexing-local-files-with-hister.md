@@ -23,6 +23,7 @@ Add an `indexer.directories` section to your Hister configuration:
 indexer:
   directories:
     - path: ~/Documents
+      label: documents
       filetypes: ['md', 'txt']
     - path: ~/code/projects
       filetypes: ['txt']
@@ -34,6 +35,7 @@ indexer:
 Each directory configuration lets you specify:
 
 - **path**: The directory to index (supports `~` for home directory)
+- **label**: A searchable label applied to every indexed file in the directory
 - **filetypes**: File extensions to include (e.g., `md`, `txt`, `py`)
 - **patterns**: Glob patterns for more precise matching
 - **excludes**: Patterns to skip (like build directories or dependencies)

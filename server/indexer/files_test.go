@@ -187,6 +187,41 @@ func TestIndexFileWithUserID(t *testing.T) {
 	}
 }
 
+func TestIndexFileAppliesDirectoryLabel(t *testing.T) {
+	testDir := t.TempDir()
+	testFile := testutil.WriteFile(t, testDir, "labeled.txt", []byte("sample labeled document content for indexing tests"))
+
+	idxCfg := testutil.Config(t)
+	idxCfg.Indexer.Directories = []*config.Directory{{Path: testDir, Label: "notes"}}
+	if err := Init(idxCfg); err != nil {
+		t.Fatalf("failed to init indexer: %v", err)
+	}
+	defer i.Close()
+
+	if err := IndexFile(testFile, 0); err != nil {
+		t.Fatalf("IndexFile failed: %v", err)
+	}
+	doc := GetByURLAndUser(files.PathToFileURL(testFile), 0)
+	if doc == nil {
+		t.Fatal("indexed file not found")
+	}
+	if doc.Label != "notes" {
+		t.Fatalf("Label = %q, want %q", doc.Label, "notes")
+	}
+
+	idxCfg.Indexer.Directories[0].Label = "archive"
+	if err := IndexFile(testFile, 0); err != nil {
+		t.Fatalf("IndexFile after label change failed: %v", err)
+	}
+	doc = GetByURLAndUser(files.PathToFileURL(testFile), 0)
+	if doc.Label != "archive" {
+		t.Fatalf("Label after config change = %q, want %q", doc.Label, "archive")
+	}
+	if doc.AddCount != 1 {
+		t.Fatalf("AddCount after label change = %d, want 1", doc.AddCount)
+	}
+}
+
 func TestAddDocumentIncrementsAddCount(t *testing.T) {
 	idxCfg := testutil.Config(t)
 	if err := Init(idxCfg); err != nil {

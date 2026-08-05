@@ -105,6 +105,7 @@ type OAuthEntry struct {
 
 type Directory struct {
 	Path           string   `yaml:"path"              mapstructure:"path"`
+	Label          string   `yaml:"label"             mapstructure:"label"`
 	Filetypes      []string `yaml:"filetypes"         mapstructure:"filetypes"`
 	Patterns       []string `yaml:"patterns"          mapstructure:"patterns"`
 	Excludes       []string `yaml:"excludes"          mapstructure:"excludes"`
