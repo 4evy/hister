@@ -5,6 +5,7 @@ export interface AppConfig {
   wsUrl: string;
   title: string;
   subtitle: string;
+  colorScheme: 'automatic' | 'dark' | 'light';
   searchUrl: string;
   openResultsOnNewTab: boolean;
   hotkeys: Record<string, string>;

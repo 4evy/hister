@@ -156,6 +156,28 @@ func TestAppTitleDefaultsAndOverrides(t *testing.T) {
 	}
 }
 
+func TestAppColorScheme(t *testing.T) {
+	if got := CreateDefaultConfig().App.ColorScheme; got != "automatic" {
+		t.Fatalf("default app color_scheme=%q, want %q", got, "automatic")
+	}
+
+	for _, scheme := range []string{"automatic", "dark", "light"} {
+		t.Run(scheme, func(t *testing.T) {
+			cfg, err := parseConfig([]byte("app:\n  color_scheme: " + scheme + "\n"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if cfg.App.ColorScheme != scheme {
+				t.Fatalf("app color_scheme=%q, want %q", cfg.App.ColorScheme, scheme)
+			}
+		})
+	}
+
+	if _, err := parseConfig([]byte("app:\n  color_scheme: sepia\n")); err == nil {
+		t.Fatal("invalid app.color_scheme was accepted")
+	}
+}
+
 func TestConfigFileOverridesServerDefaults(t *testing.T) {
 	oldAddress := DefaultServerAddress
 	oldBaseURL := DefaultServerBaseURL

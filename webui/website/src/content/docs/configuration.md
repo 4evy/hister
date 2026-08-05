@@ -27,6 +27,12 @@ title: 'Configuration Reference'
       description: 'Secondary title shown below the main title on the web UI home page. Set it to an empty string to hide it.',
     },
     {
+      name: 'color_scheme',
+      type: 'string',
+      defaultValue: 'automatic',
+      description: 'Default web UI color scheme. Supported values are automatic, dark, and light. Visitors can override this default with the theme toggle.',
+    },
+    {
       name: 'search_url',
       type: 'string',
       defaultValue: 'https://google.com/search?q={query}',
@@ -578,6 +584,7 @@ app:
   directory: '~/.config/hister'
   title: 'Hister'
   subtitle: 'Your own search engine'
+  color_scheme: 'automatic'
   search_url: 'https://google.com/search?q={query}'
   public: false
   log_level: 'info'

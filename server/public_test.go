@@ -42,7 +42,8 @@ func newTokenTestServerWithLogLevel(t *testing.T, public bool, logLevel string) 
 }
 
 func TestPublicModeConfigResponse(t *testing.T) {
-	_, handler := newPublicTokenTestServer(t)
+	cfg, handler := newPublicTokenTestServer(t)
+	cfg.App.ColorScheme = "dark"
 	rec := testutil.ServeHTTP(t, handler, http.MethodGet, "/api/config", nil, nil)
 
 	if rec.Code != http.StatusOK {
@@ -51,6 +52,7 @@ func TestPublicModeConfigResponse(t *testing.T) {
 	var body struct {
 		Title          string `json:"title"`
 		Subtitle       string `json:"subtitle"`
+		ColorScheme    string `json:"colorScheme"`
 		Public         bool   `json:"public"`
 		Authenticated  bool   `json:"authenticated"`
 		CanWrite       bool   `json:"canWrite"`
@@ -64,6 +66,9 @@ func TestPublicModeConfigResponse(t *testing.T) {
 	}
 	if body.Subtitle != "Your own search engine" {
 		t.Fatalf("subtitle = %q, want %q", body.Subtitle, "Your own search engine")
+	}
+	if body.ColorScheme != "dark" {
+		t.Fatalf("colorScheme = %q, want %q", body.ColorScheme, "dark")
 	}
 	if !body.Public {
 		t.Fatal("public = false, want true")

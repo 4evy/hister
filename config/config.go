@@ -50,6 +50,7 @@ type App struct {
 	Directory              string `yaml:"directory" mapstructure:"directory"`
 	Title                  string `yaml:"title" mapstructure:"title"`
 	Subtitle               string `yaml:"subtitle" mapstructure:"subtitle"`
+	ColorScheme            string `yaml:"color_scheme" mapstructure:"color_scheme"`
 	SearchURL              string `yaml:"search_url" mapstructure:"search_url"`
 	AccessToken            string `yaml:"access_token" mapstructure:"access_token"`
 	UserHandling           bool   `yaml:"user_handling" mapstructure:"user_handling"`
@@ -489,6 +490,7 @@ func CreateDefaultConfig() *Config {
 			Directory:              getDefaultDataDir(),
 			Title:                  "Hister",
 			Subtitle:               "Your own search engine",
+			ColorScheme:            "automatic",
 			LogLevel:               "info",
 			OpenResultsOnNewTab:    false,
 			RedirectOnNoResults:    true,
@@ -565,6 +567,11 @@ func parseConfig(rawConfig []byte) (*Config, error) {
 	maxBatchBodySize := int64(^uint64(0)>>1) >> 20
 	if c.Server.MaxBatchBodySize < 1 || c.Server.MaxBatchBodySize > maxBatchBodySize {
 		return nil, fmt.Errorf("server.max_batch_body_size must be between 1 and %d", maxBatchBodySize)
+	}
+	switch c.App.ColorScheme {
+	case "automatic", "dark", "light":
+	default:
+		return nil, errors.New("app.color_scheme must be one of automatic, dark, or light")
 	}
 
 	if c.Server.BaseURL != "" {
