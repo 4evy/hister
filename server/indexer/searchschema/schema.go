@@ -99,10 +99,6 @@ type Capabilities struct {
 	ValueSets map[string][]ValueDefinition `json:"valueSets"`
 }
 
-func float64Ptr(value float64) *float64 {
-	return &value
-}
-
 var timeValues = []ValueDefinition{
 	{Value: "<24h", Label: "Last 24 hours", FacetBucket: "last_24h", Age: 24 * time.Hour},
 	{Value: "<7d", Label: "Last 7 days", FacetBucket: "last_7d", Age: 7 * 24 * time.Hour},
@@ -115,21 +111,21 @@ var valueSets = map[string][]ValueDefinition{
 	"document_types": {
 		{
 			Value: types.Web.String(),
-			Min:   float64Ptr(float64(types.Web)),
-			Max:   float64Ptr(float64(types.Local)),
+			Min:   new(float64(types.Web)),
+			Max:   new(float64(types.Local)),
 		},
 		{
 			Value:   types.Local.String(),
 			Aliases: []string{"file"},
-			Min:     float64Ptr(float64(types.Local)),
-			Max:     float64Ptr(float64(types.Local) + 1),
+			Min:     new(float64(types.Local)),
+			Max:     new(float64(types.Local) + 1),
 		},
 	},
 	"visit_counts": {
-		{Value: "1", Label: "1 visit", Min: float64Ptr(1), Max: float64Ptr(2)},
-		{Value: "2..4", Label: "2 to 4", Min: float64Ptr(2), Max: float64Ptr(5)},
-		{Value: "5..9", Label: "5 to 9", Min: float64Ptr(5), Max: float64Ptr(10)},
-		{Value: "10..", Label: "10 or more", Min: float64Ptr(10)},
+		{Value: "1", Label: "1 visit", Min: new(float64(1)), Max: new(float64(2))},
+		{Value: "2..4", Label: "2 to 4", Min: new(float64(2)), Max: new(float64(5))},
+		{Value: "5..9", Label: "5 to 9", Min: new(float64(5)), Max: new(float64(10))},
+		{Value: "10..", Label: "10 or more", Min: new(float64(10))},
 	},
 	"time_ranges": timeValues,
 }
@@ -266,16 +262,6 @@ func LookupSort(value string) (SortDefinition, bool) {
 		}
 	}
 	return SortDefinition{}, false
-}
-
-func SearchFieldWeights() map[string]float64 {
-	weights := make(map[string]float64)
-	for _, field := range fields {
-		if field.Kind == FieldKindText || field.Kind == FieldKindKeyword {
-			weights[field.Name] = field.Weight
-		}
-	}
-	return weights
 }
 
 func CapabilitiesDefinition() Capabilities {

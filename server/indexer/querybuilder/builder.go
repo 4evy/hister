@@ -17,8 +17,6 @@ import (
 )
 
 var (
-	weights = searchschema.SearchFieldWeights()
-
 	relativeTimeFilterPattern = regexp.MustCompile(`^(<=|>=|<|>)([0-9]+)([smhdw])$`)
 	absoluteDateFilterPattern = regexp.MustCompile(`^(<=|>=|<|>)([0-9]{4}-[0-9]{2}-[0-9]{2})$`)
 )
