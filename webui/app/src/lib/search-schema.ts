@@ -1,3 +1,7 @@
+// SPDX-FileContributor: Adam Tauber <asciimoo@gmail.com>
+//
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 export type SearchFieldKind = 'text' | 'keyword' | 'enum' | 'numeric_range' | 'time' | 'integer';
 
 export type SearchFacetKind = 'terms' | 'numeric_ranges' | 'date_ranges';

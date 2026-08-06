@@ -1,3 +1,6 @@
+<!-- SPDX-FileContributor: Adam Tauber <asciimoo@gmail.com> -->
+<!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
+
 <script lang="ts">
   import { onMount, tick } from 'svelte';
   import { ArrowUpDown, Clock3, Filter, Link2, SearchCheck, TextCursorInput } from '@lucide/svelte';

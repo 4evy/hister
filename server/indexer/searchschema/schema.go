@@ -1,3 +1,7 @@
+// SPDX-FileContributor: Adam Tauber <asciimoo@gmail.com>
+//
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
 // Package searchschema contains the authoritative search field, filter,
 // facet, and sort definitions shared by the indexer, query builder, API, and
 // user interfaces.
