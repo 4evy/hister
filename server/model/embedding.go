@@ -59,23 +59,23 @@ func EnqueueEmbeddingJob(docID string) error {
 		Columns: []clause.Column{{Name: "doc_id"}},
 		DoUpdates: clause.Assignments(map[string]any{
 			"status": gorm.Expr(
-				"CASE WHEN status = ? THEN status ELSE ? END",
+				"CASE WHEN embedding_jobs.status = ? THEN embedding_jobs.status ELSE ? END",
 				EmbeddingJobInProgress, EmbeddingJobPending,
 			),
 			"dirty": gorm.Expr(
-				"CASE WHEN status = ? THEN ? ELSE dirty END",
+				"CASE WHEN embedding_jobs.status = ? THEN ? ELSE embedding_jobs.dirty END",
 				EmbeddingJobInProgress, true,
 			),
 			"attempts": gorm.Expr(
-				"CASE WHEN status = ? THEN attempts ELSE 0 END",
+				"CASE WHEN embedding_jobs.status = ? THEN embedding_jobs.attempts ELSE 0 END",
 				EmbeddingJobInProgress,
 			),
 			"available_at": gorm.Expr(
-				"CASE WHEN status = ? THEN available_at ELSE ? END",
+				"CASE WHEN embedding_jobs.status = ? THEN embedding_jobs.available_at ELSE ? END",
 				EmbeddingJobInProgress, now,
 			),
 			"last_error": gorm.Expr(
-				"CASE WHEN status = ? THEN last_error ELSE '' END",
+				"CASE WHEN embedding_jobs.status = ? THEN embedding_jobs.last_error ELSE '' END",
 				EmbeddingJobInProgress,
 			),
 			"updated_at": now,
