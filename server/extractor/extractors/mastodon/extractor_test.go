@@ -82,3 +82,24 @@ func TestExtractUsesOriginalRemoteStatusURL(t *testing.T) {
 		t.Fatalf("toot URL = %q, want %q", got, want)
 	}
 }
+
+func TestExtractSkipsDocumentWhenNoTootsFound(t *testing.T) {
+	d := &document.Document{
+		URL:  "https://chaos.social/public/local",
+		HTML: `<meta content='{"repository":"mastodon/mastodon"}'>`,
+	}
+
+	state, err := (&MastodonExtractor{}).Extract(d)
+	if err != nil {
+		t.Fatalf("Extract returned an error: %v", err)
+	}
+	if state != types.ExtractorStop {
+		t.Fatalf("Extract state = %v, want %v", state, types.ExtractorStop)
+	}
+	if !d.SkipIndexing {
+		t.Fatal("source document was not marked to skip indexing")
+	}
+	if len(d.ExtraDocuments) != 0 {
+		t.Fatalf("ExtraDocuments length = %d, want 0", len(d.ExtraDocuments))
+	}
+}
