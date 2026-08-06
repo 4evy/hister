@@ -2022,8 +2022,7 @@ func serveBatch(c *webContext) {
 	c.Request.Body = http.MaxBytesReader(c.Response, c.Request.Body, maxBodyBytes)
 	var req batchRequest
 	if err := json.NewDecoder(c.Request.Body).Decode(&req); err != nil {
-		var maxBytesErr *http.MaxBytesError
-		if errors.As(err, &maxBytesErr) {
+		if maxBytesErr, ok := errors.AsType[*http.MaxBytesError](err); ok {
 			c.JSONStatus(http.StatusRequestEntityTooLarge, batchResponse{
 				Error:      fmt.Sprintf("request body exceeds the %d MiB limit", maxBytesErr.Limit>>20),
 				Code:       "request_too_large",
