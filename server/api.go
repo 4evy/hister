@@ -71,7 +71,7 @@ func init() {
 			NoAuth:       true,
 			Public:       true,
 			Handler:      serveConfig,
-			Description:  "Return server configuration (base URL, hotkeys, auth mode, CSRF token, etc.)",
+			Description:  "Return server configuration, search capabilities, authentication mode, and CSRF state",
 		},
 		{
 			Name:        "Search",
@@ -474,7 +474,7 @@ func init() {
 			CSRFRequired: false,
 			Public:       true,
 			Handler:      serveGetFacets,
-			Description:  "Return facet counts (domains, languages, date histogram) for a query without fetching documents",
+			Description:  "Return all configured facet counts for a query without fetching documents",
 			Args: []*EndpointArg{
 				{
 					Name:        "q",
@@ -498,7 +498,7 @@ func init() {
 					Name:        "size_{name}",
 					Type:        "integer",
 					Required:    false,
-					Description: "Maximum number of terms for the named facet (e.g. size_domains=20, size_languages=10). Defaults to 10.",
+					Description: "Override the configured term limit for a named facet",
 				},
 			},
 		},

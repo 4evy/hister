@@ -1,4 +1,5 @@
 import { base } from '$app/paths';
+import type { SearchCapabilities } from '$lib/search-schema';
 
 export interface AppConfig {
   basePath?: string;
@@ -18,6 +19,10 @@ export interface AppConfig {
   userId?: number;
   oauthOnly?: boolean;
   disablePreviews?: boolean;
+  semanticEnabled?: boolean;
+  semanticWeight?: number;
+  similarityThreshold?: number;
+  search: SearchCapabilities;
 }
 
 export interface ExtractorInfo {

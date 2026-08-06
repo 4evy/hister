@@ -10,21 +10,14 @@ import (
 	"time"
 
 	"github.com/asciimoo/hister/files"
-	"github.com/asciimoo/hister/server/types"
+	"github.com/asciimoo/hister/server/indexer/searchschema"
 
 	"github.com/blevesearch/bleve/v2"
 	"github.com/blevesearch/bleve/v2/search/query"
 )
 
 var (
-	weights = map[string]float64{
-		"text":     1,
-		"label":    1,
-		"language": 1,
-		"url":      4,
-		"domain":   8,
-		"title":    12,
-	}
+	weights = searchschema.SearchFieldWeights()
 
 	relativeTimeFilterPattern = regexp.MustCompile(`^(<=|>=|<|>)([0-9]+)([smhdw])$`)
 	absoluteDateFilterPattern = regexp.MustCompile(`^(<=|>=|<|>)([0-9]{4}-[0-9]{2}-[0-9]{2})$`)
@@ -127,26 +120,17 @@ func isFieldSpecific(t Token) bool {
 	switch t.Type {
 	case TokenWord, TokenQuoted:
 		v = strings.TrimPrefix(v, "-")
-		if _, ok := strings.CutPrefix(v, "type:"); ok {
-			return true
-		}
-		if _, ok := visitCountFilterValue(v); ok {
-			return true
-		}
-		if _, value, ok := timeFilterValue(v); ok {
-			return validTimeFilter(value)
-		}
-		if _, ok := strings.CutPrefix(v, "user_id:"); ok {
-			return true
-		}
 		if strings.HasPrefix(v, "metadata.") && strings.Contains(v, ":") {
 			return true
 		}
-		for f := range weights {
-			if strings.HasPrefix(v, f+":") {
-				return true
-			}
+		field, value, ok := fieldFilterValue(v)
+		if !ok {
+			return false
 		}
+		if field.Kind == searchschema.FieldKindTime {
+			return validTimeFilter(value)
+		}
+		return true
 	}
 	return false
 }
@@ -166,15 +150,18 @@ func createCombinedMatchQuery(s string, boost float64) query.Query {
 
 // Matches all terms from the query (AND semantics per field)
 func createMatchQuery(s string, boost float64) query.Query {
-	tiq := bleve.NewMatchQuery(s)
-	tiq.SetField("title")
-	tiq.SetBoost(weights["title"])
-	tiq.Operator = query.MatchQueryOperatorAnd
-	teq := bleve.NewMatchQuery(s)
-	teq.SetField("text")
-	teq.SetBoost(weights["text"])
-	teq.Operator = query.MatchQueryOperatorAnd
-	q := bleve.NewDisjunctionQuery(tiq, teq)
+	queries := make([]query.Query, 0)
+	for _, field := range searchschema.Fields() {
+		if !field.DefaultSearch {
+			continue
+		}
+		match := bleve.NewMatchQuery(s)
+		match.SetField(field.IndexField)
+		match.SetBoost(field.Weight)
+		match.Operator = query.MatchQueryOperatorAnd
+		queries = append(queries, match)
+	}
+	q := bleve.NewDisjunctionQuery(queries...)
 	q.SetBoost(boost)
 	return q
 }
@@ -183,50 +170,54 @@ func createMatchQuery(s string, boost float64) query.Query {
 // It uses WildcardQuery when v contains '*', TermQuery for url/domain fields,
 // and MatchQuery for all other fields.
 func buildFieldQuery(field, v string) query.Query {
+	definition, ok := searchschema.Field(field)
+	if !ok {
+		return bleve.NewQueryStringQuery(v)
+	}
 	if strings.Contains(v, "*") {
 		q := bleve.NewWildcardQuery(strings.ToLower(v))
-		q.SetField(field)
-		q.SetBoost(weights[field])
+		q.SetField(definition.IndexField)
+		q.SetBoost(definition.Weight)
 		return q
 	}
-	if field == "url" || field == "domain" {
-		if field == "url" {
+	if definition.Kind == searchschema.FieldKindKeyword {
+		if definition.NormalizeFilePath {
 			v = normalizeFileURL(v)
 		}
 		q := bleve.NewTermQuery(v)
-		q.SetField(field)
-		q.SetBoost(weights[field])
+		q.SetField(definition.IndexField)
+		q.SetBoost(definition.Weight)
 		return q
 	}
 	q := bleve.NewMatchQuery(v)
-	q.SetField(field)
-	q.SetBoost(weights[field])
+	q.SetField(definition.IndexField)
+	q.SetBoost(definition.Weight)
 	return q
 }
 
 // buildQuotedFieldQuery preserves phrase semantics for analyzed text fields.
 // URL and other fields retain their existing query behavior.
 func buildQuotedFieldQuery(field, v string) query.Query {
-	if field == "title" || field == "text" {
+	definition, ok := searchschema.Field(field)
+	if ok && definition.Phrase {
 		q := bleve.NewMatchPhraseQuery(v)
-		q.SetField(field)
-		q.SetBoost(weights[field])
+		q.SetField(definition.IndexField)
+		q.SetBoost(definition.Weight)
 		return q
 	}
 	return buildFieldQuery(field, v)
 }
 
-func visitCountFilterValue(v string) (string, bool) {
-	if value, ok := strings.CutPrefix(v, "visits:"); ok {
-		return value, true
+func fieldFilterValue(value string) (searchschema.FieldDefinition, string, bool) {
+	name, filterValue, ok := strings.Cut(value, ":")
+	if !ok {
+		return searchschema.FieldDefinition{}, "", false
 	}
-	if value, ok := strings.CutPrefix(v, "add_count:"); ok {
-		return value, true
-	}
-	return "", false
+	field, ok := searchschema.Field(name)
+	return field, filterValue, ok
 }
 
-func buildVisitCountQuery(v string) (query.Query, bool) {
+func buildNumericRangeQuery(field searchschema.FieldDefinition, v string) (query.Query, bool) {
 	parseBound := func(s string) (*float64, bool) {
 		if s == "" {
 			return nil, true
@@ -261,18 +252,8 @@ func buildVisitCountQuery(v string) (query.Query, bool) {
 		return nil, false
 	}
 	q := bleve.NewNumericRangeInclusiveQuery(min, max, new(true), new(true))
-	q.SetField("add_count")
+	q.SetField(field.IndexField)
 	return q, true
-}
-
-func timeFilterValue(v string) (string, string, bool) {
-	if value, ok := strings.CutPrefix(v, "added:"); ok {
-		return "added", value, true
-	}
-	if value, ok := strings.CutPrefix(v, "updated:"); ok {
-		return "updated", value, true
-	}
-	return "", "", false
 }
 
 func parseRelativeTimeFilter(v string) (string, int64, bool) {
@@ -328,7 +309,8 @@ func validTimeFilter(v string) bool {
 // BuildTimestampRange creates a numeric timestamp range for an indexed time
 // field. It is shared by query syntax and legacy structured API parameters.
 func BuildTimestampRange(field string, min, max *int64, minInclusive, maxInclusive bool) (query.Query, bool) {
-	if (field != "added" && field != "updated") || (min == nil && max == nil) {
+	definition, ok := searchschema.Field(field)
+	if !ok || definition.Kind != searchschema.FieldKindTime || (min == nil && max == nil) {
 		return nil, false
 	}
 	var minValue, maxValue *float64
@@ -341,12 +323,13 @@ func BuildTimestampRange(field string, min, max *int64, minInclusive, maxInclusi
 		*maxValue = float64(*max)
 	}
 	q := bleve.NewNumericRangeInclusiveQuery(minValue, maxValue, &minInclusive, &maxInclusive)
-	q.SetField(field)
+	q.SetField(definition.IndexField)
 	return q, true
 }
 
-func buildTimeQuery(field, v string, now time.Time) (query.Query, bool) {
-	if field != "added" && field != "updated" {
+func buildTimeQuery(fieldName, v string, now time.Time) (query.Query, bool) {
+	field, ok := searchschema.Field(fieldName)
+	if !ok || field.Kind != searchschema.FieldKindTime {
 		return nil, false
 	}
 	comparison, durationSeconds, relative := parseRelativeTimeFilter(v)
@@ -389,18 +372,22 @@ func buildTimeQuery(field, v string, now time.Time) (query.Query, bool) {
 	default:
 		return nil, false
 	}
-	return BuildTimestampRange(field, min, max, minInclusive, maxInclusive)
+	return BuildTimestampRange(field.Name, min, max, minInclusive, maxInclusive)
 }
 
 // Matches exact phrases without stopwords
 func createMatchPhraseQuery(s string, boost float64) query.Query {
-	tiq := bleve.NewMatchPhraseQuery(s)
-	tiq.SetField("title")
-	tiq.SetBoost(weights["title"])
-	teq := bleve.NewMatchPhraseQuery(s)
-	teq.SetField("text")
-	teq.SetBoost(weights["text"])
-	q := bleve.NewDisjunctionQuery(tiq, teq)
+	queries := make([]query.Query, 0)
+	for _, field := range searchschema.Fields() {
+		if !field.DefaultSearch {
+			continue
+		}
+		match := bleve.NewMatchPhraseQuery(s)
+		match.SetField(field.IndexField)
+		match.SetBoost(field.Weight)
+		queries = append(queries, match)
+	}
+	q := bleve.NewDisjunctionQuery(queries...)
 	q.SetBoost(boost)
 	return q
 }
@@ -414,20 +401,14 @@ func getTokenQuery(t Token, now time.Time) (query.Query, bool) {
 			negated = true
 			v = v[1:]
 		}
-		var field string
-		for f := range weights {
-			if strings.HasPrefix(v, f+":") {
-				field = f
-				break
-			}
-		}
-		if field != "" {
-			v := v[len(field)+1:]
+		field, value, hasField := fieldFilterValue(v)
+		if hasField && (field.Kind == searchschema.FieldKindText || field.Kind == searchschema.FieldKindKeyword) {
+			v := value
 			if strings.HasPrefix(v, "-") && len(v) > 1 {
 				negated = true
 				v = v[1:]
 			}
-			return buildQuotedFieldQuery(field, v), negated
+			return buildQuotedFieldQuery(field.Name, v), negated
 		}
 		return createMatchPhraseQuery(v, 1), negated
 	case TokenWord:
@@ -438,49 +419,40 @@ func getTokenQuery(t Token, now time.Time) (query.Query, bool) {
 		if t.Value == "*" {
 			return query.NewMatchAllQuery(), negated
 		}
-		var field string
-		if v, ok := strings.CutPrefix(t.Value, "type:"); ok {
-			if t, ok := types.DocTypeNames[v]; ok {
-				from := float64(t)
-				to := float64(t + 1)
-				q := bleve.NewNumericRangeQuery(&from, &to)
-				q.SetField("type")
-				return q, negated
-			}
-		}
-		if v, ok := visitCountFilterValue(t.Value); ok {
-			if q, ok := buildVisitCountQuery(v); ok {
-				return q, negated
-			}
-		}
-		if field, v, ok := timeFilterValue(t.Value); ok {
-			if q, ok := buildTimeQuery(field, v, now); ok {
-				return q, negated
-			}
-		}
-		if v, ok := strings.CutPrefix(t.Value, "user_id:"); ok {
-			if uid, err := strconv.ParseUint(v, 10, 64); err == nil {
-				f := float64(uid)
-				q := bleve.NewNumericRangeInclusiveQuery(&f, &f, new(true), new(true))
-				q.SetField("user_id")
-				return q, negated
-			}
-		}
 		if strings.HasPrefix(t.Value, "metadata.") && strings.Contains(t.Value, ":") {
-			field := strings.Split(t.Value, ":")[0]
-			v := strings.TrimPrefix(t.Value, field+":")
+			metadataField := strings.Split(t.Value, ":")[0]
+			v := strings.TrimPrefix(t.Value, metadataField+":")
 			q := bleve.NewTermQuery(v)
-			q.SetField(field)
+			q.SetField(metadataField)
 			return q, negated
 		}
-		for f := range weights {
-			if strings.HasPrefix(t.Value, f+":") {
-				field = f
-				break
+		field, v, hasField := fieldFilterValue(t.Value)
+		if hasField {
+			switch field.Kind {
+			case searchschema.FieldKindEnum:
+				if value, ok := searchschema.Value(field.ValueSet, v); ok {
+					q := bleve.NewNumericRangeQuery(value.Min, value.Max)
+					q.SetField(field.IndexField)
+					return q, negated
+				}
+			case searchschema.FieldKindNumericRange:
+				if q, ok := buildNumericRangeQuery(field, v); ok {
+					return q, negated
+				}
+			case searchschema.FieldKindTime:
+				if q, ok := buildTimeQuery(field.Name, v, now); ok {
+					return q, negated
+				}
+			case searchschema.FieldKindInteger:
+				if number, err := strconv.ParseUint(v, 10, 64); err == nil {
+					value := float64(number)
+					q := bleve.NewNumericRangeInclusiveQuery(&value, &value, new(true), new(true))
+					q.SetField(field.IndexField)
+					return q, negated
+				}
 			}
 		}
-		if field != "" {
-			v := t.Value[len(field)+1:]
+		if hasField && (field.Kind == searchschema.FieldKindText || field.Kind == searchschema.FieldKindKeyword) {
 			if strings.HasPrefix(v, "-") && len(v) > 1 {
 				negated = true
 				v = v[1:]
@@ -493,7 +465,7 @@ func getTokenQuery(t Token, now time.Time) (query.Query, bool) {
 					if len(parts) > 1 {
 						qs := []query.Query{}
 						for _, p := range parts {
-							partToken := Token{Type: TokenWord, Value: field + ":" + p.Value}
+							partToken := Token{Type: TokenWord, Value: field.Name + ":" + p.Value}
 							q, _ := getTokenQuery(partToken, now)
 							qs = append(qs, q)
 						}
@@ -504,13 +476,10 @@ func getTokenQuery(t Token, now time.Time) (query.Query, bool) {
 					}
 				}
 			}
-			return buildFieldQuery(field, v), negated
+			return buildFieldQuery(field.Name, v), negated
 		}
 
 		qs := []query.Query{}
-		for _, f := range []string{"title", "text"} {
-			qs = append(qs, buildFieldQuery(f, t.Value))
-		}
 		wcq := t.Value
 		if !strings.HasPrefix(wcq, "*") {
 			wcq = "*" + wcq
@@ -518,8 +487,14 @@ func getTokenQuery(t Token, now time.Time) (query.Query, bool) {
 		if !strings.HasSuffix(wcq, "*") {
 			wcq = wcq + "*"
 		}
-		qs = append(qs, buildFieldQuery("url", wcq))
-		qs = append(qs, buildFieldQuery("domain", wcq))
+		for _, field := range searchschema.Fields() {
+			switch {
+			case field.DefaultSearch:
+				qs = append(qs, buildFieldQuery(field.Name, t.Value))
+			case field.DefaultWildcard:
+				qs = append(qs, buildFieldQuery(field.Name, wcq))
+			}
+		}
 		return bleve.NewDisjunctionQuery(qs...), negated
 
 	case TokenAlternation:

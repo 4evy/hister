@@ -1,4 +1,6 @@
 import type { FacetsResult, TermCount } from '$lib/search';
+import { valuesForField } from '$lib/search-schema';
+import type { SearchCapabilities, SearchFieldDefinition } from '$lib/search-schema';
 
 export type QuerySuggestionKind = 'alias' | 'facet' | 'field' | 'recent' | 'sort' | 'spelling';
 
@@ -25,6 +27,7 @@ interface QuerySuggestionOptions {
   cursor: number;
   aliases: Record<string, string>;
   recentSearches: string[];
+  capabilities: SearchCapabilities;
   facets?: FacetsResult | null;
   serverSuggestion?: string;
   limit?: number;
@@ -35,63 +38,6 @@ export interface FacetSuggestionContext {
   facetName: string;
   key: string;
 }
-
-interface SearchField {
-  name: string;
-  label: string;
-  detail: string;
-}
-
-const SEARCH_FIELDS: SearchField[] = [
-  { name: 'domain', label: 'Domain', detail: 'Limit results to one domain' },
-  { name: 'title', label: 'Title', detail: 'Search only page titles' },
-  { name: 'url', label: 'URL', detail: 'Search only page addresses' },
-  { name: 'text', label: 'Text', detail: 'Search only document content' },
-  { name: 'type', label: 'Type', detail: 'Filter web or local documents' },
-  { name: 'language', label: 'Language', detail: 'Filter by document language' },
-  { name: 'label', label: 'Label', detail: 'Search assigned labels' },
-  { name: 'visits', label: 'Visits', detail: 'Filter by visit count' },
-  { name: 'updated', label: 'Updated', detail: 'Filter by last update time' },
-  { name: 'added', label: 'Added', detail: 'Filter by indexed time' },
-  { name: 'sort', label: 'Sort', detail: 'Change result ordering' },
-];
-
-const SORT_VALUES = [
-  { value: 'relevance', label: 'Relevance' },
-  { value: 'date', label: 'Newest first' },
-  { value: '-date', label: 'Oldest first' },
-  { value: 'visits', label: 'Most visited' },
-  { value: '-visits', label: 'Least visited' },
-  { value: 'domain', label: 'Domain A to Z' },
-  { value: '-domain', label: 'Domain Z to A' },
-];
-
-const TIME_VALUES = [
-  { value: '<24h', label: 'Within the last 24 hours' },
-  { value: '<7d', label: 'Within the last 7 days' },
-  { value: '<30d', label: 'Within the last 30 days' },
-  { value: '<365d', label: 'Within the last year' },
-  { value: '>365d', label: 'More than one year ago' },
-];
-
-const DEFAULT_TYPE_VALUES: TermCount[] = [
-  { term: 'web', count: 0 },
-  { term: 'local', count: 0 },
-];
-
-const DEFAULT_VISIT_VALUES: TermCount[] = [
-  { term: '1', count: 0, label: '1 visit' },
-  { term: '2..4', count: 0, label: '2 to 4 visits' },
-  { term: '5..9', count: 0, label: '5 to 9 visits' },
-  { term: '10..', count: 0, label: '10 or more visits' },
-];
-
-const FACET_NAMES: Record<string, string> = {
-  domain: 'domains',
-  language: 'languages',
-  type: 'types',
-  visits: 'visits',
-};
 
 function isWhitespace(value: string): boolean {
   return /\s/.test(value);
@@ -134,14 +80,17 @@ export function queryTokenAt(query: string, cursor: number): QueryToken {
 export function facetSuggestionContext(
   query: string,
   cursor: number,
+  capabilities: SearchCapabilities,
 ): FacetSuggestionContext | null {
   if (isInsideQuotes(query, cursor)) return null;
   const token = queryTokenAt(query, cursor);
-  const match = token.value.match(/^-?(domain|language|type|visits):(.*)$/i);
+  const match = token.value.match(/^-?([a-z_]+):(.*)$/i);
   if (!match) return null;
 
   const field = match[1].toLowerCase();
-  const facetName = FACET_NAMES[field];
+  const facetName = capabilities.fields.find((definition) => definition.name === field)?.facet;
+  const facet = capabilities.facets.find((definition) => definition.name === facetName);
+  if (!facetName || !facet || facet.kind === 'date_ranges') return null;
   const baseQuery = `${query.slice(0, token.start)} ${query.slice(token.end)}`
     .replace(/\s+/g, ' ')
     .trim();
@@ -154,15 +103,19 @@ export function facetSuggestionContext(
 }
 
 function fieldValueSuggestions(
-  field: string,
+  field: SearchFieldDefinition,
   valueFragment: string,
   tokenPrefix: string,
+  capabilities: SearchCapabilities,
   facets?: FacetsResult | null,
 ): QuerySuggestion[] {
-  const facetName = FACET_NAMES[field] ?? '';
-  let values = facetName ? (facets?.terms?.[facetName]?.terms ?? []) : [];
-  if (field === 'type') values = mergeDefaultValues(values, DEFAULT_TYPE_VALUES);
-  if (field === 'visits') values = mergeDefaultValues(values, DEFAULT_VISIT_VALUES);
+  const facetValues = field.facet ? (facets?.terms?.[field.facet]?.terms ?? []) : [];
+  const configuredValues: TermCount[] = valuesForField(capabilities, field).map((value) => ({
+    term: value.value,
+    count: 0,
+    label: value.label,
+  }));
+  const values = mergeDefaultValues(facetValues, configuredValues);
 
   const normalizedFragment = valueFragment.toLowerCase();
   return values
@@ -173,12 +126,12 @@ function fieldValueSuggestions(
     )
     .slice(0, 10)
     .map(({ term, count, label }) => ({
-      id: `facet:${field}:${term}`,
-      group: `${field[0].toUpperCase()}${field.slice(1)} values`,
+      id: `facet:${field.name}:${term}`,
+      group: `${field.label} values`,
       kind: 'facet' as const,
       label: label ?? term,
-      detail: count > 0 ? `${count} results` : `${field}:${term}`,
-      insertText: `${tokenPrefix}${field}:${term}`,
+      detail: count > 0 ? `${count} results` : `${field.name}:${term}`,
+      insertText: `${tokenPrefix}${field.name}:${term}`,
       replacement: 'token' as const,
       appendSpace: true,
     }));
@@ -192,6 +145,7 @@ function mergeDefaultValues(values: TermCount[], defaults: TermCount[]): TermCou
 
 function contextualValueSuggestions(
   tokenValue: string,
+  capabilities: SearchCapabilities,
   facets?: FacetsResult | null,
 ): QuerySuggestion[] | null {
   const match = tokenValue.match(/^(-?)([a-z_]+):(.*)$/i);
@@ -200,44 +154,30 @@ function contextualValueSuggestions(
   const tokenPrefix = match[1];
   const field = match[2].toLowerCase();
   const valueFragment = match[3];
-  if (field === 'sort') {
+  if (field === capabilities.sort.field) {
     const normalizedFragment = valueFragment.toLowerCase();
-    return SORT_VALUES.filter(
-      ({ value, label }) =>
-        value.toLowerCase().includes(normalizedFragment) ||
-        label.toLowerCase().includes(normalizedFragment),
-    ).map(({ value, label }) => ({
-      id: `sort:${value}`,
-      group: 'Sort values',
-      kind: 'sort' as const,
-      label,
-      detail: `sort:${value}`,
-      insertText: `${tokenPrefix}sort:${value}`,
-      replacement: 'token' as const,
-      appendSpace: true,
-    }));
+    return capabilities.sort.options
+      .filter((option) => option.visible)
+      .filter(
+        ({ value, label }) =>
+          value.toLowerCase().includes(normalizedFragment) ||
+          label.toLowerCase().includes(normalizedFragment),
+      )
+      .map(({ value, label }) => ({
+        id: `sort:${value}`,
+        group: `${capabilities.sort.label} values`,
+        kind: 'sort' as const,
+        label,
+        detail: `${capabilities.sort.field}:${value}`,
+        insertText: `${tokenPrefix}${capabilities.sort.field}:${value}`,
+        replacement: 'token' as const,
+        appendSpace: true,
+      }));
   }
 
-  if (field === 'updated' || field === 'added') {
-    const normalizedFragment = valueFragment.toLowerCase();
-    return TIME_VALUES.filter(
-      ({ value, label }) =>
-        value.toLowerCase().includes(normalizedFragment) ||
-        label.toLowerCase().includes(normalizedFragment),
-    ).map(({ value, label }) => ({
-      id: `time:${field}:${value}`,
-      group: `${field[0].toUpperCase()}${field.slice(1)} values`,
-      kind: 'facet' as const,
-      label,
-      detail: `${field}:${value}`,
-      insertText: `${tokenPrefix}${field}:${value}`,
-      replacement: 'token' as const,
-      appendSpace: true,
-    }));
-  }
-
-  if (['domain', 'language', 'type', 'visits'].includes(field)) {
-    return fieldValueSuggestions(field, valueFragment, tokenPrefix, facets);
+  const definition = capabilities.fields.find((candidate) => candidate.name === field);
+  if (definition && (definition.facet || definition.valueSet)) {
+    return fieldValueSuggestions(definition, valueFragment, tokenPrefix, capabilities, facets);
   }
   return [];
 }
@@ -248,6 +188,7 @@ export function buildQuerySuggestions(options: QuerySuggestionOptions): QuerySug
     cursor,
     aliases,
     recentSearches,
+    capabilities,
     facets,
     serverSuggestion = '',
     limit = 12,
@@ -268,7 +209,7 @@ export function buildQuerySuggestions(options: QuerySuggestionOptions): QuerySug
 
   if (isInsideQuotes(query, cursor)) return suggestions.slice(0, limit);
   const token = queryTokenAt(query, cursor);
-  const contextual = contextualValueSuggestions(token.value, facets);
+  const contextual = contextualValueSuggestions(token.value, capabilities, facets);
   if (contextual !== null) return [...suggestions, ...contextual].slice(0, limit);
 
   const normalizedQuery = query.trim().toLowerCase();
@@ -304,19 +245,28 @@ export function buildQuerySuggestions(options: QuerySuggestionOptions): QuerySug
     }));
   suggestions.push(...aliasMatches);
 
-  const fieldMatches = SEARCH_FIELDS.filter(
-    ({ name, label }) =>
-      !tokenFragment ||
-      name.startsWith(tokenFragment) ||
-      label.toLowerCase().startsWith(tokenFragment),
-  )
+  const searchFields = [
+    ...capabilities.fields,
+    {
+      name: capabilities.sort.field,
+      label: capabilities.sort.label,
+      description: capabilities.sort.description,
+    },
+  ].filter((field) => field.name);
+  const fieldMatches = searchFields
+    .filter(
+      ({ name, label }) =>
+        !tokenFragment ||
+        name.startsWith(tokenFragment) ||
+        label.toLowerCase().startsWith(tokenFragment),
+    )
     .slice(0, tokenFragment ? 8 : 6)
-    .map(({ name, label, detail }): QuerySuggestion => ({
+    .map(({ name, label, description }): QuerySuggestion => ({
       id: `field:${name}`,
       group: 'Search fields',
       kind: 'field',
       label,
-      detail,
+      detail: description,
       insertText: `${negated ? '-' : ''}${name}:`,
       replacement: 'token',
       keepOpen: true,

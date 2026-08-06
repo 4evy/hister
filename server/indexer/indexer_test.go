@@ -1,6 +1,7 @@
 package indexer
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -421,6 +422,62 @@ func TestSearchVisitCountFacets(t *testing.T) {
 	}
 	if labels["2..4"] != "2 to 4" {
 		t.Fatalf("visit bucket label 2..4 = %q, want %q", labels["2..4"], "2 to 4")
+	}
+}
+
+func TestSearchDateFacetCountsMatchPresetFilters(t *testing.T) {
+	idxCfg := testutil.Config(t)
+	if err := Init(idxCfg); err != nil {
+		t.Fatalf("failed to init indexer: %v", err)
+	}
+	defer i.Close()
+
+	now := time.Now()
+	for index, age := range []time.Duration{
+		time.Hour,
+		3 * 24 * time.Hour,
+		10 * 24 * time.Hour,
+		400 * 24 * time.Hour,
+	} {
+		updated := now.Add(-age).Unix()
+		if err := Add(&document.Document{
+			URL:       fmt.Sprintf("https://example.com/date-facet-%d", index),
+			Title:     "Date facet",
+			Text:      "Date facet document text",
+			Added:     updated,
+			Updated:   updated,
+			Processed: true,
+		}); err != nil {
+			t.Fatalf("Add failed: %v", err)
+		}
+	}
+
+	res, err := Search(idxCfg, &Query{Text: "Date facet", Facets: true, FacetsOnly: true})
+	if err != nil {
+		t.Fatalf("facet search failed: %v", err)
+	}
+	counts := make(map[string]int)
+	for _, bucket := range res.Facets.DateHistogram {
+		counts[bucket.Name] = bucket.Count
+	}
+
+	for _, test := range []struct {
+		bucket string
+		query  string
+	}{
+		{bucket: "last_24h", query: "Date facet updated:<24h"},
+		{bucket: "last_7d", query: "Date facet updated:<7d"},
+		{bucket: "last_30d", query: "Date facet updated:<30d"},
+		{bucket: "last_year", query: "Date facet updated:<365d"},
+		{bucket: "older", query: "Date facet updated:>365d"},
+	} {
+		filtered, err := Search(idxCfg, &Query{Text: test.query})
+		if err != nil {
+			t.Fatalf("search %q failed: %v", test.query, err)
+		}
+		if counts[test.bucket] != len(filtered.Documents) {
+			t.Fatalf("bucket %q count = %d, query returned %d", test.bucket, counts[test.bucket], len(filtered.Documents))
+		}
 	}
 }
 

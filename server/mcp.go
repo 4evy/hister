@@ -23,6 +23,7 @@ import (
 	"github.com/asciimoo/hister/server/document"
 	"github.com/asciimoo/hister/server/extractor"
 	"github.com/asciimoo/hister/server/indexer"
+	"github.com/asciimoo/hister/server/indexer/searchschema"
 	"github.com/asciimoo/hister/server/model"
 
 	"github.com/rs/zerolog/log"
@@ -158,6 +159,36 @@ func mcpSemanticSearchEnabled(c *webContext) bool {
 	return c != nil && c.Config.SemanticSearch.Enable && indexer.SemanticSearchEnabled()
 }
 
+func mcpSearchQueryDescription() string {
+	capabilities := searchschema.CapabilitiesDefinition()
+	filters := make([]string, 0, len(capabilities.Fields)+1)
+	for _, field := range capabilities.Fields {
+		syntax := field.Name + ":"
+		if field.Kind == searchschema.FieldKindEnum {
+			values := capabilities.ValueSets[field.ValueSet]
+			names := make([]string, 0, len(values))
+			for _, value := range values {
+				names = append(names, value.Value)
+			}
+			syntax += strings.Join(names, "/")
+		}
+		filters = append(filters, syntax)
+	}
+	filters = append(filters, "metadata.KEY:")
+
+	sorts := make([]string, 0, len(capabilities.Sort.Options))
+	for _, option := range capabilities.Sort.Options {
+		if option.Visible {
+			sorts = append(sorts, capabilities.Sort.Field+":"+option.Value)
+		}
+	}
+
+	return `Search query. Supports plain keywords, "exact phrases", ` +
+		`field filters (` + strings.Join(filters, ", ") + `), ` +
+		`sorting (` + strings.Join(sorts, ", ") + `), ` +
+		`negation (-term), wildcards (term*), and grouped alternatives ((a|b|c)).`
+}
+
 // mcpToolList returns the list of tools this MCP server exposes.
 func mcpToolList(semanticSearchEnabled bool) []map[string]any {
 	semanticStatus := "disabled"
@@ -172,12 +203,8 @@ func mcpToolList(semanticSearchEnabled bool) []map[string]any {
 				"type": "object",
 				"properties": map[string]any{
 					"query": map[string]any{
-						"type": "string",
-						"description": `Search query. Supports plain keywords, "exact phrases", ` +
-							`field filters (url:, domain:, title:, text:, label:, language:, metadata.KEY:, type:web/local, visits:, added:, updated:), ` +
-							`sorting (sort:relevance, sort:date, sort:domain, sort:visits), ` +
-							`reverse sorting by prefixing a sort value with a minus sign (sort:-date), ` +
-							`negation (-term), wildcards (term*), and grouped alternatives ((a|b|c)).`,
+						"type":        "string",
+						"description": mcpSearchQueryDescription(),
 					},
 					"limit": map[string]any{
 						"type":        "integer",

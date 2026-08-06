@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/asciimoo/hister/config"
+	"github.com/asciimoo/hister/server/indexer/searchschema"
 	"github.com/asciimoo/hister/server/model"
 	"github.com/asciimoo/hister/server/testutil"
 	"github.com/asciimoo/hister/server/timeline"
@@ -50,13 +51,14 @@ func TestPublicModeConfigResponse(t *testing.T) {
 		t.Fatalf("GET /api/config status = %d, want %d", rec.Code, http.StatusOK)
 	}
 	var body struct {
-		Title          string `json:"title"`
-		Subtitle       string `json:"subtitle"`
-		ColorScheme    string `json:"colorScheme"`
-		Public         bool   `json:"public"`
-		Authenticated  bool   `json:"authenticated"`
-		CanWrite       bool   `json:"canWrite"`
-		HistoryEnabled bool   `json:"historyEnabled"`
+		Title          string                    `json:"title"`
+		Subtitle       string                    `json:"subtitle"`
+		ColorScheme    string                    `json:"colorScheme"`
+		Public         bool                      `json:"public"`
+		Authenticated  bool                      `json:"authenticated"`
+		CanWrite       bool                      `json:"canWrite"`
+		HistoryEnabled bool                      `json:"historyEnabled"`
+		Search         searchschema.Capabilities `json:"search"`
 	}
 	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
 		t.Fatal(err)
@@ -81,6 +83,12 @@ func TestPublicModeConfigResponse(t *testing.T) {
 	}
 	if body.HistoryEnabled {
 		t.Fatal("historyEnabled = true, want false")
+	}
+	if body.Search.Version != searchschema.Version {
+		t.Fatalf("search schema version = %d, want %d", body.Search.Version, searchschema.Version)
+	}
+	if len(body.Search.Facets) == 0 || len(body.Search.Sort.Options) == 0 {
+		t.Fatal("search schema is missing facets or sort options")
 	}
 }
 

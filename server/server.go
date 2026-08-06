@@ -29,6 +29,7 @@ import (
 	"github.com/asciimoo/hister/server/document"
 	"github.com/asciimoo/hister/server/extractor"
 	"github.com/asciimoo/hister/server/indexer"
+	"github.com/asciimoo/hister/server/indexer/searchschema"
 	"github.com/asciimoo/hister/server/model"
 	"github.com/asciimoo/hister/server/static"
 	"github.com/asciimoo/hister/server/timeline"
@@ -734,29 +735,30 @@ func serveGenerateToken(c *webContext) {
 // serveConfig returns app configuration as JSON and refreshes CSRF token.
 func serveConfig(c *webContext) {
 	type configResponse struct {
-		BaseURL             string            `json:"baseUrl"`
-		BasePath            string            `json:"basePath"`
-		WsURL               string            `json:"wsUrl"`
-		Title               string            `json:"title"`
-		Subtitle            string            `json:"subtitle"`
-		ColorScheme         string            `json:"colorScheme"`
-		SearchURL           string            `json:"searchUrl"`
-		OpenResultsOnNewTab bool              `json:"openResultsOnNewTab"`
-		Hotkeys             map[string]string `json:"hotkeys"`
-		AuthMode            string            `json:"authMode"`
-		Authenticated       bool              `json:"authenticated"`
-		Public              bool              `json:"public"`
-		CanWrite            bool              `json:"canWrite"`
-		HistoryEnabled      bool              `json:"historyEnabled"`
-		Username            string            `json:"username,omitempty"`
-		UserID              uint              `json:"userId,omitempty"`
-		SemanticEnabled     bool              `json:"semanticEnabled"`
-		SemanticWeight      float64           `json:"semanticWeight,omitempty"`
-		SimilarityThreshold float64           `json:"similarityThreshold,omitempty"`
-		OAuthProviders      []string          `json:"oauthProviders,omitempty"`
-		OAuthOnly           bool              `json:"oauthOnly,omitempty"`
-		DisablePreviews     bool              `json:"disablePreviews,omitempty"`
-		MaxBatchBodyBytes   int64             `json:"maxBatchBodyBytes"`
+		BaseURL             string                    `json:"baseUrl"`
+		BasePath            string                    `json:"basePath"`
+		WsURL               string                    `json:"wsUrl"`
+		Title               string                    `json:"title"`
+		Subtitle            string                    `json:"subtitle"`
+		ColorScheme         string                    `json:"colorScheme"`
+		SearchURL           string                    `json:"searchUrl"`
+		OpenResultsOnNewTab bool                      `json:"openResultsOnNewTab"`
+		Hotkeys             map[string]string         `json:"hotkeys"`
+		AuthMode            string                    `json:"authMode"`
+		Authenticated       bool                      `json:"authenticated"`
+		Public              bool                      `json:"public"`
+		CanWrite            bool                      `json:"canWrite"`
+		HistoryEnabled      bool                      `json:"historyEnabled"`
+		Username            string                    `json:"username,omitempty"`
+		UserID              uint                      `json:"userId,omitempty"`
+		SemanticEnabled     bool                      `json:"semanticEnabled"`
+		SemanticWeight      float64                   `json:"semanticWeight,omitempty"`
+		SimilarityThreshold float64                   `json:"similarityThreshold,omitempty"`
+		OAuthProviders      []string                  `json:"oauthProviders,omitempty"`
+		OAuthOnly           bool                      `json:"oauthOnly,omitempty"`
+		DisablePreviews     bool                      `json:"disablePreviews,omitempty"`
+		MaxBatchBodyBytes   int64                     `json:"maxBatchBodyBytes"`
+		Search              searchschema.Capabilities `json:"search"`
 	}
 	authMode := "none"
 	authenticated := true
@@ -799,6 +801,7 @@ func serveConfig(c *webContext) {
 		OAuthOnly:           c.Config.Server.OAuthOnly,
 		DisablePreviews:     c.Config.App.DisablePreviews,
 		MaxBatchBodyBytes:   c.Config.Server.MaxBatchBodyBytes(),
+		Search:              searchschema.CapabilitiesDefinition(),
 	})
 }
 
@@ -1589,7 +1592,8 @@ func serveGetFacets(c *webContext) {
 	}
 	for key, vals := range params {
 		if name, ok := strings.CutPrefix(key, "size_"); ok && len(vals) > 0 {
-			if n, err := strconv.Atoi(vals[0]); err == nil && n > 0 {
+			_, configured := searchschema.Facet(name)
+			if n, err := strconv.Atoi(vals[0]); configured && err == nil && n > 0 {
 				q.FacetSizes[name] = n
 			}
 		}

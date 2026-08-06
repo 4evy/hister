@@ -21,6 +21,7 @@ import (
 	"github.com/asciimoo/hister/server/document"
 	"github.com/asciimoo/hister/server/extractor"
 	"github.com/asciimoo/hister/server/indexer/querybuilder"
+	"github.com/asciimoo/hister/server/indexer/searchschema"
 	"github.com/asciimoo/hister/server/model"
 	"github.com/asciimoo/hister/server/types"
 	"github.com/asciimoo/hister/server/vectorstore"
@@ -82,9 +83,7 @@ type Query struct {
 	IncludeHTML       bool    `json:"include_html"`
 	IncludeText       bool    `json:"include_text"`
 	Facets            bool    `json:"facets,omitempty"`
-	// FacetSizes overrides the default top-N cap per named facet.
-	// Key is the facet name (e.g. "domains", "languages"); zero/missing
-	// values fall back to defaultFacetTermSize.
+	// FacetSizes overrides the schema default cap per named facet.
 	FacetSizes map[string]int `json:"facet_sizes,omitempty"`
 	// FacetsOnly skips document fetching (size=0) and returns only facet
 	// counts. Requires Facets=true. Used by the /api/facets endpoint.
@@ -98,8 +97,6 @@ type Query struct {
 	PriorityPatterns []string `json:"priority_patterns,omitempty"`
 	cfg              *config.Config
 }
-
-const defaultFacetTermSize = 10
 
 // TermCount and RangeCount are the shape of facet buckets returned by Search
 // when Query.Facets is true.
@@ -129,62 +126,42 @@ type FacetsResult struct {
 	DateHistogram []RangeCount         `json:"date_histogram,omitempty"`
 }
 
-// dateFacetBuckets drives the "updated" histogram. Each entry is a non-
-// overlapping slice of time ending at the previous bucket's boundary; the
-// final "older" bucket is appended implicitly. Order matters, the loop
-// walks most-recent -> oldest so each range's upper bound is the prior
-// range's lower bound.
-var dateFacetBuckets = []struct {
-	name string
-	age  time.Duration
-}{
-	{"last_24h", 24 * time.Hour},
-	{"last_7d", 7 * 24 * time.Hour},
-	{"last_30d", 30 * 24 * time.Hour},
-	{"last_year", 365 * 24 * time.Hour},
-}
-
-var visitCountFacetBuckets = []struct {
-	name  string
-	label string
-	min   *float64
-	max   *float64
-}{
-	{"1", "1 visit", new(float64(1)), new(float64(2))},
-	{"2..4", "2 to 4", new(float64(2)), new(float64(5))},
-	{"5..9", "5 to 9", new(float64(5)), new(float64(10))},
-	{"10..", "10 or more", new(float64(10)), nil},
-}
-
 func addFacets(req *bleve.SearchRequest, sizes map[string]int) {
-	facetSize := func(name string) int {
-		if n := sizes[name]; n > 0 {
+	facetSize := func(definition searchschema.FacetDefinition) int {
+		if n := sizes[definition.Name]; n > 0 {
 			return n
 		}
-		return defaultFacetTermSize
+		return definition.DefaultSize
 	}
-	req.AddFacet("domains", bleve.NewFacetRequest("domain", facetSize("domains")))
-	req.AddFacet("languages", bleve.NewFacetRequest("language", facetSize("languages")))
-	tf := bleve.NewFacetRequest("type", 2)
-	web, local, afterLocal := float64(types.Web), float64(types.Local), float64(types.Local)+1
-	tf.AddNumericRange(types.Web.String(), &web, &local)
-	tf.AddNumericRange(types.Local.String(), &local, &afterLocal)
-	req.AddFacet("types", tf)
-	vf := bleve.NewFacetRequest("add_count", len(visitCountFacetBuckets))
-	for _, b := range visitCountFacetBuckets {
-		vf.AddNumericRange(b.name, b.min, b.max)
+	for _, definition := range searchschema.Facets() {
+		field, ok := searchschema.Field(definition.QueryField)
+		if !ok {
+			continue
+		}
+		switch definition.Kind {
+		case searchschema.FacetKindTerms:
+			req.AddFacet(definition.Name, bleve.NewFacetRequest(field.IndexField, facetSize(definition)))
+		case searchschema.FacetKindNumericRanges:
+			values := searchschema.Values(field.ValueSet)
+			facet := bleve.NewFacetRequest(field.IndexField, len(values))
+			for _, value := range values {
+				facet.AddNumericRange(value.BucketName(), value.Min, value.Max)
+			}
+			req.AddFacet(definition.Name, facet)
+		case searchschema.FacetKindDateRanges:
+			values := searchschema.Values(field.ValueSet)
+			facet := bleve.NewFacetRequest(field.IndexField, len(values))
+			now := time.Now()
+			for _, value := range values {
+				min, max, ok := value.RelativeTimeBounds(now)
+				if !ok {
+					continue
+				}
+				facet.AddNumericRange(value.BucketName(), min, max)
+			}
+			req.AddFacet(definition.Name, facet)
+		}
 	}
-	req.AddFacet("visits", vf)
-	now := time.Now()
-	dh := bleve.NewFacetRequest("updated", len(dateFacetBuckets)+1)
-	var prev *float64
-	for _, b := range dateFacetBuckets {
-		ts := float64(now.Add(-b.age).Unix())
-		dh.AddNumericRange(b.name, &ts, prev)
-		prev = &ts
-	}
-	dh.AddNumericRange("older", nil, prev)
-	req.AddFacet("updated", dh)
 }
 
 func extractTermFacet(f *search.FacetResult) TermFacet {
@@ -199,43 +176,34 @@ func extractTermFacet(f *search.FacetResult) TermFacet {
 	return TermFacet{Terms: out, Other: f.Other}
 }
 
-func visitCountFacetLabel(name string) string {
-	for _, b := range visitCountFacetBuckets {
-		if b.name == name {
-			return b.label
-		}
-	}
-	return ""
-}
-
 func extractFacets(facets search.FacetResults) *FacetsResult {
 	fr := &FacetsResult{Terms: make(map[string]TermFacet)}
-	for _, name := range []string{"domains", "languages"} {
-		if f := facets[name]; f != nil {
-			fr.Terms[name] = extractTermFacet(f)
+	for _, definition := range searchschema.Facets() {
+		facet := facets[definition.Name]
+		if facet == nil {
+			continue
 		}
-	}
-	if f := facets["types"]; f != nil {
-		terms := make([]TermCount, 0, len(f.NumericRanges))
-		for _, nr := range f.NumericRanges {
-			terms = append(terms, TermCount{Term: nr.Name, Count: nr.Count})
-		}
-		fr.Terms["types"] = TermFacet{Terms: terms}
-	}
-	if f := facets["visits"]; f != nil {
-		terms := make([]TermCount, 0, len(f.NumericRanges))
-		for _, nr := range f.NumericRanges {
-			terms = append(terms, TermCount{
-				Term:  nr.Name,
-				Count: nr.Count,
-				Label: visitCountFacetLabel(nr.Name),
-			})
-		}
-		fr.Terms["visits"] = TermFacet{Terms: terms}
-	}
-	if f := facets["updated"]; f != nil {
-		for _, nr := range f.NumericRanges {
-			fr.DateHistogram = append(fr.DateHistogram, RangeCount{Name: nr.Name, Count: nr.Count})
+		switch definition.Kind {
+		case searchschema.FacetKindTerms:
+			fr.Terms[definition.Name] = extractTermFacet(facet)
+		case searchschema.FacetKindNumericRanges:
+			terms := make([]TermCount, 0, len(facet.NumericRanges))
+			for _, numericRange := range facet.NumericRanges {
+				value, _ := searchschema.FacetValue(definition.Name, numericRange.Name)
+				terms = append(terms, TermCount{
+					Term:  numericRange.Name,
+					Count: numericRange.Count,
+					Label: value.Label,
+				})
+			}
+			fr.Terms[definition.Name] = TermFacet{Terms: terms}
+		case searchschema.FacetKindDateRanges:
+			for _, numericRange := range facet.NumericRanges {
+				fr.DateHistogram = append(fr.DateHistogram, RangeCount{
+					Name:  numericRange.Name,
+					Count: numericRange.Count,
+				})
+			}
 		}
 	}
 	return fr
@@ -1482,29 +1450,11 @@ func Search(cfg *config.Config, q *Query) (*Results, error) {
 		req.Highlight = bleve.NewHighlightWithStyle("tui")
 	}
 
-	sortByScore := false
 	// TODO / question: should we store the length of the URL path and sort by it,
 	// prefering shorter path names for tied score?
-	switch q.Sort {
-	case "domain":
-		req.SortBy([]string{"domain", "_id"})
-	case "-domain":
-		req.SortBy([]string{"-domain", "_id"})
-	case "date":
-		req.SortBy([]string{"-updated", "_id"})
-	case "-date":
-		req.SortBy([]string{"updated", "_id"})
-	case "visits":
-		req.SortBy([]string{"-add_count", "-updated", "_id"})
-	case "-visits":
-		req.SortBy([]string{"add_count", "updated", "_id"})
-	case "-relevance":
-		sortByScore = true
-		req.SortBy([]string{"_score", "updated", "_id"})
-	default:
-		sortByScore = true
-		req.SortBy([]string{"-_score", "-updated", "_id"})
-	}
+	sortDefinition := searchschema.Sort(q.Sort)
+	sortByScore := sortDefinition.ByScore
+	req.SortBy(sortDefinition.Fields)
 
 	if q.PageKey != "" {
 		var after []string

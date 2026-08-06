@@ -36,13 +36,14 @@
   } from '$lib/search';
   import { RESULTS_PER_PAGE } from '$lib/search';
   import {
-    DATE_BUCKET_FILTERS,
     customDatesFromQuery,
-    removeUpdatedTimeFilters,
-    replaceUpdatedTimeFilters,
+    removeTimeFilters,
+    replaceTimeFilters,
     shiftISODate,
-    updatedTimeFilters,
+    timeFilters,
   } from '$lib/time-filters';
+  import { emptySearchCapabilities, queryFilterValues, valuesForFacet } from '$lib/search-schema';
+  import type { SearchCapabilities, SearchFacetDefinition } from '$lib/search-schema';
   import {
     removeSortDirectives,
     replaceSortDirective,
@@ -112,6 +113,7 @@
     public: boolean;
     canWrite: boolean;
     historyEnabled: boolean;
+    search: SearchCapabilities;
   }
 
   interface DisplayResult {
@@ -132,17 +134,6 @@
     isPinned: boolean;
   }
 
-  const sortOptions = [
-    { value: '', label: 'Relevance' },
-    { value: 'visits', label: 'Most visited' },
-    { value: '-visits', label: 'Least visited' },
-    { value: 'date', label: 'Date (newest first)' },
-    { value: '-date', label: 'Date (oldest first)' },
-    { value: 'domain', label: 'Domain (A to Z)' },
-    { value: '-domain', label: 'Domain (Z to A)' },
-  ] as const;
-  const sortValues = new Set<string>(sortOptions.map((option) => option.value));
-
   let config: Config = $state({
     wsUrl: '',
     title: 'Hister',
@@ -157,7 +148,15 @@
     public: false,
     canWrite: true,
     historyEnabled: true,
+    search: emptySearchCapabilities(),
   });
+
+  const sortOptions = $derived(
+    config.search.sort.options
+      .filter((option) => option.visible)
+      .map((option) => ({ value: option.default ? '' : option.value, label: option.label })),
+  );
+  const sortValues = $derived(new Set(config.search.sort.options.map((option) => option.value)));
 
   let wsManager: WebSocketManager | undefined;
   let keyHandler: KeyHandler | undefined;
@@ -182,7 +181,7 @@
   let loadingMoreForQuery = $state('');
   let sentinelEl = $state<HTMLElement | undefined>();
   let highlightIdx = $state(0);
-  const currentSort = $derived(sortValueFromQuery(query));
+  const currentSort = $derived(sortValueFromQuery(query, config.search.sort));
   let dateFrom = $state('');
   let dateTo = $state('');
   let showPopup = $state(false);
@@ -248,7 +247,7 @@
   let underlineEl: HTMLElement | undefined = $state();
 
   const querySuggestionListId = 'query-suggestions';
-  const queryFacetContext = $derived(facetSuggestionContext(query, queryCursor));
+  const queryFacetContext = $derived(facetSuggestionContext(query, queryCursor, config.search));
   const querySuggestionFacetData = $derived(
     queryFacetContext?.key === querySuggestionFacetKey ? querySuggestionFacets : null,
   );
@@ -258,6 +257,7 @@
       cursor: queryCursor,
       aliases: searchAliases,
       recentSearches,
+      capabilities: config.search,
       facets: querySuggestionFacetData,
       serverSuggestion: autocomplete,
     }),
@@ -512,12 +512,20 @@
   ]);
 
   // Faceted navigation — lazy fetch on dropdown open
-  const bucketLabels: Record<string, string> = {
-    last_24h: 'Last 24 hours',
-    last_7d: 'Last 7 days',
-    last_30d: 'Last 30 days',
-    last_year: 'Last year',
-    older: 'Older',
+  const termFacetDefinitions = $derived(
+    config.search.facets.filter((facet) => facet.kind !== 'date_ranges'),
+  );
+  const dateFacetDefinition = $derived(
+    config.search.facets.find((facet) => facet.kind === 'date_ranges'),
+  );
+  const dateFacetValues = $derived(
+    dateFacetDefinition ? valuesForFacet(config.search, dateFacetDefinition) : [],
+  );
+  const facetIcons: Record<string, typeof Globe> = {
+    calendar: Calendar,
+    eye: Eye,
+    globe: Globe,
+    tag: Tag,
   };
   // facetsCache maps a canonical query key to the fetched FacetsResult.
   let facetsCache = $state(new Map<string, FacetsResult>());
@@ -528,10 +536,12 @@
   // Maps facet name (e.g. "domains", "languages") to the requested top-N size.
   let facetSizes = $state(new Map<string, number>());
 
-  const DEFAULT_FACET_SIZE = 10;
-
   function facetSize(name: string): number {
-    return facetSizes.get(name) ?? DEFAULT_FACET_SIZE;
+    return (
+      facetSizes.get(name) ??
+      config.search.facets.find((definition) => definition.name === name)?.defaultSize ??
+      0
+    );
   }
 
   function facetsCacheKey(): string {
@@ -549,7 +559,9 @@
     try {
       const params = new URLSearchParams({ q: query });
       for (const [name, size] of facetSizes) {
-        if (size !== DEFAULT_FACET_SIZE) params.set(`size_${name}`, String(size));
+        const defaultSize =
+          config.search.facets.find((definition) => definition.name === name)?.defaultSize ?? 0;
+        if (size !== defaultSize) params.set(`size_${name}`, String(size));
       }
       const res = await fetch(`api/facets?${params}`);
       if (res.ok) {
@@ -562,7 +574,10 @@
   }
 
   function loadMoreFacet(name: string) {
-    facetSizes = new Map(facetSizes).set(name, facetSize(name) + DEFAULT_FACET_SIZE);
+    const increment =
+      config.search.facets.find((definition) => definition.name === name)?.defaultSize ?? 0;
+    if (increment === 0) return;
+    facetSizes = new Map(facetSizes).set(name, facetSize(name) + increment);
     fetchFacets();
   }
 
@@ -577,43 +592,36 @@
     facetSizes = new Map();
   });
 
-  const activeDomainFilters = $derived(
-    new Set([...query.matchAll(/\bdomain:(\S+)/g)].map((m) => m[1])),
+  const activeFacetFilters = $derived(
+    new Map(
+      termFacetDefinitions.map((facet) => [facet.name, queryFilterValues(query, facet.queryField)]),
+    ),
   );
-  const activeLanguageFilters = $derived(
-    new Set([...query.matchAll(/\blanguage:(\S+)/g)].map((m) => m[1])),
-  );
-  const activeTypeFilters = $derived(
-    new Set([...query.matchAll(/\btype:(\S+)/g)].map((m) => m[1])),
-  );
-  const activeVisitFilters = $derived(
-    new Set([...query.matchAll(/\bvisits:(\S+)/g)].map((m) => m[1])),
-  );
-  const activeUpdatedTimeFilters = $derived(updatedTimeFilters(query));
+  const activeTimeFilters = $derived(timeFilters(query, dateFacetDefinition?.queryField ?? ''));
   const activeDateBucket = $derived(
-    activeUpdatedTimeFilters.length === 1
-      ? (Object.entries(DATE_BUCKET_FILTERS).find(
-          ([, value]) =>
-            value ===
-            `${activeUpdatedTimeFilters[0].comparison}${activeUpdatedTimeFilters[0].value.toLowerCase()}`,
-        )?.[0] ?? null)
+    activeTimeFilters.length === 1
+      ? (dateFacetValues.find(
+          (value) =>
+            value.value ===
+            `${activeTimeFilters[0].comparison}${activeTimeFilters[0].value.toLowerCase()}`,
+        )?.facetBucket ?? null)
       : null,
   );
   const activeFilterCount = $derived(
-    activeDomainFilters.size +
-      activeLanguageFilters.size +
-      activeTypeFilters.size +
-      activeVisitFilters.size +
-      (activeUpdatedTimeFilters.length > 0 ? 1 : 0),
+    [...activeFacetFilters.values()].reduce((total, filters) => total + filters.size, 0) +
+      (activeTimeFilters.length > 0 ? 1 : 0),
   );
 
-  function showFacetCategory(name: string, activeFilters: Set<string>) {
-    return (currentFacets?.terms?.[name]?.terms?.length ?? 0) > 1 || activeFilters.size > 0;
+  function showFacetCategory(facet: SearchFacetDefinition) {
+    return (
+      (currentFacets?.terms?.[facet.name]?.terms?.length ?? 0) > 1 ||
+      (activeFacetFilters.get(facet.name)?.size ?? 0) > 0
+    );
   }
-  const showDomainsFacet = $derived(showFacetCategory('domains', activeDomainFilters));
-  const showLanguagesFacet = $derived(showFacetCategory('languages', activeLanguageFilters));
-  const showTypesFacet = $derived(showFacetCategory('types', activeTypeFilters));
-  const showVisitsFacet = $derived(showFacetCategory('visits', activeVisitFilters));
+  function activeFiltersForFacet(name: string): Set<string> {
+    return activeFacetFilters.get(name) ?? new Set<string>();
+  }
+  const visibleTermFacets = $derived(termFacetDefinitions.filter(showFacetCategory));
   const showFiltersButton = $derived(hasResults || activeFilterCount > 0);
 
   function toggleQueryToken(prefix: string, value: string) {
@@ -626,11 +634,12 @@
   }
 
   function toggleDateBucket(name: string) {
+    const field = dateFacetDefinition?.queryField ?? '';
     if (activeDateBucket === name) {
-      query = removeUpdatedTimeFilters(query);
+      query = removeTimeFilters(query, field);
     } else {
-      const filter = DATE_BUCKET_FILTERS[name];
-      if (filter) query = replaceUpdatedTimeFilters(query, [filter]);
+      const filter = dateFacetValues.find((value) => value.facetBucket === name)?.value;
+      if (filter) query = replaceTimeFilters(query, field, [filter]);
     }
   }
 
@@ -643,11 +652,11 @@
     if (shiftISODate(from, 0)) filters.push(`>=${from}`);
     const exclusiveTo = shiftISODate(to, 1);
     if (exclusiveTo) filters.push(`<${exclusiveTo}`);
-    query = replaceUpdatedTimeFilters(query, filters);
+    query = replaceTimeFilters(query, dateFacetDefinition?.queryField ?? '', filters);
   }
 
   $effect(() => {
-    const dates = customDatesFromQuery(query);
+    const dates = customDatesFromQuery(query, dateFacetDefinition?.queryField ?? '');
     untrack(() => {
       dateFrom = dates.from;
       dateTo = dates.to;
@@ -700,8 +709,12 @@
   function queryFromSearchParams(params: URLSearchParams): string {
     let value = params.get('q') || '';
     const legacySort = params.get('sort');
-    if (legacySort && sortValues.has(legacySort) && sortDirectiveFromQuery(value) === null) {
-      value = replaceSortDirective(value, legacySort);
+    if (
+      legacySort &&
+      sortValues.has(legacySort) &&
+      sortDirectiveFromQuery(value, config.search.sort) === null
+    ) {
+      value = replaceSortDirective(value, legacySort, config.search.sort);
     }
     return value;
   }
@@ -829,7 +842,7 @@
 
   function setSort(sortId: string) {
     if (currentSort === sortId) return;
-    query = replaceSortDirective(query, sortId);
+    query = replaceSortDirective(query, sortId, config.search.sort);
   }
 
   function setDeleteError(msg: string) {
@@ -895,7 +908,7 @@
 
   async function deleteAllResults() {
     if (!config.canWrite) return;
-    const searchText = removeSortDirectives(query) || '*';
+    const searchText = removeSortDirectives(query, config.search.sort) || '*';
     const q = searchText + (getUserId() !== undefined ? ' user_id:' + getUserId() : '');
     const res = await apiFetch('/delete', {
       method: 'POST',
@@ -1527,13 +1540,14 @@
         searchUrl: appConfig.searchUrl,
         openResultsOnNewTab: appConfig.openResultsOnNewTab,
         hotkeys: appConfig.hotkeys,
-        semanticEnabled: (appConfig as any).semanticEnabled ?? false,
-        similarityThreshold: (appConfig as any).similarityThreshold ?? 0.1,
-        semanticWeight: (appConfig as any).semanticWeight ?? 0.4,
+        semanticEnabled: appConfig.semanticEnabled ?? false,
+        similarityThreshold: appConfig.similarityThreshold ?? 0.1,
+        semanticWeight: appConfig.semanticWeight ?? 0.4,
         authenticated: appConfig.authenticated,
         public: appConfig.public,
         canWrite: appConfig.canWrite,
         historyEnabled: appConfig.historyEnabled,
+        search: appConfig.search,
       };
       disablePreviews = (appConfig as any).disablePreviews ?? false;
       if (config.semanticEnabled) {
@@ -1890,13 +1904,11 @@
                       >
                         <div class="space-y-3">
                           {#snippet facetSection(
-                            facetName: string,
-                            label: string,
-                            Icon: typeof Globe,
-                            prefix: string,
+                            facet: SearchFacetDefinition,
                             activeFilters: Set<string>,
                             showSeparator: boolean,
                           )}
+                            {@const Icon = facetIcons[facet.icon ?? ''] ?? Filter}
                             {#if showSeparator}
                               <Separator class="bg-border-brand-muted" />
                             {/if}
@@ -1905,27 +1917,27 @@
                                 class="font-inter text-text-brand-muted flex items-center gap-1.5 text-xs font-semibold"
                               >
                                 <Icon class="size-3" />
-                                {label}
+                                {facet.label}
                               </p>
                               <div class="flex flex-wrap gap-1">
-                                {#each currentFacets?.terms?.[facetName]?.terms ?? [] as { term, count, label } (term)}
+                                {#each currentFacets?.terms?.[facet.name]?.terms ?? [] as { term, count, label } (term)}
                                   <button
                                     class="font-inter cursor-pointer rounded-none border-[2px] px-2 py-0.5 text-xs transition-colors {activeFilters.has(
                                       term,
                                     )
                                       ? 'border-hister-indigo bg-hister-indigo text-background'
                                       : 'border-border-brand-muted text-text-brand-secondary hover:border-hister-indigo hover:text-hister-indigo'}"
-                                    onclick={() => toggleQueryToken(prefix, term)}
+                                    onclick={() => toggleQueryToken(facet.queryField, term)}
                                   >
                                     {label ?? term}
                                     <span class="opacity-60">({count})</span>
                                   </button>
                                 {/each}
                               </div>
-                              {#if currentFacets?.terms?.[facetName]?.other}
+                              {#if currentFacets?.terms?.[facet.name]?.other}
                                 <button
                                   class="font-inter text-text-brand-muted hover:text-hister-indigo mt-1 cursor-pointer text-xs underline-offset-2 hover:underline"
-                                  onclick={() => loadMoreFacet(facetName)}>Load more</button
+                                  onclick={() => loadMoreFacet(facet.name)}>Load more</button
                                 >
                               {/if}
                             </div>
@@ -1933,46 +1945,13 @@
                           {#if facetsLoading}
                             <p class="font-inter text-text-brand-muted text-xs">Loading filters…</p>
                           {:else}
-                            {#if showDomainsFacet}
+                            {#each visibleTermFacets as facet, index (facet.name)}
                               {@render facetSection(
-                                'domains',
-                                'Domains',
-                                Globe,
-                                'domain',
-                                activeDomainFilters,
-                                false,
+                                facet,
+                                activeFiltersForFacet(facet.name),
+                                index > 0,
                               )}
-                            {/if}
-                            {#if showLanguagesFacet}
-                              {@render facetSection(
-                                'languages',
-                                'Languages',
-                                Globe,
-                                'language',
-                                activeLanguageFilters,
-                                showDomainsFacet,
-                              )}
-                            {/if}
-                            {#if showTypesFacet}
-                              {@render facetSection(
-                                'types',
-                                'Type',
-                                Tag,
-                                'type',
-                                activeTypeFilters,
-                                showDomainsFacet || showLanguagesFacet,
-                              )}
-                            {/if}
-                            {#if showVisitsFacet}
-                              {@render facetSection(
-                                'visits',
-                                'Visits',
-                                Eye,
-                                'visits',
-                                activeVisitFilters,
-                                showDomainsFacet || showLanguagesFacet || showTypesFacet,
-                              )}
-                            {/if}
+                            {/each}
                             {#snippet customDateInputs()}
                               <details class="group/custom w-full">
                                 <summary
@@ -2005,16 +1984,18 @@
                                 </div>
                               </details>
                             {/snippet}
-                            {#if currentFacets?.date_histogram?.some((b) => b.count > 0)}
-                              {#if showDomainsFacet || showLanguagesFacet || showTypesFacet || showVisitsFacet}
+                            {#if dateFacetDefinition && currentFacets?.date_histogram?.some((b) => b.count > 0)}
+                              {@const DateIcon =
+                                facetIcons[dateFacetDefinition.icon ?? ''] ?? Filter}
+                              {#if visibleTermFacets.length > 0}
                                 <Separator class="bg-border-brand-muted" />
                               {/if}
                               <div class="space-y-1.5">
                                 <p
                                   class="font-inter text-text-brand-muted flex items-center gap-1.5 text-xs font-semibold"
                                 >
-                                  <Calendar class="size-3" />
-                                  Updated
+                                  <DateIcon class="size-3" />
+                                  {dateFacetDefinition.label}
                                 </p>
                                 <div class="flex flex-col gap-1">
                                   {#each currentFacets.date_histogram as { name, count } (name)}
@@ -2026,7 +2007,11 @@
                                           : 'border-border-brand-muted text-text-brand-secondary hover:border-hister-indigo hover:text-hister-indigo'}"
                                         onclick={() => toggleDateBucket(name)}
                                       >
-                                        <span>{bucketLabels[name] ?? name}</span>
+                                        <span
+                                          >{dateFacetValues.find(
+                                            (value) => value.facetBucket === name,
+                                          )?.label ?? name}</span
+                                        >
                                         <span class="opacity-60">{count}</span>
                                       </button>
                                     {/if}
@@ -2034,18 +2019,20 @@
                                 </div>
                                 {@render customDateInputs()}
                               </div>
-                            {:else}
+                            {:else if dateFacetDefinition}
+                              {@const DateIcon =
+                                facetIcons[dateFacetDefinition.icon ?? ''] ?? Filter}
                               <div class="space-y-1.5">
                                 <p
                                   class="font-inter text-text-brand-muted flex items-center gap-1.5 text-xs font-semibold"
                                 >
-                                  <Calendar class="size-3" />
-                                  Updated
+                                  <DateIcon class="size-3" />
+                                  {dateFacetDefinition.label}
                                 </p>
                                 {@render customDateInputs()}
                               </div>
                             {/if}
-                            {#if !currentFacets?.terms?.['domains']?.terms?.length && !currentFacets?.terms?.['languages']?.terms?.length && !currentFacets?.terms?.['types']?.terms?.length && !currentFacets?.terms?.['visits']?.terms?.length && !currentFacets?.date_histogram?.some((b) => b.count > 0)}
+                            {#if !termFacetDefinitions.some((facet) => currentFacets?.terms?.[facet.name]?.terms?.length) && !currentFacets?.date_histogram?.some((bucket) => bucket.count > 0)}
                               <p class="font-inter text-text-brand-muted text-xs">
                                 No filters available for this query.
                               </p>

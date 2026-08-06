@@ -1,6 +1,10 @@
 package querybuilder
 
-import "strings"
+import (
+	"strings"
+
+	"github.com/asciimoo/hister/server/indexer/searchschema"
+)
 
 // SearchExpression separates search directives from text matched by Bleve.
 type SearchExpression struct {
@@ -48,12 +52,12 @@ func sortDirective(token Token) (string, bool) {
 	if !ok {
 		return "", false
 	}
-	switch value {
-	case "relevance":
-		return "", true
-	case "date", "domain", "visits", "-relevance", "-date", "-domain", "-visits":
-		return value, true
-	default:
+	definition, ok := searchschema.LookupSort(value)
+	if !ok {
 		return "", false
 	}
+	if definition.Default {
+		return "", true
+	}
+	return definition.Value, true
 }
