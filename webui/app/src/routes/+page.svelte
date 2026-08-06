@@ -49,6 +49,12 @@
     sortDirectiveFromQuery,
     sortValueFromQuery,
   } from '$lib/sort-directive';
+  import {
+    applyQuerySuggestion,
+    buildQuerySuggestions,
+    facetSuggestionContext,
+  } from '$lib/query-suggestions';
+  import type { QuerySuggestion } from '$lib/query-suggestions';
   import { animate } from 'animejs';
   import { Input } from '@hister/components/ui/input';
   import { Button } from '@hister/components/ui/button';
@@ -59,7 +65,12 @@
   import * as DropdownMenu from '@hister/components/ui/dropdown-menu';
   import * as Tooltip from '@hister/components/ui/tooltip';
   import { ScrollArea } from '@hister/components/ui/scroll-area';
-  import { PreviewPanel, ResultActionsMenu, ResultFavicon } from '$lib/components';
+  import {
+    PreviewPanel,
+    QuerySuggestions,
+    ResultActionsMenu,
+    ResultFavicon,
+  } from '$lib/components';
   import { Kbd } from '@hister/components/ui/kbd';
   import {
     Search,
@@ -154,6 +165,15 @@
 
   let query = $state('');
   let autocomplete = $state('');
+  let queryCursor = $state(0);
+  let querySuggestionOpen = $state(false);
+  let querySuggestionIndex = $state(0);
+  let querySuggestionKeyboardActive = $state(false);
+  let querySuggestionFacets = $state<FacetsResult | null>(null);
+  let querySuggestionFacetKey = $state('');
+  let querySuggestionFacetsLoading = $state(false);
+  let searchAliases = $state<Record<string, string>>({});
+  let querySuggestionFacetRequest = 0;
   let connected = $state(false);
   let lastResults = $state<SearchResults | null>(null);
   let accumulatedDocs = $state<SearchResult[]>([]);
@@ -226,6 +246,32 @@
   let statsRowEl: HTMLElement | undefined = $state();
   let kbdEl: HTMLElement | null = $state(null);
   let underlineEl: HTMLElement | undefined = $state();
+
+  const querySuggestionListId = 'query-suggestions';
+  const queryFacetContext = $derived(facetSuggestionContext(query, queryCursor));
+  const querySuggestionFacetData = $derived(
+    queryFacetContext?.key === querySuggestionFacetKey ? querySuggestionFacets : null,
+  );
+  const querySuggestions = $derived(
+    buildQuerySuggestions({
+      query,
+      cursor: queryCursor,
+      aliases: searchAliases,
+      recentSearches,
+      facets: querySuggestionFacetData,
+      serverSuggestion: autocomplete,
+    }),
+  );
+  const querySuggestionsVisible = $derived(
+    query.trim().length > 0 &&
+      querySuggestionOpen &&
+      (querySuggestions.length > 0 || querySuggestionFacetsLoading),
+  );
+  const activeQuerySuggestionId = $derived(
+    querySuggestionsVisible && querySuggestionKeyboardActive && querySuggestions.length > 0
+      ? `${querySuggestionListId}-option-${querySuggestionIndex}`
+      : undefined,
+  );
 
   let animationHandles: any[] = [];
 
@@ -1032,6 +1078,88 @@
     }
   }
 
+  function handleQueryInput(event: Event) {
+    const target = event.currentTarget as HTMLInputElement;
+    query = target.value;
+    queryCursor = target.selectionStart ?? target.value.length;
+    querySuggestionIndex = 0;
+    querySuggestionKeyboardActive = false;
+    querySuggestionOpen = true;
+  }
+
+  function handleQuerySelection(event: Event) {
+    const target = event.currentTarget as HTMLInputElement;
+    queryCursor = target.selectionStart ?? target.value.length;
+    querySuggestionIndex = 0;
+    querySuggestionKeyboardActive = false;
+    querySuggestionOpen = true;
+  }
+
+  function handleQueryFocus(event: FocusEvent) {
+    handleQuerySelection(event);
+  }
+
+  function handleQueryBlur() {
+    querySuggestionOpen = false;
+    querySuggestionKeyboardActive = false;
+  }
+
+  function selectQuerySuggestion(suggestion: QuerySuggestion) {
+    const applied = applyQuerySuggestion(query, queryCursor, suggestion);
+    query = applied.query;
+    queryCursor = applied.cursor;
+    querySuggestionIndex = 0;
+    querySuggestionKeyboardActive = false;
+    querySuggestionOpen = suggestion.keepOpen ?? false;
+    tick().then(() => {
+      inputEl?.focus();
+      inputEl?.setSelectionRange(applied.cursor, applied.cursor);
+      if (suggestion.keepOpen) querySuggestionOpen = true;
+    });
+  }
+
+  function setActiveQuerySuggestion(index: number) {
+    querySuggestionIndex = index;
+    querySuggestionKeyboardActive = true;
+  }
+
+  function handleQueryInputKeydown(event: KeyboardEvent) {
+    if (!querySuggestionsVisible || querySuggestions.length === 0) return;
+
+    if (event.key === 'Tab' && event.shiftKey) {
+      event.stopPropagation();
+      return;
+    }
+
+    if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+      event.preventDefault();
+      event.stopPropagation();
+      if (!querySuggestionKeyboardActive) {
+        querySuggestionIndex = event.key === 'ArrowDown' ? 0 : querySuggestions.length - 1;
+      } else {
+        const direction = event.key === 'ArrowDown' ? 1 : -1;
+        querySuggestionIndex =
+          (querySuggestionIndex + direction + querySuggestions.length) % querySuggestions.length;
+      }
+      querySuggestionKeyboardActive = true;
+      return;
+    }
+
+    if (event.key === 'Tab' || (event.key === 'Enter' && querySuggestionKeyboardActive)) {
+      event.preventDefault();
+      event.stopPropagation();
+      selectQuerySuggestion(querySuggestions[querySuggestionIndex] ?? querySuggestions[0]);
+      return;
+    }
+
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      event.stopPropagation();
+      querySuggestionOpen = false;
+      querySuggestionKeyboardActive = false;
+    }
+  }
+
   function openQueryInSearchEngine(e?: KeyboardEvent) {
     if (e) e.preventDefault();
     openURL(getSearchUrl(config.searchUrl, query));
@@ -1133,6 +1261,19 @@
       ]),
     );
     recentSearches = [];
+  }
+
+  async function loadQueryAliases() {
+    if (!config.canWrite) return;
+    try {
+      const res = await apiFetch('/rules', {
+        headers: { Accept: 'application/json' },
+        redirectOnForbidden: false,
+      });
+      if (!res.ok) return;
+      const data = await res.json();
+      searchAliases = data.aliases ?? {};
+    } catch {}
   }
 
   async function loadHomeStats() {
@@ -1256,6 +1397,47 @@
     })();
   });
   $effect(() => {
+    const count = querySuggestions.length;
+    if (count === 0) {
+      querySuggestionIndex = 0;
+      querySuggestionKeyboardActive = false;
+    } else if (querySuggestionIndex >= count) {
+      querySuggestionIndex = count - 1;
+    }
+  });
+  $effect(() => {
+    const context = queryFacetContext;
+    const isOpen = querySuggestionOpen;
+    const request = ++querySuggestionFacetRequest;
+    if (!context || !isOpen) {
+      querySuggestionFacetsLoading = false;
+      return;
+    }
+
+    querySuggestionFacetsLoading = true;
+    const controller = new AbortController();
+    const timer = window.setTimeout(async () => {
+      try {
+        const params = new URLSearchParams({ q: context.baseQuery });
+        params.set(`size_${context.facetName}`, '20');
+        const res = await apiFetch(`/facets?${params}`, { signal: controller.signal });
+        if (!res.ok || request !== querySuggestionFacetRequest) return;
+        querySuggestionFacets = await res.json();
+        querySuggestionFacetKey = context.key;
+      } catch (error) {
+        if (!(error instanceof DOMException && error.name === 'AbortError')) {
+          querySuggestionFacets = null;
+        }
+      } finally {
+        if (request === querySuggestionFacetRequest) querySuggestionFacetsLoading = false;
+      }
+    }, 120);
+    return () => {
+      window.clearTimeout(timer);
+      controller.abort();
+    };
+  });
+  $effect(() => {
     if (query && connected) {
       sendQuery(query);
       localStorage.setItem('lastQuery', query);
@@ -1372,6 +1554,7 @@
       connect();
       keyHandler = new KeyHandler(config.hotkeys, hotkeyActions);
       loadHomeStats();
+      loadQueryAliases();
     })();
     const mq = window.matchMedia('(min-width: 1280px)');
     isDesktop = mq.matches;
@@ -1531,85 +1714,105 @@
 
 {#if isSearching}
   <div class="flex min-h-0 flex-1 flex-col">
-    <div
-      class="search bg-page-bg border-brutal-border flex h-10 shrink-0 items-center gap-3 border-b-[3px] px-4 md:h-14"
-    >
-      <Search class="text-text-brand-muted size-4 md:size-6" />
-      <Input
-        bind:ref={inputEl}
-        bind:value={query}
-        type="search"
-        placeholder="Search..."
-        class="font-inter text-text-brand placeholder:text-text-brand-muted h-full flex-1 border-0 bg-transparent p-0 text-lg font-medium shadow-none focus-visible:ring-0 md:text-2xl"
-      />
-      {#if config.semanticEnabled}
-        <Tooltip.Provider delayDuration={0}>
-          <Tooltip.Root>
-            <Tooltip.Trigger>
-              <button
-                type="button"
-                onclick={() => (semanticOn = !semanticOn)}
-                class="flex shrink-0 items-center gap-1 px-1.5 py-0.5 text-xs font-semibold transition-colors {semanticOn
-                  ? 'text-hister-indigo'
-                  : 'text-text-brand-muted hover:text-hister-indigo'}"
-                aria-pressed={semanticOn}
-                aria-label="Toggle semantic search"
-              >
-                <Sparkles class="size-3.5" />
-                <span class="hidden md:inline">Semantic</span>
-              </button>
-            </Tooltip.Trigger>
-            <Tooltip.Portal>
-              <Tooltip.Content>
-                {semanticOn ? 'Semantic search on' : 'Semantic search off'} — click to toggle
-              </Tooltip.Content>
-            </Tooltip.Portal>
-          </Tooltip.Root>
-        </Tooltip.Provider>
-      {/if}
-      <div class="flex shrink-0 items-center gap-1">
-        {#if query}
-          <button
-            type="button"
-            class="text-text-brand-muted hover:bg-muted-surface hover:text-text-brand flex h-8 w-8 items-center justify-center transition-colors md:h-9 md:w-9"
-            aria-label="Clear search"
-            title="Clear search"
-            onclick={() => {
-              query = '';
-              resultsShown = false;
-              inputEl?.focus();
-            }}
-          >
-            <X class="size-4" />
-          </button>
+    <div class="relative z-40 shrink-0">
+      <div
+        class="search bg-page-bg border-brutal-border flex h-10 items-center gap-3 border-b-[3px] px-4 md:h-14"
+      >
+        <Search class="text-text-brand-muted size-4 md:size-6" />
+        <Input
+          bind:ref={inputEl}
+          bind:value={query}
+          type="search"
+          placeholder="Search..."
+          aria-autocomplete="list"
+          aria-controls={querySuggestionsVisible ? querySuggestionListId : undefined}
+          aria-expanded={querySuggestionsVisible}
+          aria-haspopup="listbox"
+          aria-activedescendant={activeQuerySuggestionId}
+          oninput={handleQueryInput}
+          onfocus={handleQueryFocus}
+          onblur={handleQueryBlur}
+          onselect={handleQuerySelection}
+          onclick={handleQuerySelection}
+          onkeydown={handleQueryInputKeydown}
+          class="font-inter text-text-brand placeholder:text-text-brand-muted h-full flex-1 border-0 bg-transparent p-0 text-lg font-medium shadow-none focus-visible:ring-0 md:text-2xl"
+        />
+        {#if config.semanticEnabled}
+          <Tooltip.Provider delayDuration={0}>
+            <Tooltip.Root>
+              <Tooltip.Trigger>
+                <button
+                  type="button"
+                  onclick={() => (semanticOn = !semanticOn)}
+                  class="flex shrink-0 items-center gap-1 px-1.5 py-0.5 text-xs font-semibold transition-colors {semanticOn
+                    ? 'text-hister-indigo'
+                    : 'text-text-brand-muted hover:text-hister-indigo'}"
+                  aria-pressed={semanticOn}
+                  aria-label="Toggle semantic search"
+                >
+                  <Sparkles class="size-3.5" />
+                  <span class="hidden md:inline">Semantic</span>
+                </button>
+              </Tooltip.Trigger>
+              <Tooltip.Portal>
+                <Tooltip.Content>
+                  {semanticOn ? 'Semantic search on' : 'Semantic search off'} — click to toggle
+                </Tooltip.Content>
+              </Tooltip.Portal>
+            </Tooltip.Root>
+          </Tooltip.Provider>
         {/if}
-        <Tooltip.Provider delayDuration={0}>
-          <Tooltip.Root>
-            <Tooltip.Trigger>
-              <button
-                type="button"
-                class="text-text-brand-muted hover:bg-muted-surface flex h-8 items-center gap-2 px-2 text-xs font-semibold transition-colors md:h-9 md:px-3"
-                aria-label="Server {connected ? 'connected' : 'disconnected'}"
-              >
-                <span class="h-2 w-2 shrink-0 {connected ? 'bg-hister-lime' : 'bg-hister-rose'}"
-                ></span>
-                <span class="hidden md:inline">{connected ? 'Online' : 'Offline'}</span>
-              </button>
-            </Tooltip.Trigger>
-            <Tooltip.Portal>
-              <Tooltip.Content>
-                Server: {connected ? 'Connected' : 'Disconnected'}
-              </Tooltip.Content>
-            </Tooltip.Portal>
-          </Tooltip.Root>
-        </Tooltip.Provider>
+        <div class="flex shrink-0 items-center gap-1">
+          {#if query}
+            <button
+              type="button"
+              class="text-text-brand-muted hover:bg-muted-surface hover:text-text-brand flex h-8 w-8 items-center justify-center transition-colors md:h-9 md:w-9"
+              aria-label="Clear search"
+              title="Clear search"
+              onclick={() => {
+                query = '';
+                queryCursor = 0;
+                querySuggestionOpen = true;
+                resultsShown = false;
+                inputEl?.focus();
+              }}
+            >
+              <X class="size-4" />
+            </button>
+          {/if}
+          <Tooltip.Provider delayDuration={0}>
+            <Tooltip.Root>
+              <Tooltip.Trigger>
+                <button
+                  type="button"
+                  class="text-text-brand-muted hover:bg-muted-surface flex h-8 items-center gap-2 px-2 text-xs font-semibold transition-colors md:h-9 md:px-3"
+                  aria-label="Server {connected ? 'connected' : 'disconnected'}"
+                >
+                  <span class="h-2 w-2 shrink-0 {connected ? 'bg-hister-lime' : 'bg-hister-rose'}"
+                  ></span>
+                  <span class="hidden md:inline">{connected ? 'Online' : 'Offline'}</span>
+                </button>
+              </Tooltip.Trigger>
+              <Tooltip.Portal>
+                <Tooltip.Content>
+                  Server: {connected ? 'Connected' : 'Disconnected'}
+                </Tooltip.Content>
+              </Tooltip.Portal>
+            </Tooltip.Root>
+          </Tooltip.Provider>
+        </div>
       </div>
+      <QuerySuggestions
+        id={querySuggestionListId}
+        floating={false}
+        open={querySuggestionOpen}
+        suggestions={querySuggestions}
+        activeIndex={querySuggestionKeyboardActive ? querySuggestionIndex : -1}
+        loading={querySuggestionFacetsLoading}
+        onactivechange={setActiveQuerySuggestion}
+        onselect={selectQuerySuggestion}
+      />
     </div>
-    {#if autocomplete && autocomplete !== query}
-      <span class="font-fira text-text-brand-muted mx-8 text-sm">
-        Tab: <span class="text-hister-indigo">{autocomplete}</span>
-      </span>
-    {/if}
 
     <div class="flex min-h-0 flex-1 overflow-hidden" bind:this={splitContainerEl}>
       {#if !previewFullscreen}
@@ -2328,33 +2531,46 @@
       style="background: linear-gradient(90deg, var(--hister-indigo), var(--hister-coral), var(--hister-teal)); transform: scaleX(0); transform-origin: left;"
     ></div>
 
-    <div
-      bind:this={searchBoxEl}
-      class="home-search border-brutal-border bg-card-surface flex h-12 w-full max-w-[1100px] shrink-0 items-center gap-3 border-[3px] px-4 md:h-15 md:px-5"
-    >
-      <Search aria-hidden="true" class="text-hister-indigo size-5 shrink-0 md:size-6" />
-      <Input
-        bind:ref={inputEl}
-        bind:value={query}
-        type="search"
-        aria-label="Search your history"
-        placeholder="Search..."
-        class="font-inter text-text-brand placeholder:text-text-brand-muted h-full min-w-0 flex-1 border-0 bg-transparent p-0 text-lg font-medium shadow-none focus-visible:ring-0 md:text-2xl"
-      />
-      <Tooltip.Provider delayDuration={0}>
-        <Tooltip.Root>
-          <Tooltip.Trigger class="flex h-8 w-8 items-center justify-center">
-            <div
-              class="h-2.5 w-2.5 shrink-0 {connected ? 'bg-hister-lime' : 'bg-hister-rose'}"
-            ></div>
-          </Tooltip.Trigger>
-          <Tooltip.Portal>
-            <Tooltip.Content>
-              Server: {connected ? 'Connected' : 'Disconnected'}
-            </Tooltip.Content>
-          </Tooltip.Portal>
-        </Tooltip.Root>
-      </Tooltip.Provider>
+    <div class="relative z-40 w-full max-w-[1100px] shrink-0">
+      <div
+        bind:this={searchBoxEl}
+        class="home-search border-brutal-border bg-card-surface flex h-12 w-full items-center gap-3 border-[3px] px-4 md:h-15 md:px-5"
+      >
+        <Search aria-hidden="true" class="text-hister-indigo size-5 shrink-0 md:size-6" />
+        <Input
+          bind:ref={inputEl}
+          bind:value={query}
+          type="search"
+          aria-label="Search your history"
+          aria-autocomplete="list"
+          aria-controls={querySuggestionsVisible ? querySuggestionListId : undefined}
+          aria-expanded={querySuggestionsVisible}
+          aria-haspopup="listbox"
+          aria-activedescendant={activeQuerySuggestionId}
+          placeholder="Search..."
+          oninput={handleQueryInput}
+          onfocus={handleQueryFocus}
+          onblur={handleQueryBlur}
+          onselect={handleQuerySelection}
+          onclick={handleQuerySelection}
+          onkeydown={handleQueryInputKeydown}
+          class="font-inter text-text-brand placeholder:text-text-brand-muted h-full min-w-0 flex-1 border-0 bg-transparent p-0 text-lg font-medium shadow-none focus-visible:ring-0 md:text-2xl"
+        />
+        <Tooltip.Provider delayDuration={0}>
+          <Tooltip.Root>
+            <Tooltip.Trigger class="flex h-8 w-8 items-center justify-center">
+              <div
+                class="h-2.5 w-2.5 shrink-0 {connected ? 'bg-hister-lime' : 'bg-hister-rose'}"
+              ></div>
+            </Tooltip.Trigger>
+            <Tooltip.Portal>
+              <Tooltip.Content>
+                Server: {connected ? 'Connected' : 'Disconnected'}
+              </Tooltip.Content>
+            </Tooltip.Portal>
+          </Tooltip.Root>
+        </Tooltip.Provider>
+      </div>
     </div>
 
     <div
