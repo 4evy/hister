@@ -2,7 +2,6 @@
   import { onMount, tick } from 'svelte';
   import { ModeWatcher, modeStorageKey, setMode } from 'mode-watcher';
   import SiteHeader from '$lib/components/SiteHeader.svelte';
-  import SiteFooter from '$lib/components/SiteFooter.svelte';
   import { Toaster, toast } from '@hister/components/ui/sonner';
   import { fetchConfig, logout, resetConfig, type AppConfig } from '$lib/api';
   import { setFlashMessage, showFlashMessage } from '$lib/flash';
@@ -63,6 +62,4 @@
   <main class="flex min-h-0 flex-1 flex-col overflow-clip">
     {@render children()}
   </main>
-
-  <SiteFooter />
 </div>
