@@ -36,6 +36,9 @@ let _config: AppConfig | null = null;
 let _csrf: string = '';
 
 function apiPath(path: string): string {
+  if (path === '') {
+    return `${base}/api`;
+  }
   return `${base}/api${path.startsWith('/') ? path : `/${path}`}`;
 }
 
