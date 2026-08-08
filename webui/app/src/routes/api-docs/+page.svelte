@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
+  import { page } from '$app/state';
   import { apiFetch } from '$lib/api';
   import { Badge } from '@hister/components/ui/badge';
   import * as Card from '@hister/components/ui/card';
@@ -36,6 +37,9 @@
 
   let endpoints: APIEndpoint[] = $state([]);
   let loading = $state(true);
+  let activeId = $state(page.url.hash.slice(1));
+  let isScrolling = $state(false);
+  let scrollContainer: HTMLDivElement | undefined = $state();
 
   onMount(async () => {
     try {
@@ -48,8 +52,50 @@
     }
   });
 
+  $effect(() => {
+    if (endpoints.length === 0 || typeof window === 'undefined') return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (isScrolling) return;
+
+        const visible = entries
+          .filter((e) => e.isIntersecting)
+          .sort((a, b) => b.intersectionRatio - a.intersectionRatio)[0];
+        if (visible) {
+          activeId = visible.target.id;
+        }
+      },
+      { rootMargin: '-15% 0px -70% 0px', threshold: [0, 0.25, 0.5, 0.75, 1] },
+    );
+
+    document.querySelectorAll('[id^="ep-"]').forEach((el) => observer.observe(el));
+    return () => observer.disconnect();
+  });
+
   function tocId(ep: APIEndpoint): string {
     return `ep-${ep.method.toLowerCase()}-${ep.path.replace(/[^a-z0-9]+/gi, '-').replace(/^-|-$/g, '')}`;
+  }
+
+  function scrollToEndpoint(id: string) {
+    isScrolling = true;
+    activeId = id;
+
+    const el = document.getElementById(id);
+    if (!el || !scrollContainer) {
+      isScrolling = false;
+      return;
+    }
+
+    scrollContainer.addEventListener(
+      'scrollend',
+      () => {
+        isScrolling = false;
+      },
+      { once: true },
+    );
+
+    el.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
 </script>
 
@@ -57,71 +103,88 @@
   <title>Hister - API</title>
 </svelte:head>
 
-<div class="flex-1 overflow-y-auto px-3 py-4 md:px-6 md:py-5">
-  <div class="mx-auto max-w-[80em]">
-    <div class="mb-4 space-y-1 md:mb-5">
-      <PageHeader color="hister-teal" size="sm">API Documentation</PageHeader>
-      <p class="font-inter text-text-brand-secondary text-xs md:text-sm">
-        Available HTTP endpoints for integrating with Hister
-      </p>
-    </div>
-
-    {#if loading}
-      <p class="font-inter text-text-brand-muted py-8 text-center text-sm">Loading endpoints...</p>
-    {:else}
-      <!-- Mobile ToC: horizontal scrollable pill list -->
-      <div class="mb-3 md:hidden">
-        <div class="flex gap-1.5 overflow-x-auto pb-1">
+<div class="flex h-full flex-col overflow-hidden md:flex-row">
+  {#if !loading}
+    <!-- Desktop sidebar: scrollable independently like a navbar -->
+    <nav
+      class="bg-card-surface hidden h-full w-56 shrink-0 overflow-y-auto border-r border-black md:block"
+    >
+      <div class="p-3 ps-5">
+        <p class="font-outfit text-text-brand mb-2 text-xs font-bold tracking-wider uppercase">
+          Contents
+        </p>
+        <ul class="space-y-1">
           {#each endpoints as ep}
-            <a
-              href="#{tocId(ep)}"
-              class="font-inter text-text-brand-secondary bg-card-surface flex shrink-0 items-center gap-1 border border-black px-2 py-0.5 text-[11px] whitespace-nowrap"
-            >
-              <span
-                class="font-bold {ep.method === 'GET' ? 'text-hister-teal' : 'text-hister-coral'}"
-                >{ep.method}</span
+            <li>
+              <a
+                href="#{tocId(ep)}"
+                class="font-inter flex items-center gap-1.5 py-0.5 text-xs leading-snug transition-colors {activeId ===
+                tocId(ep)
+                  ? 'text-text-brand'
+                  : 'text-text-brand-secondary hover:text-text-brand'}"
+                onclick={(e) => {
+                  e.preventDefault();
+                  scrollToEndpoint(tocId(ep));
+                }}
               >
-              {ep.name}
-            </a>
+                <span
+                  class="shrink-0 font-bold {ep.method === 'GET'
+                    ? 'text-hister-teal'
+                    : 'text-hister-coral'}">{ep.method}</span
+                >
+                <span class="truncate">{ep.name}</span>
+              </a>
+            </li>
           {/each}
-        </div>
+        </ul>
+      </div>
+    </nav>
+  {/if}
+
+  <div
+    class="flex-1 overflow-y-auto px-3 pt-0 pb-4 md:px-6 md:pt-5 md:pb-5"
+    bind:this={scrollContainer}
+  >
+    <div class="mx-auto max-w-[80em]">
+      <div class="space-y-1 pt-4 md:mb-5 md:pt-0">
+        <PageHeader color="hister-teal" size="sm">API Documentation</PageHeader>
+        <p class="font-inter text-text-brand-secondary pb-2 text-xs md:pb-0 md:text-sm">
+          Available HTTP endpoints for integrating with Hister
+        </p>
       </div>
 
-      <div class="flex items-start gap-6">
-        <!-- ToC sidebar: desktop only -->
-        <nav class="sticky top-4 hidden w-56 shrink-0 self-start md:block">
-          <div
-            class="bg-card-surface border border-black p-3 shadow-[3px_3px_0_var(--brutal-shadow)]"
+      {#if loading}
+        <p class="font-inter text-text-brand-muted py-8 text-center text-sm">
+          Loading endpoints...
+        </p>
+      {:else}
+        <!-- Mobile ToC: sticky dropdown for jumping to endpoints -->
+        <div
+          class="bg-card-surface sticky top-0 z-10 -mx-3 mb-3 border-b border-black px-3 py-2 md:hidden"
+        >
+          <select
+            class="font-space border-brutal-border bg-page-bg text-text-brand h-10 w-full cursor-pointer appearance-none border-[3px] px-3 text-xs font-bold tracking-[0.5px] outline-none"
+            onchange={(e) => {
+              const id = e.currentTarget.value;
+              if (!id) return;
+              scrollToEndpoint(id);
+            }}
           >
-            <p class="font-outfit text-text-brand mb-2 text-xs font-bold tracking-wider uppercase">
-              Contents
-            </p>
-            <ul class="space-y-1">
-              {#each endpoints as ep}
-                <li>
-                  <a
-                    href="#{tocId(ep)}"
-                    class="font-inter text-text-brand-secondary hover:text-text-brand flex items-center gap-1.5 py-0.5 text-xs leading-snug transition-colors"
-                  >
-                    <span
-                      class="shrink-0 font-bold {ep.method === 'GET'
-                        ? 'text-hister-teal'
-                        : 'text-hister-coral'}">{ep.method}</span
-                    >
-                    <span class="truncate">{ep.name}</span>
-                  </a>
-                </li>
-              {/each}
-            </ul>
-          </div>
-        </nav>
+            <option value="" disabled selected>Jump to endpoint...</option>
+            {#each endpoints as ep}
+              <option value={tocId(ep)}>
+                {ep.method}
+                {ep.name}
+              </option>
+            {/each}
+          </select>
+        </div>
 
-        <!-- Endpoint cards -->
-        <div class="min-w-0 flex-1 space-y-4">
+        <div class="min-w-0 space-y-4">
           {#each endpoints as ep}
             <Card.Root
               id={tocId(ep)}
-              class="bg-card-surface gap-0 overflow-hidden rounded-none border border-black py-0 shadow-[4px_4px_0_var(--brutal-shadow)]"
+              class="bg-card-surface scroll-mt-16 gap-0 overflow-hidden rounded-none border border-black py-0 shadow-[4px_4px_0_var(--brutal-shadow)] md:scroll-mt-0"
             >
               <Card.Header class="gap-0 px-4 py-3">
                 <div class="flex flex-wrap items-center gap-2.5">
@@ -371,7 +434,7 @@
             </Card.Root>
           {/each}
         </div>
-      </div>
-    {/if}
+      {/if}
+    </div>
   </div>
 </div>
