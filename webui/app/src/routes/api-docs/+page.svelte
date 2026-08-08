@@ -39,6 +39,7 @@
   let loading = $state(true);
   let activeId = $state(page.url.hash.slice(1));
   let isScrolling = $state(false);
+  let initialHashHandled = $state(false);
   let scrollContainer: HTMLDivElement | undefined = $state();
 
   onMount(async () => {
@@ -73,27 +74,49 @@
     return () => observer.disconnect();
   });
 
+  $effect(() => {
+    if (loading || endpoints.length === 0 || initialHashHandled || typeof window === 'undefined')
+      return;
+    initialHashHandled = true;
+    const hash = page.url.hash.slice(1);
+    if (hash) {
+      scrollToEndpoint(hash, true);
+    }
+  });
+
   function tocId(ep: APIEndpoint): string {
     return `ep-${ep.method.toLowerCase()}-${ep.path.replace(/[^a-z0-9]+/gi, '-').replace(/^-|-$/g, '')}`;
   }
 
-  function scrollToEndpoint(id: string) {
+  function scrollToEndpoint(id: string, replace = false) {
     isScrolling = true;
     activeId = id;
 
+    if (typeof window !== 'undefined') {
+      const url = `#${id}`;
+      if (replace) {
+        history.replaceState(null, '', url);
+      } else {
+        history.pushState(null, '', url);
+      }
+    }
+
     const el = document.getElementById(id);
-    if (!el || !scrollContainer) {
+    const container = scrollContainer;
+    if (!el || !container) {
       isScrolling = false;
       return;
     }
 
-    scrollContainer.addEventListener(
-      'scrollend',
-      () => {
-        isScrolling = false;
-      },
-      { once: true },
-    );
+    let fallbackTimeout: ReturnType<typeof setTimeout> | undefined;
+    const cleanup = () => {
+      isScrolling = false;
+      clearTimeout(fallbackTimeout);
+      container.removeEventListener('scrollend', cleanup);
+    };
+
+    fallbackTimeout = setTimeout(cleanup, 1000);
+    container.addEventListener('scrollend', cleanup, { once: true });
 
     el.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
@@ -103,25 +126,27 @@
   <title>Hister - API</title>
 </svelte:head>
 
-<div class="flex h-full flex-col overflow-hidden md:flex-row">
+<div class="mx-auto flex h-full max-w-[90em] flex-col overflow-hidden md:flex-row">
   {#if !loading}
-    <!-- Desktop sidebar: scrollable independently like a navbar -->
+    <!-- Desktop ToC: floating card on the left -->
     <nav
-      class="bg-card-surface hidden h-full w-56 shrink-0 overflow-y-auto border-r border-black md:block"
+      class="bg-card-surface my-5 ms-6 hidden h-fit max-h-[calc(100%-2.5rem)] w-56 shrink-0 self-start overflow-y-auto rounded-none border border-black shadow-[4px_4px_0_var(--brutal-shadow)] md:block"
     >
-      <div class="p-3 ps-5">
-        <p class="font-outfit text-text-brand mb-2 text-xs font-bold tracking-wider uppercase">
+      <div>
+        <p
+          class="font-outfit text-text-brand bg-card-surface sticky top-0 z-10 border-b border-black px-4 py-3 text-xs font-bold tracking-wider uppercase"
+        >
           Contents
         </p>
-        <ul class="space-y-1">
+        <ul class="space-y-0.5 px-4 py-3">
           {#each endpoints as ep}
             <li>
               <a
                 href="#{tocId(ep)}"
-                class="font-inter flex items-center gap-1.5 py-0.5 text-xs leading-snug transition-colors {activeId ===
+                class="font-inter flex items-center gap-1.5 rounded-md px-2 py-1.5 text-xs leading-snug transition-colors {activeId ===
                 tocId(ep)
-                  ? 'text-text-brand'
-                  : 'text-text-brand-secondary hover:text-text-brand'}"
+                  ? 'bg-page-bg text-text-brand'
+                  : 'text-text-brand-secondary hover:bg-page-bg/50 hover:text-text-brand'}"
                 onclick={(e) => {
                   e.preventDefault();
                   scrollToEndpoint(tocId(ep));
@@ -170,7 +195,7 @@
               scrollToEndpoint(id);
             }}
           >
-            <option value="" disabled selected>Jump to endpoint...</option>
+            <option value="" disabled>Jump to endpoint...</option>
             {#each endpoints as ep}
               <option value={tocId(ep)}>
                 {ep.method}
