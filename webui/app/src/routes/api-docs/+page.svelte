@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { page } from '$app/state';
+  import { pushState, replaceState } from '$app/navigation'
   import { apiFetch } from '$lib/api';
   import { Badge } from '@hister/components/ui/badge';
   import * as Card from '@hister/components/ui/card';
@@ -95,9 +96,9 @@
     if (typeof window !== 'undefined') {
       const url = `#${id}`;
       if (replace) {
-        history.replaceState(null, '', url);
+        replaceState(url, {});
       } else {
-        history.pushState(null, '', url);
+        pushState(url, {});
       }
     }
 
