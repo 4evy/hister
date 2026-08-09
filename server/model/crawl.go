@@ -274,9 +274,17 @@ func CountCrawlURLs(jobID string) (int64, error) {
 }
 
 // ForEachFailedCrawlURL streams failed crawl URL error codes and URLs for a job.
-func ForEachFailedCrawlURL(jobID string, fn func(errorCode int, rawURL string) error) (err error) {
+func ForEachFailedCrawlURL(jobID string, fn func(errorCode int, rawURL string) error) error {
+	return ForEachFailedCrawlURLWithMessage(jobID, func(errorCode int, rawURL, _ string) error {
+		return fn(errorCode, rawURL)
+	})
+}
+
+// ForEachFailedCrawlURLWithMessage streams failed crawl URL error codes, URLs,
+// and stored error messages for a job.
+func ForEachFailedCrawlURLWithMessage(jobID string, fn func(errorCode int, rawURL, errMsg string) error) (err error) {
 	rows, err := DB.Model(&CrawlURL{}).
-		Select("error_code, url").
+		Select("error_code, url, error").
 		Where("job_id = ? AND status = ?", jobID, CrawlURLFailed).
 		Order("id ASC").
 		Rows()
@@ -291,11 +299,11 @@ func ForEachFailedCrawlURL(jobID string, fn func(errorCode int, rawURL string) e
 
 	for rows.Next() {
 		var errorCode int
-		var rawURL string
-		if err := rows.Scan(&errorCode, &rawURL); err != nil {
+		var rawURL, errMsg string
+		if err := rows.Scan(&errorCode, &rawURL, &errMsg); err != nil {
 			return err
 		}
-		if err := fn(errorCode, rawURL); err != nil {
+		if err := fn(errorCode, rawURL, errMsg); err != nil {
 			return err
 		}
 	}
@@ -304,11 +312,19 @@ func ForEachFailedCrawlURL(jobID string, fn func(errorCode int, rawURL string) e
 
 // ForEachCrawlURL streams crawl URL status, depth, and URL rows for a job.
 func ForEachCrawlURL(jobID string, fn func(status string, depth int, rawURL string) error) (err error) {
-	rows, err := DB.Model(&CrawlURL{}).
+	return ForEachCrawlURLByStatus(jobID, "", fn)
+}
+
+// ForEachCrawlURLByStatus streams crawl URL status, depth, and URL rows for a
+// job. An empty status includes every URL.
+func ForEachCrawlURLByStatus(jobID, status string, fn func(status string, depth int, rawURL string) error) (err error) {
+	query := DB.Model(&CrawlURL{}).
 		Select("status, depth, url").
-		Where("job_id = ?", jobID).
-		Order("id ASC").
-		Rows()
+		Where("job_id = ?", jobID)
+	if status != "" {
+		query = query.Where("status = ?", status)
+	}
+	rows, err := query.Order("id ASC").Rows()
 	if err != nil {
 		return err
 	}

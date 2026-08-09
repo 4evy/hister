@@ -279,6 +279,7 @@ func init() {
 	crawlCmd.AddCommand(crawlShowCmd)
 	crawlCmd.AddCommand(crawlErrorsCmd)
 	crawlCmd.AddCommand(crawlQueueCmd)
+	crawlCmd.AddCommand(crawlURLsCmd)
 	crawlCmd.AddCommand(crawlDeleteCmd)
 	companionCmd.AddCommand(companionQutebrowserCmd)
 	importCmd.AddCommand(importFileCmd)
@@ -301,6 +302,8 @@ func init() {
 	addCrawlerBackendFlags(importBrowserCmd)
 
 	crawlQueueCmd.Flags().BoolP("count", "c", false, "only print the number of queued URLs")
+	crawlURLsCmd.Flags().String("status", "", "filter URLs by status (pending, failed, done, or skipped)")
+	crawlURLsCmd.Flags().BoolP("count", "c", false, "only print the number of matching URLs")
 
 	addDocumentImportFlags(importFileCmd)
 	addServiceImportFlags(importLinkdingCmd, "Linkding", linkdingTokenEnv)

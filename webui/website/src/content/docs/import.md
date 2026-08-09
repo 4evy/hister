@@ -112,10 +112,11 @@ Browser imports use persistent crawl jobs named `browser-import-YYYY-MM-DD`. It 
 hister crawl list
 hister crawl show browser-import-YYYY-MM-DD
 hister crawl errors browser-import-YYYY-MM-DD
-hister crawl queue browser-import-YYYY-MM-DD
+hister crawl urls browser-import-YYYY-MM-DD
 ```
 
-Add `--count` to `hister crawl queue` when only the number of tracked URLs is needed.
+Add `--count` to `hister crawl urls` when only the number of tracked URLs is needed. Use
+`--status pending`, `--status failed`, `--status done`, or `--status skipped` to filter the rows.
 
 ### Browser Import Backends
 

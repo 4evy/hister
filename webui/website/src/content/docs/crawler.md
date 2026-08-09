@@ -302,22 +302,30 @@ hister crawl show example-docs
 This prints job metadata, counts for every URL state, and the saved traversal rules. It is the best
 command for confirming the limits and filters that will be restored on resume.
 
-### Inspect the Queue
+### Inspect Job URLs
 
 ```bash
-hister crawl queue example-docs
+hister crawl urls example-docs
 ```
 
 The output contains tab separated status, depth, and URL fields for every row in queue order. The
 possible URL states are `pending`, `in_progress`, `done`, `failed`, and `skipped`.
 
-Print only the total number of tracked URL rows with:
+Filter the output to one status with `--status`. The accepted values are `pending`,
+`failed`, `done`, and `skipped`:
 
 ```bash
-hister crawl queue example-docs --count
+hister crawl urls example-docs --status failed
 ```
 
-The count includes every status, not only pending URLs. The short flag is `-c`.
+Print only the number of matching rows with `--count` or `-c`:
+
+```bash
+hister crawl urls example-docs --status pending --count
+```
+
+Without `--status`, the count includes every status. The older `hister crawl queue` command remains
+available and lists every row without filtering.
 
 ### Inspect Failures
 
@@ -325,8 +333,9 @@ The count includes every status, not only pending URLs. The short flag is `-c`.
 hister crawl errors example-docs
 ```
 
-This prints the stored error code and URL for each failed row. Failed rows are not retried when the
-same job resumes. A simple retry workflow is to extract the URLs into a new list job:
+This prints the stored error code, URL, and error message as three tab separated fields for each
+failed row. Failed rows are not retried when the same job resumes. A simple retry workflow is to
+extract the URLs into a new list job:
 
 ```bash
 hister crawl errors example-docs | cut -f2 > failed-urls.txt

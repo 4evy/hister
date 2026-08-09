@@ -3,6 +3,9 @@ package cmd
 import (
 	"encoding/json"
 	"fmt"
+	"io"
+	"os"
+	"strings"
 
 	"github.com/asciimoo/hister/server/crawler"
 	"github.com/asciimoo/hister/server/model"
@@ -92,6 +95,21 @@ var crawlQueueCmd = &cobra.Command{
 	},
 }
 
+var crawlURLsCmd = &cobra.Command{
+	Use:   "urls JOB_ID",
+	Short: "List crawl job URLs",
+	Long:  "List crawl job URL status, depth, and URL rows, optionally filtered by status",
+	Args:  validateCrawlURLsArgs,
+	PreRun: func(_ *cobra.Command, _ []string) {
+		initDB()
+	},
+	Run: func(cmd *cobra.Command, args []string) {
+		status, _ := cmd.Flags().GetString("status")
+		countOnly, _ := cmd.Flags().GetBool("count")
+		showCrawlJobURLs(args[0], status, countOnly)
+	},
+}
+
 var crawlDeleteCmd = &cobra.Command{
 	Use:   "delete JOB_ID",
 	Short: "Delete a persistent crawl job",
@@ -156,31 +174,72 @@ func crawlJobStatusLabel(status string) string {
 }
 
 func showCrawlJobQueue(jobID string, countOnly bool) {
+	showCrawlJobURLs(jobID, "", countOnly)
+}
+
+func showCrawlJobURLs(jobID, status string, countOnly bool) {
 	job := loadCrawlJob(jobID)
+	if err := writeCrawlJobURLs(os.Stdout, job.ID, status, countOnly); err != nil {
+		exit(1, "Failed to load crawl job URLs: "+err.Error())
+	}
+}
+
+func writeCrawlJobURLs(out io.Writer, jobID, status string, countOnly bool) error {
 	if countOnly {
-		count, err := model.CountCrawlURLs(job.ID)
-		if err != nil {
-			exit(1, "Failed to count crawl job queue: "+err.Error())
+		var (
+			count int64
+			err   error
+		)
+		if status == "" {
+			count, err = model.CountCrawlURLs(jobID)
+		} else {
+			count, err = model.CountCrawlURLsByStatus(jobID, status)
 		}
-		fmt.Println(count)
-		return
+		if err != nil {
+			return err
+		}
+		_, err = fmt.Fprintln(out, count)
+		return err
 	}
-	if err := model.ForEachCrawlURL(job.ID, func(status string, depth int, rawURL string) error {
-		fmt.Printf("%s\t%d\t%s\n", status, depth, rawURL)
+	return model.ForEachCrawlURLByStatus(jobID, status, func(status string, depth int, rawURL string) error {
+		_, err := fmt.Fprintf(out, "%s\t%d\t%s\n", status, depth, rawURL)
+		return err
+	})
+}
+
+func validateCrawlURLStatus(status string) error {
+	switch status {
+	case "", model.CrawlURLPending, model.CrawlURLFailed, model.CrawlURLDone, model.CrawlURLSkipped:
 		return nil
-	}); err != nil {
-		exit(1, "Failed to load crawl job queue: "+err.Error())
+	default:
+		return fmt.Errorf("invalid --status %q: expected pending, failed, done, or skipped", status)
 	}
+}
+
+func validateCrawlURLsArgs(cmd *cobra.Command, args []string) error {
+	if err := cobra.ExactArgs(1)(cmd, args); err != nil {
+		return err
+	}
+	status, err := cmd.Flags().GetString("status")
+	if err != nil {
+		return err
+	}
+	return validateCrawlURLStatus(status)
 }
 
 func showCrawlJobErrors(jobID string) {
 	job := loadCrawlJob(jobID)
-	if err := model.ForEachFailedCrawlURL(job.ID, func(errorCode int, rawURL string) error {
-		fmt.Printf("%d\t%s\n", errorCode, rawURL)
-		return nil
-	}); err != nil {
+	if err := writeCrawlJobErrors(os.Stdout, job.ID); err != nil {
 		exit(1, "Failed to load crawl job errors: "+err.Error())
 	}
+}
+
+func writeCrawlJobErrors(out io.Writer, jobID string) error {
+	return model.ForEachFailedCrawlURLWithMessage(jobID, func(errorCode int, rawURL, errMsg string) error {
+		errMsg = strings.NewReplacer("\t", " ", "\r", " ", "\n", " ").Replace(errMsg)
+		_, err := fmt.Fprintf(out, "%d\t%s\t%s\n", errorCode, rawURL, errMsg)
+		return err
+	})
 }
 
 func loadCrawlJob(jobID string) *model.CrawlJob {
