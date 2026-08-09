@@ -139,7 +139,7 @@ hister import browser \
 
 The `--backend-option`, `--header`, and `--cookie` flags can be repeated. Use `--proxy` with an `http://` or `socks5://` URL. Cookies use `Set-Cookie` syntax and require a `Domain` attribute. See [Website Crawler](crawler) for all crawler settings and backend limitations.
 
-Automated requests can be rejected by bot protection, expired sessions, removed pages, or network failures. Failed URLs remain visible through `hister crawl errors`, but resuming the job does not retry them. Export those URLs into a new URL list job when you want to retry them. See [Retrying Failed URLs](crawler#retrying-failed-urls).
+Automated requests can be rejected by bot protection, expired sessions, removed pages, or network failures. Failed URLs remain visible through `hister crawl errors`, but resuming the job does not retry them. Export those URLs into a new URL input job when you want to retry them. See [Retrying Failed URLs](crawler#retrying-failed-urls).
 
 ## Importing from Linkding
 

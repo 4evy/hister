@@ -61,7 +61,7 @@ To manually index a specific URL:
 ./hister index https://example.com
 ```
 
-For persistent recursive crawls, URL list jobs, custom job names, resume behavior, request
+For persistent recursive crawls, URL input jobs, custom job names, resume behavior, request
 backends, and every `crawl` subcommand, see [Website Crawler](crawler).
 
 ### Exporting Documents

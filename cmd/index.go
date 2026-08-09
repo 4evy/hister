@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -20,13 +21,13 @@ import (
 var indexCmd = &cobra.Command{
 	Use:   "index [URL...]",
 	Short: "Index URLs or resume a persistent crawl job",
-	Long:  "Index one or more URLs. Use --recursive to crawl linked pages, --url-list to create a persistent job from a file, or --job-id to resume a persistent job.",
+	Long:  "Index one or more URLs. Use --recursive to crawl linked pages, --input to create a persistent job from a file or standard input, or --job-id to resume a persistent job.",
 	Args:  validateIndexArgs,
 	PreRun: func(cmd *cobra.Command, args []string) {
 		recursive, _ := cmd.Flags().GetBool("recursive")
 		jobID, _ := cmd.Flags().GetString("job-id")
-		urlList, _ := cmd.Flags().GetString("url-list")
-		if recursive || jobID != "" || urlList != "" {
+		input, _ := indexInput(cmd)
+		if recursive || jobID != "" || input != "" {
 			initDB()
 		}
 	},
@@ -37,7 +38,7 @@ var indexCmd = &cobra.Command{
 			return
 		}
 		args = resolvedArgs
-		urlList, _ := cmd.Flags().GetString("url-list")
+		input, _ := indexInput(cmd)
 
 		global, _ := cmd.Flags().GetBool("global")
 		clientOpts := targetUserIDClientOptions(cmd, global)
@@ -74,7 +75,7 @@ var indexCmd = &cobra.Command{
 			}
 		}
 
-		if urlList != "" {
+		if input != "" {
 			validatorRules := &crawler.ValidatorRules{NoDepth: true}
 			if recursive {
 				validatorRules = crawlValidatorRules(cmd)
@@ -85,10 +86,10 @@ var indexCmd = &cobra.Command{
 				return
 			}
 			jobID, err = model.CreateNamedCrawlJobWithURLs(
-				filepath.Base(urlList), args[0], rulesJSON, label, args,
+				indexInputJobName(input), args[0], rulesJSON, label, args,
 			)
 			if err != nil {
-				exit(1, "Failed to create URL list crawl job: "+err.Error())
+				exit(1, "Failed to create URL input crawl job: "+err.Error())
 				return
 			}
 			fmt.Println("Starting crawl job:", jobID)
@@ -263,40 +264,73 @@ func validateIndexArgs(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	urlList, err := cmd.Flags().GetString("url-list")
+	input, err := indexInput(cmd)
 	if err != nil {
 		return err
 	}
-	if jobID != "" && urlList != "" {
-		return errors.New("--job-id and --url-list cannot be used together")
+	if jobID != "" && input != "" {
+		return errors.New("--job-id and --input cannot be used together")
 	}
-	if len(args) > 0 || jobID != "" || urlList != "" {
+	if len(args) > 0 || jobID != "" || input != "" {
 		return nil
 	}
 	return cobra.MinimumNArgs(1)(cmd, args)
 }
 
 func resolveIndexURLs(cmd *cobra.Command, args []string) ([]string, error) {
-	urlList, err := cmd.Flags().GetString("url-list")
+	input, err := indexInput(cmd)
 	if err != nil {
 		return nil, err
 	}
-	if urlList == "" {
+	if input == "" {
 		return args, nil
 	}
 
-	contents, err := os.ReadFile(urlList)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read URL list %q: %w", urlList, err)
+	var contents []byte
+	if input == "-" {
+		contents, err = io.ReadAll(cmd.InOrStdin())
+	} else {
+		contents, err = os.ReadFile(input)
 	}
-	urls := parseURLList(string(contents))
+	if err != nil {
+		return nil, fmt.Errorf("failed to read input %q: %w", input, err)
+	}
+	urls := parseURLInput(string(contents))
 	if len(urls) == 0 {
-		return nil, fmt.Errorf("URL list %q contains no URLs", urlList)
+		if input == "-" {
+			return nil, errors.New("standard input contains no URLs")
+		}
+		return nil, fmt.Errorf("input %q contains no URLs", input)
 	}
 	return urls, nil
 }
 
-func parseURLList(contents string) []string {
+func indexInput(cmd *cobra.Command) (string, error) {
+	input, err := cmd.Flags().GetString("input")
+	if err != nil {
+		return "", err
+	}
+	legacy, err := cmd.Flags().GetString("url-list")
+	if err != nil {
+		return "", err
+	}
+	if input != "" && legacy != "" {
+		return "", errors.New("--input and --url-list cannot be used together")
+	}
+	if input != "" {
+		return input, nil
+	}
+	return legacy, nil
+}
+
+func indexInputJobName(input string) string {
+	if input == "-" {
+		return "stdin"
+	}
+	return filepath.Base(input)
+}
+
+func parseURLInput(contents string) []string {
 	lines := strings.Split(contents, "\n")
 	urls := make([]string, 0, len(lines))
 	for _, line := range lines {
@@ -373,7 +407,11 @@ func init() {
 	indexCmd.Flags().StringArray("exclude-pattern", nil, "Regexp pattern; matching URLs are skipped (repeatable)")
 	indexCmd.Flags().Bool("global", false, "Make indexed documents available for all users (only for admins in multiuser mode)")
 	indexCmd.Flags().Uint("user-id", 0, "Index documents under the given user ID (only for admins in multiuser mode)")
-	indexCmd.Flags().String("url-list", "", "File containing one URL per line; creates a persistent crawl job and replaces positional URLs")
+	indexCmd.Flags().String("input", "", "Read one URL per line from a file, or from standard input with -; creates a persistent crawl job and replaces positional URLs")
+	indexCmd.Flags().String("url-list", "", "Deprecated alias for --input")
+	if err := indexCmd.Flags().MarkDeprecated("url-list", "use --input instead"); err != nil {
+		panic(err)
+	}
 	indexCmd.Flags().String("job-id", "", "Persistent crawl job ID; use with --recursive to start a new job or alone to resume an existing one")
 	addCrawlerBackendFlags(indexCmd)
 	indexCmd.Flags().Bool("no-robots", false, "Disable robots.txt compliance during crawling")

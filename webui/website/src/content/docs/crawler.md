@@ -23,18 +23,18 @@ such as `--server-url`, `--token`, and `--client-timeout` are covered in the
 
 The arguments passed to `hister index` select one of four modes:
 
-| Invocation                                     | Persistent | Follows links | Result                                               |
-| ---------------------------------------------- | ---------- | ------------- | ---------------------------------------------------- |
-| `hister index URL...`                          | No         | No            | Fetch each positional URL once.                      |
-| `hister index --recursive [--job-id NAME] URL` | Yes        | Yes           | Create or resume a recursive crawl job.              |
-| `hister index --url-list FILE`                 | Yes        | No            | Queue every URL in the file without following links. |
-| `hister index --job-id NAME`                   | Yes        | Saved setting | Resume the pending queue of an existing job.         |
+| Invocation                                     | Persistent | Follows links | Result                                                |
+| ---------------------------------------------- | ---------- | ------------- | ----------------------------------------------------- |
+| `hister index URL...`                          | No         | No            | Fetch each positional URL once.                       |
+| `hister index --recursive [--job-id NAME] URL` | Yes        | Yes           | Create or resume a recursive crawl job.               |
+| `hister index --input FILE`                    | Yes        | No            | Queue every URL in the input without following links. |
+| `hister index --job-id NAME`                   | Yes        | Saved setting | Resume the pending queue of an existing job.          |
 
-Add `--recursive` to `--url-list` when links discovered on the listed pages should also be queued.
+Add `--recursive` to `--input` when links discovered on the listed pages should also be queued.
 
 ## Index Individual URLs
 
-Pass one or more URLs without `--recursive`, `--job-id`, or `--url-list` for a direct indexing run:
+Pass one or more URLs without `--recursive`, `--job-id`, or `--input` for a direct indexing run:
 
 ```bash
 hister index https://example.com/a https://example.com/b
@@ -152,9 +152,9 @@ hister index --job-id example-docs \
 An explicit `--label` on a resume changes the label for documents indexed during that invocation.
 Without it, Hister uses the original stored label.
 
-## Queue URLs From a File
+## Queue URLs From Input
 
-Use `--url-list` with a text file containing one URL per line:
+Use `--input` with a text file containing one URL per line:
 
 ```text
 https://example.com/guide
@@ -163,11 +163,11 @@ https://example.org/manual
 ```
 
 ```bash
-hister index --url-list documentation-urls.txt
+hister index --input documentation-urls.txt
 ```
 
-Blank lines and surrounding whitespace are ignored. Positional URLs are ignored when a URL list is
-present. An empty file produces an error.
+Blank lines and surrounding whitespace are ignored. Positional URLs are ignored when input is
+present. Empty input produces an error.
 
 Before fetching starts, Hister creates a persistent job and inserts the complete list into its
 queue in one database transaction. The file base name becomes the job ID. In this example, the ID
@@ -175,9 +175,9 @@ is `documentation-urls.txt`. If that ID exists, Hister tries `documentation-urls
 `documentation-urls.txt-3`, and continues increasing the suffix until it finds a free name.
 
 To choose a recognizable name for this kind of job, give the file that name before running the
-command. `--url-list` and `--job-id` cannot be used together.
+command. `--input` and `--job-id` cannot be used together.
 
-Running the `--url-list` command again creates a new suffixed job. It does not continue the earlier
+Running the `--input` command again creates a new suffixed job. It does not continue the earlier
 one. Resume the printed job ID instead:
 
 ```bash
@@ -188,9 +188,17 @@ Only the listed URLs are fetched by default. Add `--recursive` to follow links f
 
 ```bash
 hister index --recursive \
-  --url-list documentation-urls.txt \
+  --input documentation-urls.txt \
   --allowed-domain example.com
 ```
+
+Use `--input -` to read URLs from standard input:
+
+```bash
+printf '%s\n' https://example.com/guide https://example.com/reference | hister index --input -
+```
+
+Standard input jobs use `stdin` as their base ID. Later jobs use `stdin-2`, `stdin-3`, and so on.
 
 ## Control Crawl Scope
 
@@ -335,11 +343,11 @@ hister crawl errors example-docs
 
 This prints the stored error code, URL, and error message as three tab separated fields for each
 failed row. Failed rows are not retried when the same job resumes. A simple retry workflow is to
-extract the URLs into a new list job:
+extract the URLs into a new input job:
 
 ```bash
 hister crawl errors example-docs | cut -f2 > failed-urls.txt
-hister index --force --url-list failed-urls.txt
+hister index --force --input failed-urls.txt
 ```
 
 ### Delete a Job
