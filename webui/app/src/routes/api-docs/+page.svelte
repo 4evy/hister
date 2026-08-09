@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { page } from '$app/state';
-  import { pushState, replaceState } from '$app/navigation'
+  import { pushState, replaceState } from '$app/navigation';
   import { apiFetch } from '$lib/api';
   import { Badge } from '@hister/components/ui/badge';
   import * as Card from '@hister/components/ui/card';
