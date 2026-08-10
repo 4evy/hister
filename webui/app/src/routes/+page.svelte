@@ -2644,9 +2644,87 @@
       </section>
     {/if}
 
+    {#if statsLoaded && statsAvailable && historyCount === 0 && config.canWrite}
+      <section
+        class="home-empty-index border-brutal-border bg-card-surface w-full max-w-[900px] shrink-0 border-[3px] shadow-[4px_4px_0_var(--brutal-shadow)]"
+        aria-labelledby="empty-index-title"
+      >
+        <div
+          class="border-brutal-border flex flex-col gap-2 border-b-[3px] px-4 py-3 sm:flex-row sm:items-center sm:justify-between md:px-5"
+        >
+          <div>
+            <h2 id="empty-index-title" class="font-outfit text-text-brand text-lg font-extrabold">
+              Start building your index
+            </h2>
+            <p class="font-inter text-text-brand-secondary text-sm">
+              Choose any option to add your first searchable page.
+            </p>
+          </div>
+          <a
+            href="https://hister.org/docs/quickstart"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="font-inter text-hister-indigo flex shrink-0 items-center gap-1 text-sm font-semibold hover:underline"
+          >
+            <HelpCircle class="size-4" />
+            Quickstart
+            <ExternalLink class="size-3" />
+          </a>
+        </div>
+
+        <div class="grid gap-3 p-4 md:grid-cols-3 md:p-5">
+          <a
+            href="https://hister.org/docs/browser-extension"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="empty-index-action border-hister-indigo bg-hister-indigo/5 hover:bg-hister-indigo/10"
+          >
+            <Globe class="text-hister-indigo size-5 shrink-0" />
+            <span class="min-w-0">
+              <span class="font-outfit text-text-brand block font-bold">Install the extension</span>
+              <span class="font-inter text-text-brand-muted block text-xs"
+                >Capture pages as you browse</span
+              >
+            </span>
+            <ExternalLink class="text-text-brand-muted ml-auto size-3.5 shrink-0" />
+          </a>
+
+          <a
+            href="{base}/add"
+            class="empty-index-action border-hister-coral bg-hister-coral/5 hover:bg-hister-coral/10"
+          >
+            <Link2 class="text-hister-coral size-5 shrink-0" />
+            <span class="min-w-0">
+              <span class="font-outfit text-text-brand block font-bold">Add one page</span>
+              <span class="font-inter text-text-brand-muted block text-xs"
+                >Paste a URL to index it now</span
+              >
+            </span>
+          </a>
+
+          <a
+            href="https://hister.org/docs/import#importing-browser-history"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="empty-index-action border-hister-teal bg-hister-teal/5 hover:bg-hister-teal/10"
+          >
+            <History class="text-hister-teal size-5 shrink-0" />
+            <span class="min-w-0">
+              <span class="font-outfit text-text-brand block font-bold">Import browser history</span
+              >
+              <span class="font-inter text-text-brand-muted block text-xs"
+                >Bring your previously visited pages</span
+              >
+            </span>
+            <ExternalLink class="text-text-brand-muted ml-auto size-3.5 shrink-0" />
+          </a>
+        </div>
+      </section>
+    {/if}
     <div
       bind:this={statsRowEl}
       class="home-stats flex shrink-0 flex-col items-center gap-3 md:flex-row md:gap-4"
+      class:hidden={statsLoaded && statsAvailable && historyCount === 0 && config.canWrite}
       aria-live="polite"
       aria-busy={!statsLoaded}
     >
@@ -2777,6 +2855,26 @@
     text-decoration: none;
     transform: translate(1px, 1px);
     box-shadow: 1px 1px 0 var(--brutal-shadow);
+  }
+
+  .empty-index-action {
+    display: flex;
+    min-width: 0;
+    align-items: center;
+    gap: 0.75rem;
+    border-width: 2px;
+    padding: 0.75rem;
+    text-decoration: none;
+    transition:
+      background-color 150ms ease,
+      box-shadow 150ms ease,
+      transform 150ms ease;
+  }
+
+  .empty-index-action:hover {
+    text-decoration: none;
+    transform: translate(1px, 1px);
+    box-shadow: 2px 2px 0 var(--brutal-shadow);
   }
 
   .home-stat-pill::before {
