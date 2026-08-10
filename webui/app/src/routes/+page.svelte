@@ -163,9 +163,6 @@
   let wsManager: WebSocketManager | undefined;
   let keyHandler: KeyHandler | undefined;
   let inputEl: HTMLInputElement | null = $state(null);
-  let middlePointerActive = false;
-  let restoringQueryFocus = false;
-  let suggestionBlurFrame: number | undefined;
 
   let query = $state('');
   let autocomplete = $state('');
@@ -1139,46 +1136,7 @@
   }
 
   function handleQueryFocus(event: FocusEvent) {
-    if (restoringQueryFocus) {
-      restoringQueryFocus = false;
-      return;
-    }
     handleQuerySelection(event);
-  }
-
-  function closeQuerySuggestions() {
-    querySuggestionOpen = false;
-    querySuggestionKeyboardActive = false;
-  }
-
-  function handleQueryBlur() {
-    if (middlePointerActive) return;
-    closeQuerySuggestions();
-  }
-
-  function handleWindowPointerDown(event: PointerEvent) {
-    if (event.button === 1) middlePointerActive = true;
-  }
-
-  function finishMiddlePointer() {
-    if (!middlePointerActive) return;
-    if (suggestionBlurFrame !== undefined) cancelAnimationFrame(suggestionBlurFrame);
-    suggestionBlurFrame = requestAnimationFrame(() => {
-      suggestionBlurFrame = undefined;
-      middlePointerActive = false;
-      if (!querySuggestionOpen || !inputEl || document.activeElement === inputEl) return;
-      restoringQueryFocus = true;
-      inputEl.focus({ preventScroll: true });
-      if (document.activeElement !== inputEl) restoringQueryFocus = false;
-    });
-  }
-
-  function handleWindowPointerUp(event: PointerEvent) {
-    if (event.button === 1) finishMiddlePointer();
-  }
-
-  function handleWindowPointerCancel() {
-    finishMiddlePointer();
   }
 
   function selectQuerySuggestion(suggestion: QuerySuggestion) {
@@ -1645,7 +1603,6 @@
     return () => {
       wsManager?.close();
       cleanupAnimations();
-      if (suggestionBlurFrame !== undefined) cancelAnimationFrame(suggestionBlurFrame);
       mq.removeEventListener('change', mqHandler);
     };
   });
@@ -1655,13 +1612,7 @@
   <title>{query ? `${query} - ${config.title} search` : config.title}</title>
 </svelte:head>
 
-<svelte:window
-  onkeydown={handleKeydown}
-  onpointerdown={handleWindowPointerDown}
-  onpointerup={handleWindowPointerUp}
-  onpointercancel={handleWindowPointerCancel}
-  onpopstate={handlePopState}
-/>
+<svelte:window onkeydown={handleKeydown} onpopstate={handlePopState} />
 
 <Dialog.Root bind:open={$showHelp}>
   <Dialog.Content
@@ -1857,7 +1808,6 @@
           aria-activedescendant={activeQuerySuggestionId}
           oninput={handleQueryInput}
           onfocus={handleQueryFocus}
-          onblur={handleQueryBlur}
           onselect={handleQuerySelection}
           onclick={handleQuerySelection}
           onkeydown={handleQueryInputKeydown}
@@ -2654,7 +2604,6 @@
           placeholder="Search..."
           oninput={handleQueryInput}
           onfocus={handleQueryFocus}
-          onblur={handleQueryBlur}
           onselect={handleQuerySelection}
           onclick={handleQuerySelection}
           onkeydown={handleQueryInputKeydown}
