@@ -203,6 +203,7 @@ export class WebSocketManager {
   private debounceTimer: number | null = null;
   private inFlight: boolean = false;
   private pendingMessage: string | null = null;
+  private closed: boolean = false;
   private readonly debounceMs: number;
 
   constructor(wsUrl: string, callbacks: WebSocketManagerCallbacks, debounceMs: number = 100) {
@@ -212,13 +213,25 @@ export class WebSocketManager {
   }
 
   connect(): void {
-    this.ws = new WebSocket(this.wsUrl);
+    if (this.reconnectTimer !== null) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
+    if (this.ws?.readyState === WebSocket.CONNECTING || this.ws?.readyState === WebSocket.OPEN) {
+      return;
+    }
 
-    this.ws.onopen = () => {
+    this.closed = false;
+    const ws = new WebSocket(this.wsUrl);
+    this.ws = ws;
+
+    ws.onopen = () => {
+      if (this.ws !== ws) return;
       this.callbacks.onOpen();
     };
 
-    this.ws.onmessage = (event) => {
+    ws.onmessage = (event) => {
+      if (this.ws !== ws) return;
       this.inFlight = false;
       if (this.pendingMessage !== null) {
         const msg = this.pendingMessage;
@@ -228,16 +241,28 @@ export class WebSocketManager {
       this.callbacks.onMessage(event);
     };
 
-    this.ws.onclose = () => {
+    ws.onclose = () => {
+      if (this.ws !== ws) return;
+      this.ws = null;
       this.inFlight = false;
       this.pendingMessage = null;
       this.callbacks.onClose();
-      this.scheduleReconnect();
+      if (!this.closed) this.scheduleReconnect();
     };
 
-    this.ws.onerror = (event) => {
+    ws.onerror = (event) => {
+      if (this.ws !== ws) return;
       this.callbacks.onError(event);
     };
+  }
+
+  reconnect(): void {
+    this.closed = false;
+    const ws = this.releaseSocket();
+    this.inFlight = false;
+    this.pendingMessage = null;
+    ws?.close();
+    this.connect();
   }
 
   send(message: string): void {
@@ -272,6 +297,7 @@ export class WebSocketManager {
   }
 
   close(): void {
+    this.closed = true;
     if (this.debounceTimer !== null) {
       clearTimeout(this.debounceTimer);
       this.debounceTimer = null;
@@ -280,13 +306,28 @@ export class WebSocketManager {
       clearTimeout(this.reconnectTimer);
       this.reconnectTimer = null;
     }
-    this.ws?.close();
+    this.releaseSocket()?.close();
   }
 
   private scheduleReconnect(): void {
+    if (this.closed) return;
+    if (this.reconnectTimer !== null) clearTimeout(this.reconnectTimer);
     this.reconnectTimer = window.setTimeout(() => {
+      this.reconnectTimer = null;
       this.connect();
     }, 1000);
+  }
+
+  private releaseSocket(): WebSocket | null {
+    const ws = this.ws;
+    this.ws = null;
+    if (ws) {
+      ws.onopen = null;
+      ws.onmessage = null;
+      ws.onclose = null;
+      ws.onerror = null;
+    }
+    return ws;
   }
 
   get isOpen(): boolean {

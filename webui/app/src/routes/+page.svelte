@@ -96,6 +96,8 @@
     Copy,
     Check,
     ArrowUpDown,
+    RefreshCw,
+    WifiOff,
   } from '@lucide/svelte';
   import type { HistoryItem } from '$lib/types';
 
@@ -173,6 +175,8 @@
   let querySuggestionFacetsLoading = $state(false);
   let searchAliases = $state<Record<string, string>>({});
   let querySuggestionFacetRequest = 0;
+  type ConnectionState = 'connecting' | 'connected' | 'disconnected';
+  let connectionState = $state<ConnectionState>('connecting');
   let connected = $state(false);
   let lastResults = $state<SearchResults | null>(null);
   let accumulatedDocs = $state<SearchResult[]>([]);
@@ -272,6 +276,19 @@
       ? `${querySuggestionListId}-option-${querySuggestionIndex}`
       : undefined,
   );
+  const connectionStatus = $derived.by(() => {
+    if (connectionState === 'connected') {
+      return { label: 'Online', description: 'Server connected', dotClass: 'bg-hister-lime' };
+    }
+    if (connectionState === 'connecting') {
+      return {
+        label: 'Connecting',
+        description: 'Connecting to server',
+        dotClass: 'bg-hister-amber',
+      };
+    }
+    return { label: 'Offline', description: 'Server disconnected', dotClass: 'bg-hister-rose' };
+  });
 
   let animationHandles: any[] = [];
 
@@ -664,20 +681,30 @@
   });
 
   function connect() {
+    connectionState = 'connecting';
     wsManager = new WebSocketManager(config.wsUrl, {
       onOpen: () => {
         connected = true;
+        connectionState = 'connected';
         if (query) sendQuery(query);
       },
       onMessage: renderResults,
       onClose: () => {
         connected = false;
+        connectionState = 'disconnected';
       },
       onError: () => {
         connected = false;
+        connectionState = 'disconnected';
       },
     });
     wsManager.connect();
+  }
+
+  function retryConnection() {
+    connected = false;
+    connectionState = 'connecting';
+    wsManager?.reconnect();
   }
 
   function searchQueryOpts(pageKey = ''): SearchQueryOptions {
@@ -1726,6 +1753,47 @@
   </Dialog.Content>
 </Dialog.Root>
 
+{#snippet connectionNotice(className: string)}
+  {#if connectionState === 'disconnected'}
+    <div
+      class="border-hister-rose bg-hister-rose/10 flex flex-col gap-3 border-[3px] px-4 py-3 sm:flex-row sm:items-center {className}"
+      role="alert"
+    >
+      <WifiOff class="text-hister-rose size-5 shrink-0" />
+      <div class="min-w-0 flex-1">
+        <p class="font-outfit text-hister-rose font-bold">Cannot connect to Hister</p>
+        <p class="font-inter text-text-brand-secondary text-sm">
+          {lastResults
+            ? 'Showing the last loaded results while automatic reconnection continues.'
+            : 'Search is unavailable while automatic reconnection continues.'}
+        </p>
+      </div>
+      <div class="flex shrink-0 flex-wrap gap-2">
+        <Button
+          variant="outline"
+          size="sm"
+          class="border-hister-rose text-hister-rose hover:bg-hister-rose/10 border-[2px]"
+          onclick={retryConnection}
+        >
+          <RefreshCw class="size-3.5" />
+          Retry now
+        </Button>
+        <Button
+          variant="ghost"
+          size="sm"
+          href="https://hister.org/docs/troubleshooting"
+          target="_blank"
+          rel="noopener noreferrer"
+          class="text-text-brand-secondary hover:text-hister-indigo"
+        >
+          Troubleshooting
+          <ExternalLink class="size-3.5" />
+        </Button>
+      </div>
+    </div>
+  {/if}
+{/snippet}
+
 {#if isSearching}
   <div class="flex min-h-0 flex-1 flex-col">
     <div class="relative z-40 shrink-0">
@@ -1800,16 +1868,20 @@
                 <button
                   type="button"
                   class="text-text-brand-muted hover:bg-muted-surface flex h-8 items-center gap-2 px-2 text-xs font-semibold transition-colors md:h-9 md:px-3"
-                  aria-label="Server {connected ? 'connected' : 'disconnected'}"
+                  aria-label={connectionStatus.description}
+                  onclick={() => {
+                    if (connectionState === 'disconnected') retryConnection();
+                  }}
                 >
-                  <span class="h-2 w-2 shrink-0 {connected ? 'bg-hister-lime' : 'bg-hister-rose'}"
-                  ></span>
-                  <span class="hidden md:inline">{connected ? 'Online' : 'Offline'}</span>
+                  <span class="h-2 w-2 shrink-0 {connectionStatus.dotClass}"></span>
+                  <span class="hidden md:inline">{connectionStatus.label}</span>
                 </button>
               </Tooltip.Trigger>
               <Tooltip.Portal>
                 <Tooltip.Content>
-                  Server: {connected ? 'Connected' : 'Disconnected'}
+                  {connectionStatus.description}{connectionState === 'disconnected'
+                    ? '. Click to retry.'
+                    : ''}
                 </Tooltip.Content>
               </Tooltip.Portal>
             </Tooltip.Root>
@@ -1827,6 +1899,7 @@
         onselect={selectQuerySuggestion}
       />
     </div>
+    {@render connectionNotice('mx-3 my-3 md:mx-6')}
 
     <div class="flex min-h-0 flex-1 overflow-hidden" bind:this={splitContainerEl}>
       {#if !previewFullscreen}
@@ -2431,7 +2504,7 @@
                   Search
                 </Button>
               </section>
-            {:else if query}
+            {:else if query && connectionState !== 'disconnected'}
               <div class="flex items-center justify-center py-16">
                 <span class="font-inter text-text-brand-muted">Searching...</span>
               </div>
@@ -2545,20 +2618,30 @@
         />
         <Tooltip.Provider delayDuration={0}>
           <Tooltip.Root>
-            <Tooltip.Trigger class="flex h-8 w-8 items-center justify-center">
-              <div
-                class="h-2.5 w-2.5 shrink-0 {connected ? 'bg-hister-lime' : 'bg-hister-rose'}"
-              ></div>
+            <Tooltip.Trigger>
+              <button
+                type="button"
+                class="flex h-8 w-8 items-center justify-center"
+                aria-label={connectionStatus.description}
+                onclick={() => {
+                  if (connectionState === 'disconnected') retryConnection();
+                }}
+              >
+                <span class="h-2.5 w-2.5 shrink-0 {connectionStatus.dotClass}"></span>
+              </button>
             </Tooltip.Trigger>
             <Tooltip.Portal>
               <Tooltip.Content>
-                Server: {connected ? 'Connected' : 'Disconnected'}
+                {connectionStatus.description}{connectionState === 'disconnected'
+                  ? '. Click to retry.'
+                  : ''}
               </Tooltip.Content>
             </Tooltip.Portal>
           </Tooltip.Root>
         </Tooltip.Provider>
       </div>
     </div>
+    {@render connectionNotice('w-full max-w-[1100px]')}
 
     <div
       class="home-tip font-inter text-text-brand-muted hidden shrink-0 items-center gap-1 text-xs md:flex md:gap-2"
