@@ -1921,7 +1921,11 @@
                 <span class="font-outfit text-text-brand text-sm font-bold md:text-base">
                   {lastResults?.total && lastResults.total > totalResults
                     ? lastResults.total
-                    : totalResults} results{query ? ` for "${query}"` : ''}
+                    : totalResults} results{#if lastResults?.search_duration}{' '}<span
+                      class="text-xs font-normal md:text-sm"
+                    >
+                      ({lastResults.search_duration})</span
+                    >{/if}
                 </span>
                 <div class="flex min-w-0 flex-wrap items-center justify-end gap-2 overflow-hidden">
                   {#if isDesktop && !panelOpen && !disablePreviews}

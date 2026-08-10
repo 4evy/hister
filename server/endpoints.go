@@ -596,9 +596,13 @@ func doSearch(query *indexer.Query, cfg *config.Config, rules *config.Rules, use
 			res.QuerySuggestion = model.GetQuerySuggestion(userID, oq)
 		}
 	}
-	duration := float32(time.Since(start).Milliseconds()) / 1000.
-	res.SearchDuration = fmt.Sprintf("%.3f seconds", duration)
+	res.SearchDuration = formatSearchDuration(time.Since(start))
 	return res, nil
+}
+
+func formatSearchDuration(duration time.Duration) string {
+	seconds := duration.Round(10 * time.Millisecond).Seconds()
+	return strconv.FormatFloat(seconds, 'f', -1, 64) + " seconds"
 }
 
 // applyPatchReverse reconstructs an older document by inverting the stored
