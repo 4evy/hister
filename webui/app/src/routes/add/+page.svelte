@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { fetchConfig, apiFetch } from '$lib/api';
+  import { buildPreviewUrl } from '$lib/preview';
   import { base } from '$app/paths';
   import { Input } from '@hister/components/ui/input';
   import { Textarea } from '@hister/components/ui/textarea';
@@ -11,7 +12,17 @@
   import { PageHeader } from '@hister/components';
   import AlertCircle from '@lucide/svelte/icons/circle-alert';
   import CheckCircle from '@lucide/svelte/icons/circle-check';
-  import { Database, FileText, Link, LoaderCircle, RotateCcw, Save, Type } from '@lucide/svelte';
+  import {
+    Database,
+    Eye,
+    FileText,
+    Link,
+    LoaderCircle,
+    Plus,
+    RotateCcw,
+    Save,
+    Type,
+  } from '@lucide/svelte';
 
   let url = $state('');
   let title = $state('');
@@ -19,6 +30,8 @@
   let message = $state('');
   let isError = $state(false);
   let submitting = $state(false);
+  let urlInput: HTMLInputElement | null = $state(null);
+  let addedDocument = $state<{ url: string; title: string } | null>(null);
   const contentChars = $derived(text.trim().length);
   const canSubmit = $derived(url.trim().length > 0 && !submitting);
 
@@ -36,17 +49,21 @@
   async function handleSubmit(e: Event) {
     e.preventDefault();
     if (submitting) return;
+    const submittedUrl = url.trim();
+    const submittedTitle = title.trim();
     submitting = true;
     message = '';
+    addedDocument = null;
     try {
       const res = await apiFetch('/add', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url, title, text }),
+        body: JSON.stringify({ url: submittedUrl, title: submittedTitle, text }),
       });
       if (res.status === 201) {
         message = 'Document added successfully.';
         isError = false;
+        addedDocument = { url: submittedUrl, title: submittedTitle };
         url = '';
         title = '';
         text = '';
@@ -70,6 +87,12 @@
     title = '';
     text = '';
     message = '';
+    addedDocument = null;
+  }
+
+  function addAnother() {
+    clearForm();
+    urlInput?.focus();
   }
 </script>
 
@@ -87,7 +110,35 @@
           {:else}
             <CheckCircle class="size-4 shrink-0" />
           {/if}
-          <Alert.Description class="font-inter text-sm">{message}</Alert.Description>
+          <Alert.Description class="font-inter gap-3 text-sm">
+            <span>{message}</span>
+            {#if addedDocument}
+              <div class="flex flex-wrap gap-2">
+                <Button
+                  href={buildPreviewUrl(
+                    addedDocument.url,
+                    addedDocument.title || addedDocument.url,
+                  )}
+                  size="sm"
+                  variant="outline"
+                  class="border-brutal-border bg-page-bg brutal-press h-8 rounded-none border-[2px] px-3 text-xs font-bold uppercase"
+                >
+                  <Eye class="size-3.5" />
+                  View document
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  class="border-brutal-border bg-page-bg brutal-press h-8 rounded-none border-[2px] px-3 text-xs font-bold uppercase"
+                  onclick={addAnother}
+                >
+                  <Plus class="size-3.5" />
+                  Add another
+                </Button>
+              </div>
+            {/if}
+          </Alert.Description>
         </Alert.Root>
       {/if}
 
@@ -107,7 +158,7 @@
                   Add document
                 </Card.Title>
                 <Card.Description class="font-inter text-text-brand-secondary text-sm">
-                  URL is required. Title and content can be left empty.
+                  Enter a URL and optionally add searchable title and content.
                 </Card.Description>
               </div>
             </div>
@@ -162,15 +213,16 @@
                   id="entry-url"
                   type="url"
                   variant="brutal"
+                  bind:ref={urlInput}
                   bind:value={url}
                   placeholder="https://example.com/page"
                   required
                   autocomplete="url"
                   aria-describedby="entry-url-help"
-                  class="focus-visible:border-hister-coral"
+                  class="focus-visible:border-hister-coral [font-variant-ligatures:none]"
                 />
                 <p id="entry-url-help" class="font-inter text-text-brand-muted text-xs">
-                  URL of the document
+                  Hister stores this URL but does not download the page from this form.
                 </p>
               </div>
             </div>
@@ -186,8 +238,10 @@
                   <Label for="entry-title" class="font-outfit text-text-brand text-sm font-black">
                     Title
                   </Label>
-                  <p class="font-fira text-hister-rose mt-1 text-[11px] font-semibold uppercase">
-                    Required
+                  <p
+                    class="font-fira text-text-brand-muted mt-1 text-[11px] font-semibold uppercase"
+                  >
+                    Optional
                   </p>
                 </div>
               </div>
@@ -198,13 +252,12 @@
                   variant="brutal"
                   bind:value={title}
                   placeholder="Page title"
-                  required
                   autocomplete="off"
                   aria-describedby="entry-title-help"
                   class="font-inter focus-visible:border-hister-coral"
                 />
                 <p id="entry-title-help" class="font-inter text-text-brand-muted text-xs">
-                  Title of the document
+                  Searchable title for the document
                 </p>
               </div>
             </div>
@@ -237,7 +290,7 @@
                 />
                 <div class="flex items-center justify-between gap-3">
                   <p id="entry-content-help" class="font-inter text-text-brand-muted text-xs">
-                    Text content of the document
+                    Searchable plain text for the document
                   </p>
                   <span class="font-fira text-text-brand-muted shrink-0 text-xs">
                     {contentChars.toLocaleString()} chars
