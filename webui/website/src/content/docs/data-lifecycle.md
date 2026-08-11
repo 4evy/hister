@@ -8,16 +8,16 @@ Hister keeps current searchable documents until you replace or delete them. It d
 
 ## Lifecycle at a Glance
 
-| Event                                                 | Result                                                                          |
-| ----------------------------------------------------- | ------------------------------------------------------------------------------- |
-| A new URL is submitted                                | Hister creates a searchable document for that URL and owner                     |
-| The same normalized URL is submitted again            | Hister replaces the current document content and increases its submission count |
-| A versioning rule matches a changed page              | Hister also stores a difference record in the SQL database                      |
-| A watched file changes                                | Hister updates its searchable document                                          |
-| A watched file is removed                             | Hister keeps the document unless `delete_on_remove: true` is configured         |
-| A source bookmark or browser history entry is removed | No change occurs in Hister                                                      |
-| A document is deleted in Hister                       | The current index record and associated current assets are removed              |
-| `hister cleanup` is run                               | Unreferenced HTML and favicon files are removed, but documents are not deleted  |
+| Event                                                 | Result                                                                                                          |
+| ----------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| A new URL is submitted                                | Hister creates a searchable document for that URL and owner                                                     |
+| The same normalized URL is submitted again            | Hister replaces the current document content and increases its submission count                                 |
+| A versioning rule matches a changed page              | Hister also stores a difference record in the SQL database                                                      |
+| A watched file changes                                | Hister updates its searchable document                                                                          |
+| A watched file is removed                             | Hister keeps the document unless `delete_on_remove: true` is configured                                         |
+| A source bookmark or browser history entry is removed | No change occurs in Hister                                                                                      |
+| A document is deleted in Hister                       | The current index record and associated current assets are removed                                              |
+| `hister cleanup` is run                               | Local documents that no longer match configured directories and unreferenced HTML and favicon files are removed |
 
 ## Where Data Lives
 
@@ -123,15 +123,17 @@ A deleted document can return if an active collector submits it again. Before de
 
 For watched files, `delete_on_remove: true` makes future file removal delete the corresponding indexed document automatically. This option is disabled by default.
 
-## Cleanup Is Not Retention
+## Cleanup And Local Files
 
-`hister cleanup` scans stored HTML and favicon files and removes files that no current indexed document references:
+`hister cleanup` reconciles indexed local document paths with the current directory configuration, then scans stored HTML and favicon files and removes files that no current indexed document references:
 
 ```bash
 hister cleanup
 ```
 
-Normal updates and deletions already attempt to remove unreferenced assets. Cleanup handles leftovers, such as files left by an interrupted operation. It does not delete searchable documents, version differences, crawl jobs, search history, or semantic vectors that still belong to a document.
+During local document reconciliation, cleanup removes indexed documents that are outside the configured directories, no longer match their `filetypes`, `patterns`, `excludes`, or hidden path settings, or have a different configured owner. It evaluates fields already stored in the index and does not walk, stat, or read local files. Cleanup therefore does not discover new files, update changed files, or detect missing source files. Startup directory indexing and the file watcher handle those operations. Cleanup reports how many indexed local documents it checked, skipped, and removed.
+
+Normal updates and deletions already attempt to remove unreferenced assets. The stored data cleanup handles leftovers, such as files left by an interrupted operation. Cleanup does not delete web documents, version differences, crawl jobs, or search history.
 
 ## Crawl Job Lifecycle
 

@@ -875,7 +875,7 @@ func init() {
 			CSRFRequired: true,
 			AdminOnly:    true,
 			Handler:      serveCleanup,
-			Description:  "Remove orphaned HTML and favicon data files no longer referenced by any document (admin only)",
+			Description:  "Remove local documents that no longer match configured directories, and remove orphaned HTML and favicon data files (admin only)",
 		},
 		{
 			Name:         "Reindex",

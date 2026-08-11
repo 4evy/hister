@@ -2,6 +2,7 @@ package indexer
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -12,6 +13,7 @@ import (
 	"github.com/asciimoo/hister/server/document"
 	"github.com/asciimoo/hister/server/model"
 	"github.com/asciimoo/hister/server/testutil"
+	"github.com/asciimoo/hister/server/types"
 
 	"github.com/blevesearch/bleve/v2"
 )
@@ -219,6 +221,205 @@ func TestIndexFileAppliesDirectoryLabel(t *testing.T) {
 	}
 	if doc.AddCount != 1 {
 		t.Fatalf("AddCount after label change = %d, want 1", doc.AddCount)
+	}
+}
+
+func TestCleanupRemovesDocumentsExcludedByConfig(t *testing.T) {
+	testDir := t.TempDir()
+	notePath := testutil.WriteFile(t, testDir, "note.txt", []byte("notes that should remain searchable after cleanup"))
+	codePath := testutil.WriteFile(t, testDir, "main.go", []byte("package main\n\nfunc main() {}\n"))
+
+	cfg := testutil.Config(t)
+	cfg.Indexer.Directories = []*config.Directory{{Path: testDir}}
+	if err := Init(cfg); err != nil {
+		t.Fatalf("failed to init indexer: %v", err)
+	}
+	defer func() { i.Close() }()
+
+	if err := IndexFile(notePath, 0); err != nil {
+		t.Fatalf("index note: %v", err)
+	}
+	if err := IndexFile(codePath, 0); err != nil {
+		t.Fatalf("index code: %v", err)
+	}
+
+	restricted := []*config.Directory{{Path: testDir, Filetypes: []string{"txt"}}}
+	i.directories = restricted
+	result, err := Cleanup(cfg.FullPath(""), restricted)
+	if err != nil {
+		t.Fatalf("Cleanup returned an error: %v", err)
+	}
+	if result.LocalDocumentsChecked != 2 || result.LocalDocumentsRemoved != 1 || result.LocalDocumentsSkipped != 0 {
+		t.Fatalf("cleanup result = %#v, want checked=2 removed=1 skipped=0", result)
+	}
+	if GetByURLAndUser(files.PathToFileURL(notePath), 0) == nil {
+		t.Fatal("matching note was removed")
+	}
+	if GetByURLAndUser(files.PathToFileURL(codePath), 0) != nil {
+		t.Fatal("excluded code file remains indexed")
+	}
+}
+
+func TestCleanupLocalDocumentsDoesNotInspectFilesystem(t *testing.T) {
+	testDir := t.TempDir()
+	filePath := testutil.WriteFile(t, testDir, "note.txt", []byte("notes retained without checking their source"))
+	dir := &config.Directory{Path: testDir, DeleteOnRemove: true}
+
+	cfg := testutil.Config(t)
+	cfg.Indexer.Directories = []*config.Directory{dir}
+	if err := Init(cfg); err != nil {
+		t.Fatalf("failed to init indexer: %v", err)
+	}
+	defer func() { i.Close() }()
+
+	if err := IndexFile(filePath, 0); err != nil {
+		t.Fatalf("index file: %v", err)
+	}
+	if err := os.Remove(filePath); err != nil {
+		t.Fatalf("remove source file: %v", err)
+	}
+
+	result, err := CleanupLocalDocuments(cfg.Indexer.Directories)
+	if err != nil {
+		t.Fatalf("cleanup local documents: %v", err)
+	}
+	if result.Checked != 1 || result.Removed != 0 || result.Skipped != 0 {
+		t.Fatalf("cleanup result = %#v, want checked=1 removed=0 skipped=0", result)
+	}
+	if GetByURLAndUser(files.PathToFileURL(filePath), 0) == nil {
+		t.Fatal("cleanup removed a document after its source file disappeared")
+	}
+}
+
+func TestCleanupLocalDocumentsRemovesDocumentWithWrongOwner(t *testing.T) {
+	cfg := testutil.InitModel(t)
+	alice := testutil.CreateUser(t, "refresh-alice")
+	bob := testutil.CreateUser(t, "refresh-bob")
+	testDir := t.TempDir()
+	filePath := testutil.WriteFile(t, testDir, "note.txt", []byte("notes whose configured owner changes"))
+	dir := &config.Directory{Path: testDir, User: alice.Username}
+	cfg.Indexer.Directories = []*config.Directory{dir}
+
+	if err := Init(cfg); err != nil {
+		t.Fatalf("failed to init indexer: %v", err)
+	}
+	defer func() { i.Close() }()
+	if err := IndexFile(filePath, alice.ID); err != nil {
+		t.Fatalf("index file for alice: %v", err)
+	}
+
+	dir.User = bob.Username
+	result, err := CleanupLocalDocuments(cfg.Indexer.Directories)
+	if err != nil {
+		t.Fatalf("cleanup after owner change: %v", err)
+	}
+	if result.Checked != 1 || result.Removed != 1 || result.Skipped != 0 {
+		t.Fatalf("cleanup result = %#v, want checked=1 removed=1 skipped=0", result)
+	}
+	fileURL := files.PathToFileURL(filePath)
+	if GetByURLAndUser(fileURL, alice.ID) != nil {
+		t.Fatal("document remains indexed for its previous owner")
+	}
+	if GetByURLAndUser(fileURL, bob.ID) != nil {
+		t.Fatal("cleanup unexpectedly indexed a replacement document")
+	}
+}
+
+func TestCleanupLocalDocumentsPreservesDocumentWhenOwnerCannotBeResolved(t *testing.T) {
+	cfg := testutil.InitModel(t)
+	alice := testutil.CreateUser(t, "cleanup-owner-alice")
+	testDir := t.TempDir()
+	filePath := testutil.WriteFile(t, testDir, "note.txt", []byte("notes preserved when ownership cannot be checked"))
+	dir := &config.Directory{Path: testDir, User: alice.Username}
+	cfg.Indexer.Directories = []*config.Directory{dir}
+
+	if err := Init(cfg); err != nil {
+		t.Fatalf("failed to init indexer: %v", err)
+	}
+	defer func() { i.Close() }()
+	if err := IndexFile(filePath, alice.ID); err != nil {
+		t.Fatalf("index file for alice: %v", err)
+	}
+
+	dir.User = "missing-cleanup-owner"
+	result, err := CleanupLocalDocuments(cfg.Indexer.Directories)
+	if err != nil {
+		t.Fatalf("cleanup with unresolved owner: %v", err)
+	}
+	if result.Checked != 1 || result.Removed != 0 || result.Skipped != 1 {
+		t.Fatalf("cleanup result = %#v, want checked=1 removed=0 skipped=1", result)
+	}
+	if GetByURLAndUser(files.PathToFileURL(filePath), alice.ID) == nil {
+		t.Fatal("cleanup removed a document whose configured owner could not be resolved")
+	}
+}
+
+func TestCleanupLocalDocumentsDeletesMultipleBatches(t *testing.T) {
+	testDir := t.TempDir()
+	cfg := testutil.Config(t)
+	cfg.Indexer.Directories = []*config.Directory{{Path: testDir}}
+	if err := Init(cfg); err != nil {
+		t.Fatalf("failed to init indexer: %v", err)
+	}
+	defer func() { i.Close() }()
+
+	batch := NewMultiBatch()
+	for n := range 201 {
+		doc := &document.Document{
+			URL:       files.PathToFileURL(filepath.Join(testDir, fmt.Sprintf("file-%03d.go", n))),
+			Text:      "indexed code file",
+			Type:      types.Local,
+			Processed: true,
+		}
+		if err := batch.Add(doc); err != nil {
+			t.Fatalf("add document %d to batch: %v", n, err)
+		}
+	}
+	if err := batch.Save(); err != nil {
+		t.Fatalf("save document batch: %v", err)
+	}
+
+	restricted := []*config.Directory{{Path: testDir, Filetypes: []string{"txt"}}}
+	result, err := CleanupLocalDocuments(restricted)
+	if err != nil {
+		t.Fatalf("cleanup multiple batches: %v", err)
+	}
+	if result.Checked != 201 || result.Removed != 201 || result.Skipped != 0 {
+		t.Fatalf("cleanup result = %#v, want checked=201 removed=201 skipped=0", result)
+	}
+	if GetByURLAndUser(files.PathToFileURL(filepath.Join(testDir, "file-200.go")), 0) != nil {
+		t.Fatal("document from the second cleanup batch remains indexed")
+	}
+}
+
+func TestReindexSkipsLocalFilesExcludedByConfig(t *testing.T) {
+	testDir := t.TempDir()
+	notePath := testutil.WriteFile(t, testDir, "note.txt", []byte("notes that should survive a restricted reindex"))
+	codePath := testutil.WriteFile(t, testDir, "main.go", []byte("package main\n\nfunc main() {}\n"))
+
+	cfg := testutil.Config(t)
+	cfg.Indexer.Directories = []*config.Directory{{Path: testDir}}
+	if err := Init(cfg); err != nil {
+		t.Fatalf("failed to init indexer: %v", err)
+	}
+	defer func() { i.Close() }()
+
+	if err := IndexFile(notePath, 0); err != nil {
+		t.Fatalf("index note: %v", err)
+	}
+	if err := IndexFile(codePath, 0); err != nil {
+		t.Fatalf("index code: %v", err)
+	}
+
+	restricted := []*config.Directory{{Path: testDir, Filetypes: []string{"txt"}}}
+	if err := Reindex(cfg.FullPath(""), &config.Rules{}, false, cfg.Indexer.DetectLanguages, cfg.Indexer.KeepStopwords, restricted); err != nil {
+		t.Fatalf("Reindex returned an error: %v", err)
+	}
+	if GetByURLAndUser(files.PathToFileURL(notePath), 0) == nil {
+		t.Fatal("matching note was removed during reindex")
+	}
+	if GetByURLAndUser(files.PathToFileURL(codePath), 0) != nil {
+		t.Fatal("excluded code file remains indexed after reindex")
 	}
 }
 

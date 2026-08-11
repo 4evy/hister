@@ -818,7 +818,7 @@ Changes to indexed directories are picked up automatically by the file watcher, 
 
 When `delete_on_remove: true` is set on a directory, deleting or renaming a file on the filesystem also removes it from the index automatically. This is opt-in and disabled by default.
 
-No reindex is required when adding or removing files. Files are detected and indexed automatically.
+No reindex is required when adding or removing files. Files are detected and indexed automatically. After making directory filters more restrictive, run `hister cleanup` to remove indexed local documents that no longer match the configuration. Cleanup compares indexed paths with the configuration and does not scan or read the filesystem.
 
 ## Disable Previews
 

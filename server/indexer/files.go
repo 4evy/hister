@@ -5,16 +5,20 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 
+	"github.com/blevesearch/bleve/v2"
 	"github.com/rs/zerolog/log"
 
 	"github.com/asciimoo/hister/config"
 	"github.com/asciimoo/hister/files"
 	"github.com/asciimoo/hister/server/document"
 	"github.com/asciimoo/hister/server/model"
+	"github.com/asciimoo/hister/server/types"
 )
 
 var (
@@ -36,6 +40,19 @@ type fileIndexQueueItem struct {
 	op     fileIndexOp
 	path   string
 	userID uint
+}
+
+// LocalDocumentCleanupResult describes the local document reconciliation
+// performed by cleanup.
+type LocalDocumentCleanupResult struct {
+	Checked int
+	Removed int
+	Skipped int
+}
+
+type directoryOwner struct {
+	userID uint
+	err    error
 }
 
 type FileIndexQueue struct {
@@ -162,22 +179,31 @@ func (q *FileIndexQueue) enqueueDirectory(dir string, cfg *config.Directory) err
 }
 
 func walkDirectoryFiles(dir string, cfg *config.Directory, callback func(path string, userID uint) bool) (int, int, error) {
+	userID, err := directoryUserID(cfg)
+	if err != nil {
+		return 0, 0, fmt.Errorf("user %q not found for directory %s: %w", cfg.User, dir, err)
+	}
+	return walkDirectoryFilesForUser(dir, cfg, userID, callback)
+}
+
+func directoryUserID(cfg *config.Directory) (uint, error) {
+	if cfg.User != "" {
+		u, err := model.GetUser(cfg.User)
+		if err != nil {
+			return 0, err
+		}
+		return u.ID, nil
+	}
+	return 0, nil
+}
+
+func walkDirectoryFilesForUser(dir string, cfg *config.Directory, userID uint, callback func(path string, userID uint) bool) (int, int, error) {
 	info, err := os.Stat(dir)
 	if err != nil {
 		return 0, 0, fmt.Errorf("cannot access directory: %w", err)
 	}
 	if !info.IsDir() {
 		return 0, 0, fmt.Errorf("not a directory: %s", dir)
-	}
-
-	var userID uint
-	if cfg.User != "" {
-		u, err := model.GetUser(cfg.User)
-		if err != nil {
-			log.Error().Err(err).Str("directory", dir).Msg("Failed to resolve user for directory")
-			return 0, 0, fmt.Errorf("user %q not found for directory %s: %w", cfg.User, dir, err)
-		}
-		userID = u.ID
 	}
 
 	processed := 0
@@ -208,9 +234,109 @@ func walkDirectoryFiles(dir string, cfg *config.Directory, callback func(path st
 	return processed, skipped, err
 }
 
+// CleanupLocalDocuments removes indexed local documents that no longer match
+// the current directory filters or ownership. It only inspects indexed fields
+// and does not walk, stat, or read the filesystem.
+func CleanupLocalDocuments(dirs []*config.Directory) (LocalDocumentCleanupResult, error) {
+	result := LocalDocumentCleanupResult{}
+	if i == nil {
+		return result, errors.New("indexer is not initialized")
+	}
+
+	owners := make(map[*config.Directory]directoryOwner, len(dirs))
+	for _, dir := range dirs {
+		if dir == nil {
+			continue
+		}
+		ownerID, err := directoryUserID(dir)
+		owners[dir] = directoryOwner{userID: ownerID, err: err}
+		if err != nil {
+			log.Warn().Err(err).Str("directory", dir.Path).Msg("Failed to resolve user while cleaning local documents")
+		}
+	}
+
+	checked, removed, skipped, err := pruneStaleLocalDocuments(dirs, owners)
+	result.Checked = checked
+	result.Removed = removed
+	result.Skipped = skipped
+	return result, err
+}
+
+func pruneStaleLocalDocuments(dirs []*config.Directory, owners map[*config.Directory]directoryOwner) (int, int, int, error) {
+	docType := float64(types.Local)
+	localQuery := bleve.NewNumericRangeInclusiveQuery(&docType, &docType, new(true), new(true))
+	localQuery.SetField("type")
+	req := bleve.NewSearchRequest(localQuery)
+	req.Fields = []string{"url", "user_id"}
+	req.Size = 200
+	req.SortBy([]string{"_id"})
+
+	checked, removed, skipped := 0, 0, 0
+	var sortKey []string
+	for {
+		if len(sortKey) > 0 {
+			req.SetSearchAfter(sortKey)
+		}
+		res, err := i.idx.Search(req)
+		if err != nil {
+			return checked, removed, skipped, fmt.Errorf("find indexed local documents: %w", err)
+		}
+		if len(res.Hits) == 0 {
+			return checked, removed, skipped, nil
+		}
+
+		batch := newMultiBatch(i)
+		pageRemoved := 0
+		for _, hit := range res.Hits {
+			checked++
+			remove, couldNotCheck := staleLocalDocument(hit.Fields, dirs, owners)
+			if couldNotCheck {
+				skipped++
+			}
+			if remove {
+				batch.Delete(hit.ID)
+				pageRemoved++
+			}
+		}
+		sortKey = res.Hits[len(res.Hits)-1].Sort
+		if pageRemoved == 0 {
+			continue
+		}
+		if err := batch.Save(); err != nil {
+			return checked, removed, skipped, fmt.Errorf("remove stale local documents: %w", err)
+		}
+		removed += pageRemoved
+	}
+}
+
+func staleLocalDocument(fields map[string]any, dirs []*config.Directory, owners map[*config.Directory]directoryOwner) (remove bool, couldNotCheck bool) {
+	rawURL, _ := fields["url"].(string)
+	parsed, err := url.Parse(rawURL)
+	if err != nil || !strings.EqualFold(parsed.Scheme, "file") {
+		return true, false
+	}
+	filePath := filepath.Clean(files.FileURLToPath(rawURL))
+	if !filepath.IsAbs(filePath) {
+		return true, false
+	}
+	dir := files.FindMatchingDir(dirs, filePath)
+	if !files.DirectoryMatchesPath(dir, filePath) {
+		return true, false
+	}
+	owner, ok := owners[dir]
+	if !ok || owner.err != nil {
+		return false, true
+	}
+	indexedUserID := uint(0)
+	if value, ok := fields["user_id"].(float64); ok {
+		indexedUserID = uint(value)
+	}
+	return indexedUserID != owner.userID, false
+}
+
 func configuredFileLabel(dirs []*config.Directory, path string) string {
 	dir := files.FindMatchingDir(dirs, path)
-	if dir == nil {
+	if !files.DirectoryMatchesPath(dir, path) {
 		return ""
 	}
 	return dir.Label

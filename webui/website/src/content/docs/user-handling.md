@@ -168,7 +168,7 @@ Skip rules apply upon the **full** URL (from protocol to the query-string parame
 Admin users have access to privileged operations. Currently, the following endpoints require admin privileges:
 
 - **`POST /api/reindex`** rebuilds the entire full-text search index.
-- **`POST /api/cleanup`** removes stored HTML and favicon files that no current document references.
+- **`POST /api/cleanup`** removes local documents that no longer match configured directories and removes stored HTML and favicon files that no current document references.
 
 Non-admin users receive `403 Forbidden` when attempting to call admin-only endpoints.
 

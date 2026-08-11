@@ -1360,7 +1360,7 @@ func authorizedFilePath(c *webContext, id string, doc *document.Document) (strin
 		return "", nil, false
 	}
 	dir := files.FindMatchingDir(c.Config.Indexer.Directories, filePath)
-	if dir == nil || !dir.IsMatching(filePath) {
+	if !files.DirectoryMatchesPath(dir, filePath) {
 		return "", nil, false
 	}
 	ownerID, err := files.FindDirUser(c.Config.Indexer.Directories, filePath)
@@ -1747,16 +1747,13 @@ func serveReindex(c *webContext) {
 }
 
 func serveCleanup(c *webContext) {
-	htmlRemoved, faviconRemoved, err := indexer.CleanupDataFiles(c.Config.FullPath(""))
+	result, err := indexer.Cleanup(c.Config.FullPath(""), c.Config.Indexer.Directories)
 	if err != nil {
 		log.Error().Err(err).Msg("cleanup failed")
 		serve500(c)
 		return
 	}
-	c.JSON(map[string]int{
-		"htmlRemoved":    htmlRemoved,
-		"faviconRemoved": faviconRemoved,
-	})
+	c.JSON(result)
 }
 
 func serveFavicon(c *webContext) {

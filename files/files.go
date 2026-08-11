@@ -71,12 +71,41 @@ func FileURLToPath(fileURL string) string {
 // FindMatchingDir returns the Directory config whose expanded path contains filePath, or nil.
 func FindMatchingDir(dirs []*config.Directory, filePath string) *config.Directory {
 	for i := range dirs {
+		if dirs[i] == nil {
+			continue
+		}
 		dirPath := filepath.Clean(ExpandHome(dirs[i].Path))
 		if HasPathPrefix(filePath, dirPath) {
 			return dirs[i]
 		}
 	}
 	return nil
+}
+
+// DirectoryMatchesPath reports whether filePath would be discovered while
+// walking dir with its current filters. In addition to the file name filters,
+// it checks every parent directory below the configured root because excluded
+// and hidden directories are pruned during directory walks.
+func DirectoryMatchesPath(dir *config.Directory, filePath string) bool {
+	if dir == nil {
+		return false
+	}
+	root := filepath.Clean(ExpandHome(dir.Path))
+	filePath = filepath.Clean(filePath)
+	if !HasPathPrefix(filePath, root) || filePath == root {
+		return false
+	}
+	rel, err := filepath.Rel(root, filePath)
+	if err != nil {
+		return false
+	}
+	parts := strings.Split(rel, string(filepath.Separator))
+	for _, part := range parts[:len(parts)-1] {
+		if shouldSkipDir(part, dir.Excludes, dir.IncludeHidden) {
+			return false
+		}
+	}
+	return dir.IsMatching(filePath)
 }
 
 // FindDirUser finds the directory config matching a file path and resolves its user to a user ID.
@@ -166,7 +195,7 @@ func walkAndWatch(watcher *fsnotify.Watcher, dirs []*config.Directory) {
 // debounce period.
 func handleWrite(event fsnotify.Event, dirs []*config.Directory, mu *sync.Mutex, debounced map[string]*time.Timer, callback func(string)) {
 	dir := FindMatchingDir(dirs, event.Name)
-	if dir == nil || !dir.IsMatching(event.Name) {
+	if !DirectoryMatchesPath(dir, event.Name) {
 		return
 	}
 	name := event.Name
@@ -193,7 +222,7 @@ func handleRemove(event fsnotify.Event, dirs []*config.Directory, onRemove func(
 		return
 	}
 	dir := FindMatchingDir(dirs, event.Name)
-	if dir == nil || !dir.DeleteOnRemove || !dir.IsMatching(event.Name) {
+	if dir == nil || !dir.DeleteOnRemove || !DirectoryMatchesPath(dir, event.Name) {
 		return
 	}
 	onRemove(event.Name)
@@ -219,7 +248,7 @@ func handleCreate(event fsnotify.Event, dirs []*config.Directory, watcher *fsnot
 		return
 	}
 	dir := FindMatchingDir(dirs, event.Name)
-	if dir == nil || !dir.IsMatching(event.Name) {
+	if !DirectoryMatchesPath(dir, event.Name) {
 		return
 	}
 	callback(event.Name)

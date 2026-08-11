@@ -30,8 +30,8 @@ var reindexCmd = &cobra.Command{
 
 var cleanupCmd = &cobra.Command{
 	Use:   "cleanup",
-	Short: "Remove orphaned data files",
-	Long:  `Remove HTML and favicon files from the data directories that are no longer referenced by any document in the index`,
+	Short: "Remove stale local documents and orphaned data",
+	Long:  `Remove indexed local documents that no longer match configured directories, and remove HTML and favicon files that are no longer referenced by any document in the index`,
 	Run: func(_ *cobra.Command, _ []string) {
 		c := newClient(client.WithTimeout(0))
 		result, err := c.Cleanup()
@@ -42,6 +42,9 @@ var cleanupCmd = &cobra.Command{
 			}
 			exit(1, msg)
 		}
+		fmt.Printf("Checked %d indexed local document(s)\n", result.LocalDocumentsChecked)
+		fmt.Printf("Skipped %d indexed local document(s)\n", result.LocalDocumentsSkipped)
+		fmt.Printf("Removed %d stale local document(s)\n", result.LocalDocumentsRemoved)
 		fmt.Printf("Removed %d orphaned HTML file(s)\n", result.HTMLRemoved)
 		fmt.Printf("Removed %d orphaned favicon file(s)\n", result.FaviconRemoved)
 	},

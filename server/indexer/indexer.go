@@ -615,20 +615,23 @@ func Reindex(basePath string, rules *config.Rules, skipSensitiveChecks bool, det
 			for _, h := range res.Hits {
 				d := idx.resFromHit(h, resultIncludeAll)
 				if d.Type == types.Local {
-					pu, err := url.Parse(d.URL)
-					if err == nil {
-						if _, err := os.Stat(pu.Path); errors.Is(err, os.ErrNotExist) {
-							log.Warn().Str("URL", d.URL).Msg("Skipping document, file not found")
-							continue
-						}
-						dir := files.FindMatchingDir(dirs, pu.Path)
-						if dir == nil {
-							log.Warn().Str("URL", d.URL).Msg("Skipping document, directory no longer configured")
-							continue
-						}
-						if dir.Label != "" {
-							d.Label = dir.Label
-						}
+					filePath := filepath.Clean(files.FileURLToPath(d.URL))
+					dir := files.FindMatchingDir(dirs, filePath)
+					if !files.DirectoryMatchesPath(dir, filePath) {
+						log.Warn().Str("URL", d.URL).Msg("Skipping document, file no longer matches directory configuration")
+						continue
+					}
+					ownerID, err := files.FindDirUser(dirs, filePath)
+					if err != nil || ownerID != d.UserID {
+						log.Warn().Err(err).Str("URL", d.URL).Msg("Skipping document, directory owner changed")
+						continue
+					}
+					if _, err := os.Stat(filePath); errors.Is(err, os.ErrNotExist) {
+						log.Warn().Str("URL", d.URL).Msg("Skipping document, file not found")
+						continue
+					}
+					if dir.Label != "" {
+						d.Label = dir.Label
 					}
 				}
 				log.Debug().Str("URL", d.URL).Msg("Indexing")
@@ -730,6 +733,30 @@ func Reindex(basePath string, rules *config.Rules, skipSensitiveChecks bool, det
 		log.Warn().Err(err).Msg("failed to clean up orphaned favicon data files")
 	}
 	return nil
+}
+
+// CleanupResult describes local index reconciliation and orphaned data cleanup.
+type CleanupResult struct {
+	LocalDocumentsChecked int `json:"localDocumentsChecked"`
+	LocalDocumentsSkipped int `json:"localDocumentsSkipped"`
+	LocalDocumentsRemoved int `json:"localDocumentsRemoved"`
+	HTMLRemoved           int `json:"htmlRemoved"`
+	FaviconRemoved        int `json:"faviconRemoved"`
+}
+
+// Cleanup removes local documents that no longer match the directory config,
+// then removes orphaned HTML and favicon data files.
+func Cleanup(basePath string, dirs []*config.Directory) (CleanupResult, error) {
+	result := CleanupResult{}
+	localResult, err := CleanupLocalDocuments(dirs)
+	result.LocalDocumentsChecked = localResult.Checked
+	result.LocalDocumentsSkipped = localResult.Skipped
+	result.LocalDocumentsRemoved = localResult.Removed
+	if err != nil {
+		return result, err
+	}
+	result.HTMLRemoved, result.FaviconRemoved, err = CleanupDataFiles(basePath)
+	return result, err
 }
 
 // CleanupDataFiles removes orphaned HTML and favicon files from the data
@@ -874,7 +901,7 @@ func (i *indexer) validateFileDocument(d *document.Document) error {
 
 	filePath := filepath.Clean(files.FileURLToPath(d.URL))
 	dir := files.FindMatchingDir(i.directories, filePath)
-	if !filepath.IsAbs(filePath) || dir == nil || !dir.IsMatching(filePath) {
+	if !filepath.IsAbs(filePath) || !files.DirectoryMatchesPath(dir, filePath) {
 		return ErrFileURLNotAllowed
 	}
 	ownerID, err := files.FindDirUser(i.directories, filePath)

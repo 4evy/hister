@@ -259,10 +259,13 @@ func (c *Client) DeleteDocuments(query string) (err error) {
 	return checkStatus(resp)
 }
 
-// CleanupResult holds the number of orphaned files removed by the cleanup endpoint.
+// CleanupResult holds local file reconciliation and orphaned data cleanup counts.
 type CleanupResult struct {
-	HTMLRemoved    int `json:"htmlRemoved"`
-	FaviconRemoved int `json:"faviconRemoved"`
+	LocalDocumentsChecked int `json:"localDocumentsChecked"`
+	LocalDocumentsSkipped int `json:"localDocumentsSkipped"`
+	LocalDocumentsRemoved int `json:"localDocumentsRemoved"`
+	HTMLRemoved           int `json:"htmlRemoved"`
+	FaviconRemoved        int `json:"faviconRemoved"`
 }
 
 func (c *Client) Cleanup() (result CleanupResult, err error) {

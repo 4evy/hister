@@ -8,6 +8,46 @@ import (
 	"github.com/asciimoo/hister/server/testutil"
 )
 
+func TestDirectoryMatchesPath(t *testing.T) {
+	root := t.TempDir()
+	dir := &config.Directory{
+		Path:      root,
+		Filetypes: []string{"txt"},
+		Excludes:  []string{"excluded*"},
+	}
+
+	tests := []struct {
+		name string
+		path string
+		want bool
+	}{
+		{name: "matching file", path: filepath.Join(root, "notes", "note.txt"), want: true},
+		{name: "wrong file type", path: filepath.Join(root, "notes", "note.go")},
+		{name: "excluded file", path: filepath.Join(root, "notes", "excluded-note.txt")},
+		{name: "excluded parent", path: filepath.Join(root, "excluded-dir", "note.txt")},
+		{name: "hidden parent", path: filepath.Join(root, ".cache", "note.txt")},
+		{name: "dependency parent", path: filepath.Join(root, "node_modules", "note.txt")},
+		{name: "outside root", path: filepath.Join(t.TempDir(), "note.txt")},
+		{name: "directory root", path: root},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := DirectoryMatchesPath(dir, tt.path); got != tt.want {
+				t.Fatalf("DirectoryMatchesPath(%q) = %t, want %t", tt.path, got, tt.want)
+			}
+		})
+	}
+
+	dir.IncludeHidden = true
+	if !DirectoryMatchesPath(dir, filepath.Join(root, ".cache", "note.txt")) {
+		t.Fatal("hidden parent should match when include_hidden is enabled")
+	}
+	if !DirectoryMatchesPath(dir, filepath.Join(root, "node_modules", "note.txt")) {
+		t.Fatal("dependency parent should match when include_hidden is enabled")
+	}
+}
+
 func TestFindDirUser(t *testing.T) {
 	testutil.InitModel(t)
 
