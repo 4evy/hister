@@ -3,6 +3,7 @@ date: '2026-05-02T12:37:00+02:00'
 draft: false
 title: 'Using Hister for Threat Intelligence workflows'
 description: 'Some feedback on using Hister for Threat Intelligence workflows, with practical tips and lessons learned.'
+author: 'stanfrbd'
 ---
 
 ## `whoami`?

@@ -22,6 +22,8 @@ export async function load({ params }: { params: { slug: string } }) {
     error(404, `Post "${params.slug}" not found`);
   }
   const dateStr = post.metadata?.date as string | undefined;
+  const modifiedTime = (post.metadata?.updated as string | undefined) ?? dateStr;
+  const author = (post.metadata?.author as string | undefined) ?? 'Adam Tauber';
   let formattedDate = '';
   if (dateStr) {
     const date = new Date(dateStr);
@@ -37,5 +39,7 @@ export async function load({ params }: { params: { slug: string } }) {
     slug: params.slug,
     date: formattedDate,
     publishedTime: dateStr,
+    modifiedTime,
+    author,
   };
 }

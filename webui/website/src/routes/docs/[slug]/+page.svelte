@@ -61,6 +61,18 @@
   description={(data.meta.description as string) ??
     `Learn about ${data.meta.title} in the Hister documentation.`}
   path={`/docs/${data.slug}`}
+  type="article"
+  publishedTime={data.meta.date as string | undefined}
+  modifiedTime={(data.meta.updated as string | undefined) ?? (data.meta.date as string | undefined)}
+  author="Hister contributors"
+  section="Documentation"
+  schemaType="TechArticle"
+  schemaTitle={data.meta.title as string}
+  breadcrumbs={[
+    { name: 'Home', path: '/' },
+    { name: 'Documentation', path: '/docs' },
+    { name: data.meta.title as string, path: `/docs/${data.slug}` },
+  ]}
 />
 
 <div class="flex gap-10">

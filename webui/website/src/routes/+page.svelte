@@ -12,6 +12,8 @@
   title="Hister | Your Own Search Engine"
   description="Hister is a private, self hosted search engine for the pages you visit and the files you keep. Search from the web, terminal, command line, or MCP."
   path="/"
+  schemaType="SoftwareApplication"
+  schemaTitle="Hister"
 />
 
 <Hero />

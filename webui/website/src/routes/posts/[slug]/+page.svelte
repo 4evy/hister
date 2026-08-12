@@ -13,7 +13,16 @@
   image={data.meta.image ? `/posts/${data.meta.image as string}` : undefined}
   imageAlt={data.meta.image ? `${data.meta.title} social image` : undefined}
   publishedTime={data.publishedTime}
+  modifiedTime={data.modifiedTime}
+  author={data.author}
   section="Post"
+  schemaType="BlogPosting"
+  schemaTitle={data.meta.title as string}
+  breadcrumbs={[
+    { name: 'Home', path: '/' },
+    { name: 'Posts', path: '/posts' },
+    { name: data.meta.title as string, path: `/posts/${data.slug}` },
+  ]}
 />
 
 <header class="w-full bg-(--text-primary) px-6 py-12 md:py-16">
