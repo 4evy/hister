@@ -47,7 +47,7 @@
       <span class="font-space text-[22px] font-extrabold tracking-[2px] text-white uppercase"
         >Hister</span
       >
-      <span class="font-inter text-sm text-white/40">Your Own Search Engine</span>
+      <span class="font-inter text-sm text-white/70">Your Own Search Engine</span>
     </hgroup>
 
     <nav aria-label="Footer" class="flex flex-wrap gap-16">
@@ -83,11 +83,11 @@
   <Separator class="bg-white/15" />
 
   <div class="flex flex-col items-start justify-between gap-2 md:flex-row md:items-center">
-    <span class="font-inter text-[13px] text-white/25"
+    <span class="font-inter text-[13px] text-white/65"
       >2026 Hister. Open-source under <a href="https://www.gnu.org/licenses/#AGPL">AGPLv3 License</a
       >.</span
     >
-    <span class="font-space flex text-[13px] font-semibold tracking-[1px] text-white/25"
+    <span class="font-space flex text-[13px] font-semibold tracking-[1px] text-white/65"
       >Built with <Heart size={16} class="ml-1 fill-red-300 text-red-300" /></span
     >
   </div>

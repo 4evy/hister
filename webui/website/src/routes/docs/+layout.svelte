@@ -29,15 +29,15 @@
     <div class="mx-auto max-w-7xl">
       <nav
         aria-label="Breadcrumb"
-        class="font-space mb-4 flex items-center gap-2 text-[11px] font-bold tracking-[2px] text-white/40 uppercase"
+        class="font-space mb-4 flex items-center gap-2 text-[11px] font-bold tracking-[2px] text-white/65 uppercase"
       >
         <a
           href="/docs"
-          class="font-space text-[11px] font-bold tracking-[2px] text-white/40 no-underline transition-colors hover:text-white/60"
+          class="font-space text-[11px] font-bold tracking-[2px] text-white/65 no-underline transition-colors hover:text-white"
           >Docs</a
         >
         <span aria-hidden="true">/</span>
-        <span aria-current="page" class="text-white/70">{currentDoc?.title}</span>
+        <span aria-current="page" class="text-white/80">{currentDoc?.title}</span>
       </nav>
       <h1
         class="font-space text-3xl leading-tight font-black tracking-[-1px] text-white md:text-5xl"

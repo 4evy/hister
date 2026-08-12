@@ -91,19 +91,19 @@
       aria-modal="true"
       aria-label="Image preview"
       tabindex="-1"
-      class="relative flex max-h-full max-w-full items-center justify-center"
+      class="relative flex max-h-[calc(100dvh-2rem)] max-w-[calc(100dvw-2rem)] items-center justify-center md:max-h-[calc(100dvh-5rem)] md:max-w-[calc(100dvw-5rem)]"
     >
       <img
         src={openSrc}
         alt={openAlt}
-        class="block max-h-[120vh] max-w-[120vw] border-[3px] border-white object-contain shadow-[8px_8px_0_rgba(255,255,255,0.15)]"
+        class="block max-h-[calc(100dvh-2rem)] max-w-[calc(100dvw-2rem)] border-[3px] border-white object-contain shadow-[8px_8px_0_rgba(255,255,255,0.15)] md:max-h-[calc(100dvh-5rem)] md:max-w-[calc(100dvw-5rem)]"
       />
       <button
         onclick={close}
         aria-label="Close image preview"
-        class="absolute -top-3 -right-3 flex h-8 w-8 items-center justify-center border-[3px] border-white bg-white text-black shadow-[3px_3px_0_rgba(255,255,255,0.2)] transition-colors hover:bg-gray-100"
+        class="absolute top-2 right-2 flex size-11 cursor-pointer items-center justify-center border-[3px] border-white bg-white text-black shadow-[3px_3px_0_rgba(255,255,255,0.2)] transition-colors hover:bg-gray-100"
       >
-        <X size={14} />
+        <X size={20} />
       </button>
     </div>
   </div>

@@ -202,7 +202,9 @@
             class="font-space font-bold tracking-[1.5px] text-(--text-secondary) uppercase"
             >Search</label
           >
-          <div class="border-brutal-border relative flex items-center border-[2px]">
+          <div
+            class="border-brutal-border focus-within:border-hister-indigo focus-within:ring-hister-indigo/35 relative flex items-center border-[2px] transition-[border-color,box-shadow] focus-within:ring-[3px]"
+          >
             <span class="pointer-events-none absolute left-3 text-(--text-secondary)">
               <Search size={14} />
             </span>
@@ -211,7 +213,7 @@
               type="text"
               placeholder="Name or description..."
               bind:value={searchQuery}
-              class="font-inter w-full bg-transparent py-2 pr-8 pl-8 text-sm text-(--text-primary) outline-none placeholder:text-(--text-secondary)"
+              class="font-inter w-full bg-transparent py-2 pr-8 pl-8 text-sm text-(--text-primary) outline-none placeholder:text-(--text-secondary) focus-visible:outline-none"
             />
             {#if searchQuery}
               <button

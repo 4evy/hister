@@ -241,7 +241,7 @@
         }}
         oninput={() => (open = true)}
         onkeydown={handleInputKeydown}
-        class="font-inter w-full py-3.5 pr-4 pl-13 text-sm font-medium outline-none"
+        class="font-inter w-full py-3.5 pr-4 pl-13 text-sm font-medium outline-none focus-visible:outline-none"
       />
     </div>
   </div>

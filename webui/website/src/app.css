@@ -24,6 +24,14 @@ body {
   color: var(--text-primary);
 }
 
+a:not([data-slot='button']):focus-visible,
+button:not([data-slot='button']):focus-visible,
+summary:focus-visible,
+[role='button']:focus-visible {
+  outline: 3px solid var(--hister-indigo);
+  outline-offset: 3px;
+}
+
 @media (prefers-reduced-motion: reduce) {
   html {
     scroll-behavior: auto;
