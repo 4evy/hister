@@ -2,6 +2,7 @@
 date: '2026-08-01T00:00:00+02:00'
 draft: false
 title: 'What Hister Is'
+description: 'Understand what Hister indexes, how retrieval works, who it is for, and where your data remains.'
 ---
 
 Hister is a private, self hosted search engine for pages you visit and files you keep. It indexes their full contents so you can find information again from the web interface, terminal, API, or an AI assistant connected through MCP.

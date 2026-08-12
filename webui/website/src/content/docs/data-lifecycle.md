@@ -2,6 +2,7 @@
 date: '2026-08-01T00:00:00+02:00'
 draft: false
 title: 'Data Storage and Lifecycle'
+description: 'Learn where Hister stores data and how updates, previews, deletion, cleanup, and backups behave.'
 ---
 
 Hister keeps current searchable documents until you replace or delete them. It does not apply an automatic expiry period, a maximum document count, or a total disk quota. Some related SQL records can remain after current document deletion. The server operator is responsible for monitoring storage, creating backups, and applying any required deletion schedule.

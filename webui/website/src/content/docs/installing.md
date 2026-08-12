@@ -2,6 +2,7 @@
 date: '2026-07-14T00:00:00+02:00'
 draft: false
 title: 'Installing Hister'
+description: 'Install a release binary, build from source, or run Hister with Docker, Nix, or Proxmox VE.'
 ---
 
 The `hister` program contains both the search server and the terminal client. For the fastest local setup, download a prebuilt binary and continue with the [quickstart guide](quickstart).

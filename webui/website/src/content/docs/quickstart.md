@@ -2,6 +2,7 @@
 date: '2026-02-21T16:18:00+01:00'
 draft: false
 title: 'Quickstart'
+description: 'Start a local Hister server, connect a browser extension, and search your first indexed pages.'
 ---
 
 <script>

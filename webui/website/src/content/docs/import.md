@@ -2,6 +2,7 @@
 date: '2026-07-22T00:00:00+02:00'
 draft: false
 title: 'Importing Documents'
+description: 'Import files, browser history, bookmarks, archives, and supported reading services into Hister.'
 ---
 
 The `hister import` command collects related import tools under one command. Every import sends documents to a running Hister server.

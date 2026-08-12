@@ -2,6 +2,7 @@
 date: '2026-02-21T16:18:00+01:00'
 draft: false
 title: 'Server Setup'
+description: 'Run Hister on a local network or public server with authentication, TLS, and reverse proxies.'
 ---
 
 First, decide where you want your Hister server to run, relative to your client(s).

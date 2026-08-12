@@ -2,6 +2,7 @@
 date: '2026-07-16T12:00:00+02:00'
 draft: false
 title: 'Website Crawler'
+description: 'Index individual URLs or run persistent crawls with scope rules, browser backends, and resumable jobs.'
 ---
 
 Hister can fetch individual pages, crawl links recursively, or process a saved list of URLs from

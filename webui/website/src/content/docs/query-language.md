@@ -2,6 +2,7 @@
 date: '2026-02-25T00:00:00+00:00'
 draft: false
 title: 'Query Language Guide'
+description: 'Build precise searches with fields, phrases, dates, wildcards, negation, sorting, and alternatives.'
 ---
 
 Hister provides a query language that allows you to search through your content with precision. This guide explains the different query types and search techniques available.

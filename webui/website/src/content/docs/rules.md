@@ -2,6 +2,7 @@
 date: '2026-05-15T00:00:00+00:00'
 draft: false
 title: 'Rules'
+description: 'Control indexing and ranking with skip, priority, versioning, and query alias rules.'
 ---
 
 Rules let you control how Hister indexes and surfaces documents. They live in

@@ -2,6 +2,7 @@
 date: '2026-02-13T10:59:19+01:00'
 draft: false
 title: 'Terminal Client'
+description: 'Use Hister commands, global flags, terminal search, keyboard controls, mouse controls, and themes.'
 ---
 
 See also [the configuration documentation](configuration).

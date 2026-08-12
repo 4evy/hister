@@ -2,6 +2,7 @@
 date: '2026-04-07T11:00:00+00:00'
 draft: false
 title: 'Extractors'
+description: 'Understand the extractor chain, configure built in extractors, and develop new content handlers.'
 ---
 
 <script>

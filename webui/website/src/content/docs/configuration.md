@@ -2,6 +2,7 @@
 date: '2026-02-25T00:00:00+00:00'
 draft: false
 title: 'Configuration Reference'
+description: 'Explore every configuration section, option, default value, environment override, and complete example.'
 ---
 
 <script>

@@ -2,6 +2,7 @@
 date: '2026-03-26T00:00:00+00:00'
 draft: false
 title: 'User Handling'
+description: 'Configure multiple users, authentication, access tokens, document ownership, and public access.'
 ---
 
 User handling enables multiple independent users to share a single Hister instance. Each user has their own credentials, document collection, scoped search results, and access token for API clients. The server uses shared index files and enforces ownership during searches. User handling is disabled by default, making Hister fully backward compatible. Existing single user setups require no changes.

@@ -2,6 +2,7 @@
 date: '2026-07-09T00:00:00+00:00'
 draft: false
 title: 'File Types'
+description: 'Review supported local files, directory filters, document formats, and archive import behavior.'
 ---
 
 Hister can index local files from configured directories and from explicit imports. Directory indexing is controlled by the `indexer.directories` configuration.

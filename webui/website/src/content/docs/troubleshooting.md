@@ -2,6 +2,7 @@
 date: '2026-03-06T19:45:22-05:00'
 draft: false
 title: 'Troubleshooting'
+description: 'Diagnose server startup, interface, extension, import, memory, and browser debugging problems.'
 ---
 
 We are sorry that you are here. 🙁 Fingers crossed it won't be for long?

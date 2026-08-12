@@ -2,6 +2,7 @@
 date: '2026-08-01T00:00:00+02:00'
 draft: false
 title: 'Browser Ingestion'
+description: 'Choose between live browser capture and history imports, and understand how repeated visits are stored.'
 ---
 
 Hister can collect browsing data in two different ways. The browser extension captures pages as you visit them. The browser history import reads old URLs from a browser database and fetches their current contents. Many people use both.

@@ -2,6 +2,7 @@
 date: '2026-03-19T00:00:00+00:00'
 draft: false
 title: 'Browser Extension'
+description: 'Install and configure browser capture, authentication, search integration, and indexing controls.'
 ---
 
 <script>

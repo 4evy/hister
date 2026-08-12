@@ -2,6 +2,7 @@
 date: '2026-04-20T00:00:00+00:00'
 draft: false
 title: 'MCP Integration'
+description: 'Connect assistants to Hister search, previews, and history through the authenticated MCP endpoint.'
 ---
 
 Hister exposes a [Model Context Protocol](https://modelcontextprotocol.io) (MCP)

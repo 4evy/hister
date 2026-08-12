@@ -2,6 +2,7 @@
 date: '2026-03-06T22:13:54-05:00'
 draft: false
 title: 'Docker'
+description: 'Deploy Hister with Docker Compose, persistent storage, external access, and a reverse proxy.'
 ---
 
 ## Docker Setup
