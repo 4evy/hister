@@ -141,6 +141,7 @@ func tweetDocument(post *goquery.Selection, base *url.URL, userID uint) *documen
 	}
 
 	text, content := tweetText(post)
+	text = replaceTweetLinkURLs(text, rewriteTweetLinks(content, base))
 	urlutil.RewriteURLs(post, base)
 	h := tweetContentHTML(post, content, text)
 	author := formatAuthor(name, handle)
@@ -195,6 +196,7 @@ func tweetText(post *goquery.Selection) (string, *goquery.Selection) {
 		`[itemprop="text"]:not(meta)`,
 		`[data-contents="true"]`,
 		`[lang][dir="auto"]`,
+		`[dir="auto"]`,
 	} {
 		post.Find(selector).EachWithBreak(func(_ int, s *goquery.Selection) bool {
 			candidate := strings.TrimSpace(s.Text())
@@ -209,11 +211,11 @@ func tweetText(post *goquery.Selection) (string, *goquery.Selection) {
 		}
 	}
 
-	if semanticText != "" {
-		return semanticText, content
-	}
 	if content != nil {
 		return strings.TrimSpace(content.Text()), content
+	}
+	if semanticText != "" {
+		return semanticText, nil
 	}
 	return "", nil
 }
@@ -222,9 +224,20 @@ func relatedTweetText(semanticText, candidate string) bool {
 	if semanticText == "" {
 		return true
 	}
-	semanticText = strings.Join(strings.Fields(semanticText), " ")
-	candidate = strings.Join(strings.Fields(candidate), " ")
+	semanticText = normalizeTweetTextLinks(semanticText)
+	candidate = normalizeTweetTextLinks(candidate)
 	return strings.Contains(semanticText, candidate) || strings.Contains(candidate, semanticText)
+}
+
+func normalizeTweetTextLinks(text string) string {
+	fields := strings.Fields(text)
+	for i, field := range fields {
+		candidate := strings.Trim(field, `.,!?;:()[]{}<>"'`)
+		if isTCOURL(candidate) || parseOriginalTweetLinkURL(candidate, true) != "" {
+			fields[i] = strings.Replace(field, candidate, "{url}", 1)
+		}
+	}
+	return strings.Join(fields, " ")
 }
 
 func tweetContentHTML(post, content *goquery.Selection, text string) string {
@@ -235,10 +248,7 @@ func tweetContentHTML(post, content *goquery.Selection, text string) string {
 		}
 	}
 	if b.Len() == 0 && text != "" {
-		b.WriteString("<p>")
-		escaped := stdhtml.EscapeString(strings.ReplaceAll(text, "\r\n", "\n"))
-		b.WriteString(strings.ReplaceAll(escaped, "\n", "<br>"))
-		b.WriteString("</p>")
+		b.WriteString(paragraphHTML(text))
 	}
 
 	media := post.Find(strings.Join([]string{
@@ -256,6 +266,81 @@ func tweetContentHTML(post, content *goquery.Selection, text string) string {
 		b.WriteString("</figure>")
 	}
 	return b.String()
+}
+
+type tweetLink struct {
+	shortURL    string
+	originalURL string
+}
+
+func rewriteTweetLinks(content *goquery.Selection, base *url.URL) []tweetLink {
+	if content == nil {
+		return nil
+	}
+	links := make([]tweetLink, 0)
+	content.Find("a[href]").Each(func(_ int, anchor *goquery.Selection) {
+		shortURL := urlutil.ResolveURL(base, strings.TrimSpace(anchor.AttrOr("href", "")))
+		if !isTCOURL(shortURL) {
+			return
+		}
+		originalURL := originalTweetLinkURL(anchor)
+		if originalURL == "" {
+			anchor.RemoveAttr("href")
+			return
+		}
+
+		anchor.SetAttr("href", originalURL)
+		if strings.TrimSpace(anchor.Text()) == shortURL {
+			anchor.SetText(originalURL)
+		}
+		links = append(links, tweetLink{shortURL: shortURL, originalURL: originalURL})
+	})
+	return links
+}
+
+func originalTweetLinkURL(anchor *goquery.Selection) string {
+	for _, attr := range []string{"data-expanded-url", "title"} {
+		raw := strings.TrimSpace(anchor.AttrOr(attr, ""))
+		if originalURL := parseOriginalTweetLinkURL(raw, false); originalURL != "" {
+			return originalURL
+		}
+	}
+	return parseOriginalTweetLinkURL(strings.TrimSpace(anchor.Text()), true)
+}
+
+func parseOriginalTweetLinkURL(raw string, allowMissingScheme bool) string {
+	if raw == "" || strings.ContainsAny(raw, " \t\r\n…") || strings.Contains(raw, "...") {
+		return ""
+	}
+	if allowMissingScheme && !strings.Contains(raw, "://") {
+		raw = "https://" + raw
+	}
+	u, err := url.Parse(raw)
+	if err != nil ||
+		(u.Scheme != "http" && u.Scheme != "https") ||
+		!strings.Contains(u.Hostname(), ".") ||
+		isTCOURL(u.String()) {
+		return ""
+	}
+	return u.String()
+}
+
+func replaceTweetLinkURLs(text string, links []tweetLink) string {
+	for _, link := range links {
+		if link.shortURL != "" {
+			text = strings.ReplaceAll(text, link.shortURL, link.originalURL)
+		}
+	}
+	return text
+}
+
+func isTCOURL(raw string) bool {
+	u, err := url.Parse(raw)
+	if err != nil {
+		return false
+	}
+	host := strings.ToLower(u.Hostname())
+	return host == "t.co" || host == "www.t.co"
 }
 
 func tweetAuthor(post *goquery.Selection) (string, string) {

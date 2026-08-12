@@ -138,6 +138,7 @@ func TestExtractSemanticFeed(t *testing.T) {
 					<meta itemprop="name" content="GitHub Status">
 					<meta itemprop="alternateName" content="githubstatus">
 				</div>
+				<div data-testid="tweetText">First status update <a href="https://t.co/example" data-expanded-url="https://githubstatus.com/incidents/123">https://t.co/example</a></div>
 				<img src="https://pbs.twimg.com/media/example.jpg" alt="Incident chart">
 			</article>
 			<article data-tweet-id="456" itemscope itemtype="https://schema.org/SocialMediaPosting">
@@ -172,7 +173,7 @@ func TestExtractSemanticFeed(t *testing.T) {
 	if got, want := first.Title, "Twitter tweet: GitHub Status (@githubstatus)"; got != want {
 		t.Fatalf("tweet title = %q, want %q", got, want)
 	}
-	if got, want := first.Text, "First status update https://t.co/example"; got != want {
+	if got, want := first.Text, "First status update https://githubstatus.com/incidents/123"; got != want {
 		t.Fatalf("tweet text = %q, want %q", got, want)
 	}
 	if first.UserID != d.UserID {
@@ -188,11 +189,28 @@ func TestExtractSemanticFeed(t *testing.T) {
 			t.Errorf("tweet metadata %q = %#v, want %#v", key, got, want)
 		}
 	}
-	if !strings.Contains(first.HTML, "<p>First status update") {
+	if !strings.Contains(first.HTML, "First status update") {
 		t.Fatalf("tweet HTML is missing body text: %s", first.HTML)
 	}
 	if !strings.Contains(first.HTML, "https://pbs.twimg.com/media/example.jpg") {
 		t.Fatalf("tweet HTML is missing media: %s", first.HTML)
+	}
+	if !strings.Contains(first.HTML, `href="https://githubstatus.com/incidents/123"`) ||
+		!strings.Contains(first.HTML, `>https://githubstatus.com/incidents/123</a>`) {
+		t.Fatalf("tweet HTML is missing the expanded link: %s", first.HTML)
+	}
+	if strings.Contains(first.HTML, "t.co") {
+		t.Fatalf("tweet HTML contains a redirect link: %s", first.HTML)
+	}
+	preview, previewState, err := (&TwitterExtractor{}).Preview(first)
+	if err != nil {
+		t.Fatalf("Preview returned an error: %v", err)
+	}
+	if previewState != types.ExtractorStop {
+		t.Fatalf("Preview state = %v, want %v", previewState, types.ExtractorStop)
+	}
+	if !strings.Contains(preview.Content, `<a href="https://githubstatus.com/incidents/123">`) {
+		t.Fatalf("tweet preview is missing the expanded link: %s", preview.Content)
 	}
 	if got, want := d.ExtraDocuments[1].URL, "https://x.com/githubstatus/status/456"; got != want {
 		t.Fatalf("second tweet URL = %q, want %q", got, want)
@@ -208,7 +226,7 @@ func TestExtractRenderedTweet(t *testing.T) {
 				<a href="/alice"><span>@alice</span></a>
 			</div>
 			<div data-testid="tweetText" lang="en" dir="auto">
-				<span>Hello from the rendered feed </span><a href="/hashtag/golang">#golang</a>
+				<span>Hello from the rendered feed </span><a href="https://t.co/godoc">go.dev/doc/</a><span> </span><a href="/hashtag/golang" title="Posts about golang">#golang</a>
 			</div>
 			<a href="/alice/status/987?s=20"><time datetime="2026-08-12T08:30:00.000Z">1h</time></a>
 		</article>`,
@@ -238,8 +256,142 @@ func TestExtractRenderedTweet(t *testing.T) {
 	if !strings.Contains(tweet.Text, "Hello from the rendered feed") || !strings.Contains(tweet.Text, "#golang") {
 		t.Fatalf("tweet text is incomplete: %q", tweet.Text)
 	}
+	if !strings.Contains(tweet.Text, "go.dev/doc") || strings.Contains(tweet.Text, "t.co") {
+		t.Fatalf("tweet text does not preserve the visible link text: %q", tweet.Text)
+	}
 	if !strings.Contains(tweet.HTML, `href="https://twitter.com/hashtag/golang"`) {
 		t.Fatalf("tweet HTML contains an unresolved link: %s", tweet.HTML)
+	}
+	if !strings.Contains(tweet.HTML, `<a href="https://go.dev/doc/"`) || strings.Contains(tweet.HTML, `href="https://t.co/`) {
+		t.Fatalf("tweet HTML does not use the expanded link: %s", tweet.HTML)
+	}
+}
+
+func TestRenderedTweetBodyOverridesSemanticShortLinks(t *testing.T) {
+	d := &document.Document{
+		URL: "https://x.com/Searx_engine",
+		HTML: `<article data-tweet-id="2082457095195009245" itemtype="https://schema.org/SocialMediaPosting">
+			<meta content="2082457095195009245" itemprop="identifier">
+			<meta content="https://x.com/Searx_engine/status/2082457095195009245" itemprop="url">
+			<meta content="Read https://t.co/PHxDYjim09 - https://t.co/o2eq7M3JBw" itemprop="articleBody">
+			<div itemprop="author"><meta content="Searx_engine" itemprop="alternateName"><meta content="Searx_engine" itemprop="name"></div>
+			<div dir="auto" class="font-chirp">
+				<span>Read </span><a href="https://github.com/asciimoo/hister">github.com/asciimoo/hister</a><span> - </span><a href="https://hister.org/">hister.org</a>
+			</div>
+		</article>`,
+	}
+
+	state, err := (&TwitterExtractor{}).Extract(d)
+	if err != nil {
+		t.Fatalf("Extract returned an error: %v", err)
+	}
+	if state != types.ExtractorStop || len(d.ExtraDocuments) != 1 {
+		t.Fatalf("Extract returned state %v and %d documents", state, len(d.ExtraDocuments))
+	}
+
+	tweet := d.ExtraDocuments[0]
+	if strings.Contains(tweet.Text, "t.co") ||
+		!strings.Contains(tweet.Text, "github.com/asciimoo/hister") ||
+		!strings.Contains(tweet.Text, "hister.org") {
+		t.Fatalf("tweet text does not use the rendered links: %q", tweet.Text)
+	}
+	if !strings.Contains(tweet.HTML, `href="https://github.com/asciimoo/hister"`) ||
+		!strings.Contains(tweet.HTML, `href="https://hister.org/"`) ||
+		strings.Contains(tweet.HTML, "t.co") {
+		t.Fatalf("tweet HTML does not use the rendered links: %s", tweet.HTML)
+	}
+}
+
+func TestRenderedTruncatedLinkIsNotExpanded(t *testing.T) {
+	d := &document.Document{
+		URL: "https://x.com/alice/status/988",
+		HTML: `<article data-testid="tweet" data-tweet-id="988">
+			<div data-testid="User-Name"><a href="/alice">Alice</a><a href="/alice">@alice</a></div>
+			<div data-testid="tweetText">Read <a href="https://t.co/truncated">example.com/a/very/long…</a></div>
+			<a href="/alice/status/988"><time datetime="2026-08-12T10:00:00Z">now</time></a>
+		</article>`,
+	}
+
+	state, err := (&TwitterExtractor{}).Extract(d)
+	if err != nil {
+		t.Fatalf("Extract returned an error: %v", err)
+	}
+	if state != types.ExtractorStop || len(d.ExtraDocuments) != 1 {
+		t.Fatalf("Extract returned state %v and %d documents", state, len(d.ExtraDocuments))
+	}
+	if strings.Contains(d.ExtraDocuments[0].HTML, `href="https://example.com/a/very/long`) {
+		t.Fatalf("tweet HTML guessed a truncated URL: %s", d.ExtraDocuments[0].HTML)
+	}
+}
+
+func TestRenderedLabelIsNotTreatedAsURL(t *testing.T) {
+	d := &document.Document{
+		URL: "https://x.com/alice/status/989",
+		HTML: `<article data-testid="tweet" data-tweet-id="989">
+			<div data-testid="User-Name"><a href="/alice">Alice</a><a href="/alice">@alice</a></div>
+			<div data-testid="tweetText">Read <a href="https://t.co/label">details</a></div>
+			<a href="/alice/status/989"><time datetime="2026-08-12T10:00:00Z">now</time></a>
+		</article>`,
+	}
+
+	state, err := (&TwitterExtractor{}).Extract(d)
+	if err != nil {
+		t.Fatalf("Extract returned an error: %v", err)
+	}
+	if state != types.ExtractorStop || len(d.ExtraDocuments) != 1 {
+		t.Fatalf("Extract returned state %v and %d documents", state, len(d.ExtraDocuments))
+	}
+	if strings.Contains(d.ExtraDocuments[0].HTML, `href="https://details"`) {
+		t.Fatalf("tweet HTML treated a label as a URL: %s", d.ExtraDocuments[0].HTML)
+	}
+}
+
+func TestUnexpandedTCOURLIsNotClickable(t *testing.T) {
+	d := &document.Document{
+		URL: "https://x.com/alice/status/321",
+		HTML: `<article data-testid="tweet" data-tweet-id="321">
+			<div data-testid="User-Name"><a href="/alice">Alice</a><a href="/alice">@alice</a></div>
+			<div data-testid="tweetText">Read <a href="https://t.co/unknown">this link</a></div>
+			<a href="/alice/status/321"><time datetime="2026-08-12T10:00:00Z">now</time></a>
+		</article>`,
+	}
+
+	state, err := (&TwitterExtractor{}).Extract(d)
+	if err != nil {
+		t.Fatalf("Extract returned an error: %v", err)
+	}
+	if state != types.ExtractorStop || len(d.ExtraDocuments) != 1 {
+		t.Fatalf("Extract returned state %v and %d documents", state, len(d.ExtraDocuments))
+	}
+	if strings.Contains(d.ExtraDocuments[0].HTML, `href="https://t.co/unknown"`) {
+		t.Fatalf("tweet HTML contains a redirect link: %s", d.ExtraDocuments[0].HTML)
+	}
+}
+
+func TestExternalAnchorIsNotPairedWithSemanticShortURL(t *testing.T) {
+	d := &document.Document{
+		URL: "https://x.com/alice/status/322",
+		HTML: `<article data-tweet-id="322" itemtype="https://schema.org/SocialMediaPosting">
+			<meta itemprop="url" content="https://x.com/alice/status/322">
+			<meta itemprop="articleBody" content="Read https://t.co/original">
+			<div itemprop="author"><meta itemprop="alternateName" content="alice"></div>
+			<a href="https://example.com/original/article">example.com</a>
+		</article>`,
+	}
+
+	state, err := (&TwitterExtractor{}).Extract(d)
+	if err != nil {
+		t.Fatalf("Extract returned an error: %v", err)
+	}
+	if state != types.ExtractorStop || len(d.ExtraDocuments) != 1 {
+		t.Fatalf("Extract returned state %v and %d documents", state, len(d.ExtraDocuments))
+	}
+	tweet := d.ExtraDocuments[0]
+	if !strings.Contains(tweet.Text, "https://t.co/original") {
+		t.Fatalf("tweet text was unexpectedly rewritten: %q", tweet.Text)
+	}
+	if strings.Contains(tweet.HTML, "https://example.com/original/article") {
+		t.Fatalf("tweet HTML contains an unrelated external link: %s", tweet.HTML)
 	}
 }
 

@@ -410,6 +410,15 @@ supports rendered tweet elements and Open Graph metadata from individual tweet
 pages. This allows it to handle both server rendered pages and pages captured
 after the application has loaded in a browser.
 
+When a rendered tweet body is available, it is preferred over semantic metadata
+so original link destinations produced by the application are preserved.
+Expanded link attributes on anchors inside the tweet body replace `t.co`
+aliases in indexed text. When an expanded attribute is absent, a complete URL
+rendered as the anchor text is used instead. Truncated visible URLs are not
+guessed. Preview anchors point directly to the original destination. A `t.co`
+URL with no available destination remains plain text rather than becoming a
+clickable redirect link.
+
 **Matches:** feeds, profiles, and tweet pages on `twitter.com` and `x.com`,
 including their common web and mobile hostnames.
 
