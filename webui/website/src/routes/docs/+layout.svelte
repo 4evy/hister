@@ -3,6 +3,7 @@
   import BookOpenIcon from '@lucide/svelte/icons/book-open';
   import ChevronDownIcon from '@lucide/svelte/icons/chevron-down';
   import DocsNavigation from '$lib/DocsNavigation.svelte';
+  import DocsSearch from '$lib/DocsSearch.svelte';
 
   let { children, data } = $props();
 
@@ -43,6 +44,9 @@
       >
         {currentDoc?.title}
       </h1>
+      <div class="mt-7">
+        <DocsSearch tone="dark" />
+      </div>
     </div>
   </header>
 

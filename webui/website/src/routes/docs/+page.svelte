@@ -3,10 +3,12 @@
   import Globe from '@lucide/svelte/icons/globe';
   import SettingsIcon from '@lucide/svelte/icons/settings';
   import * as Card from '@hister/components/ui/card';
+  import DocsSearch from '$lib/DocsSearch.svelte';
   import Seo from '$lib/Seo.svelte';
 
   let { data } = $props();
   const featuredSlugs = new Set(['configuration']);
+  const featuredDoc = $derived(data.docs.find((doc) => doc.slug === 'configuration'));
 </script>
 
 <Seo
@@ -17,10 +19,13 @@
 
 <section class="mx-auto max-w-4xl px-6 py-12 md:px-12">
   <h1
-    class="font-space mb-10 text-4xl font-black tracking-[-1px] text-(--text-primary) uppercase md:text-5xl"
+    class="font-space text-4xl font-black tracking-[-1px] text-(--text-primary) uppercase md:text-5xl"
   >
     Documentation
   </h1>
+  <div class="mt-6 mb-10">
+    <DocsSearch />
+  </div>
 
   <Card.Root href="/docs/configuration" color="hister-indigo" class="bg-hister-indigo/10 mb-10 p-6">
     <div class="flex items-center gap-4">
@@ -35,6 +40,11 @@
         >
           Configuration Reference
         </h2>
+        {#if featuredDoc?.description}
+          <p class="font-inter mt-2 text-sm leading-relaxed text-(--text-secondary)">
+            {featuredDoc.description}
+          </p>
+        {/if}
       </div>
       <ArrowRightIcon aria-hidden="true" size={20} class="text-hister-indigo shrink-0" />
     </div>
@@ -61,6 +71,11 @@
                 >
                   {doc.title}
                 </h2>
+                {#if doc.description}
+                  <p class="font-inter mt-2 text-sm leading-relaxed text-(--text-secondary)">
+                    {doc.description}
+                  </p>
+                {/if}
               </Card.Root>
             </li>
           {/if}

@@ -5,6 +5,7 @@ const modules = import.meta.glob('../../content/docs/*.md', { eager: true });
 export interface DocEntry {
   slug: string;
   title: string;
+  description: string;
 }
 
 export interface DocCategory {
@@ -20,6 +21,7 @@ export async function load() {
         slug,
         title:
           mod?.metadata?.title ?? slug.replace(/-/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase()),
+        description: mod?.metadata?.description ?? '',
       };
     }),
   );

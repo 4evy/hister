@@ -58,7 +58,8 @@
 
 <Seo
   title={`${data.meta.title} | Hister Documentation`}
-  description={`Learn about ${data.meta.title} in the Hister documentation.`}
+  description={(data.meta.description as string) ??
+    `Learn about ${data.meta.title} in the Hister documentation.`}
   path={`/docs/${data.slug}`}
 />
 
