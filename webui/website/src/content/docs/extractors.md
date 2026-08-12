@@ -398,6 +398,21 @@ pass.
 
 **Matches:** any Mastodon instance page containing the Mastodon source marker.
 
+### `twitter`
+
+Handles Twitter and X feeds, profiles, and tweet pages by splitting every
+visible tweet into a separate document. Each tweet receives its canonical X
+URL, author, handle, publication time, and a `type: tweet` metadata marker. The
+feed or conversation page itself is not indexed.
+
+The extractor first reads schema.org `SocialMediaPosting` metadata. It also
+supports rendered tweet elements and Open Graph metadata from individual tweet
+pages. This allows it to handle both server rendered pages and pages captured
+after the application has loaded in a browser.
+
+**Matches:** feeds, profiles, and tweet pages on `twitter.com` and `x.com`,
+including their common web and mobile hostnames.
+
 ### `notion`
 
 Extracts the title and rendered block content of Notion pages and produces a

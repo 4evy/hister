@@ -28,6 +28,7 @@ import (
 	"github.com/asciimoo/hister/server/extractor/extractors/notion"
 	"github.com/asciimoo/hister/server/extractor/extractors/org"
 	"github.com/asciimoo/hister/server/extractor/extractors/stackexchange"
+	"github.com/asciimoo/hister/server/extractor/extractors/twitter"
 	"github.com/asciimoo/hister/server/extractor/extractors/wikipedia"
 	"github.com/asciimoo/hister/server/extractor/extractors/ytdlp"
 	"github.com/asciimoo/hister/server/sanitizer"
@@ -147,6 +148,7 @@ var extractors = []Extractor{
 	&lobsters.LobstersExtractor{},
 	&wikipedia.WikipediaExtractor{},
 	&mastodon.MastodonExtractor{},
+	&twitter.TwitterExtractor{},
 	&notion.NotionExtractor{},
 	&ytdlp.YtdlpExtractor{},
 	&readabilityExtractor{},
