@@ -37,14 +37,6 @@ func (docxFileType) Index(i *Indexer, d *document.Document, docxData []byte) err
 	return i.Add(d)
 }
 
-func AddDocx(d *document.Document, docxData []byte) error {
-	idx, err := currentIndexer()
-	if err != nil {
-		return err
-	}
-	return idx.AddDocx(d, docxData)
-}
-
 func (i *Indexer) AddDocx(d *document.Document, docxData []byte) error {
 	return docxFileType{}.Index(i, d, docxData)
 }

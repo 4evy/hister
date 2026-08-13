@@ -162,9 +162,10 @@ var listenCmd = &cobra.Command{
 		if err := cfg.ValidatePublicMode(); err != nil {
 			exit(1, "Failed to initialize config: "+err.Error())
 		}
-		initIndex()
 	},
 	Run: func(cmd *cobra.Command, _ []string) {
+		idx := initIndex()
+		defer idx.Close()
 		if a, err := cmd.Flags().GetString("address"); err == nil && cmd.Flags().Changed("address") {
 			if err := cfg.UpdateListenAddress(a); err != nil {
 				exit(1, `Failed to set server address: `+err.Error())
@@ -174,7 +175,7 @@ var listenCmd = &cobra.Command{
 			log.Warn().Msg("Using authentication without https. Credentials and sessions are sent in plain text network requests.")
 		}
 		if len(cfg.Indexer.Directories) > 0 {
-			fileQueue := indexer.NewFileIndexQueue()
+			fileQueue := idx.NewFileIndexQueue()
 			go func() {
 				if err := fileQueue.Run(context.Background()); err != nil {
 					log.Error().Err(err).Msg("File index queue failed")
@@ -200,7 +201,7 @@ var listenCmd = &cobra.Command{
 			}()
 		}
 		server.Version = Version
-		server.Listen(cfg)
+		server.Listen(cfg, idx)
 	},
 }
 
@@ -497,13 +498,14 @@ func initialAnalyzerFingerprint(indexerVersion int, detectLanguages, keepStopwor
 	return indexer.AnalyzerFingerprint(detectLanguages, false)
 }
 
-func initIndex() {
+func initIndex() *indexer.Indexer {
 	initDB()
 	initExtractor()
-	if err := indexer.Init(cfg); err != nil {
+	idx, err := indexer.New(cfg)
+	if err != nil {
 		exit(1, "Indexer initialization error: "+err.Error())
 	}
-	v, storedFingerprint, err := indexer.GetMetadata()
+	v, storedFingerprint, err := idx.GetMetadata()
 	if err != nil {
 		exit(1, "Failed to retrieve index metadata: "+err.Error())
 	}
@@ -530,7 +532,7 @@ func initIndex() {
 		v = indexer.Version
 	}
 	if metadataMissing {
-		if err := indexer.SetMetadata(v, storedFingerprint); err != nil {
+		if err := idx.SetMetadata(v, storedFingerprint); err != nil {
 			exit(1, "Failed to store index metadata: "+err.Error())
 		}
 	}
@@ -541,6 +543,7 @@ func initIndex() {
 		log.Warn().Msg(cliWarningStyle.Render("The analyzer configuration differs from the indexed configuration. Run `hister reindex` to update your index."))
 	}
 	log.Debug().Msg("Indexer initialization complete")
+	return idx
 }
 
 func newClient(extraOpts ...client.Option) *client.Client {

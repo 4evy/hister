@@ -31,7 +31,7 @@ func TestAddFormAccessTokenDoesNotAuthenticate(t *testing.T) {
 	})
 	h = withCSRF(h)
 	h = withTokenAuth(h)
-	handler := http.HandlerFunc(createHandler(cfg, h))
+	handler := http.HandlerFunc(createHandler(cfg, nil, h))
 	body := url.Values{
 		"access_token": {"secret"},
 		"url":          {"https://example.com"},

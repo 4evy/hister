@@ -73,43 +73,9 @@ func writeIndexMetadata(idx bleve.Index, metadata indexMetadata) error {
 	return nil
 }
 
-func currentIndexer() (*Indexer, error) {
-	indexer, err := defaultInstance()
-	if err != nil {
-		return nil, err
-	}
-	if indexer.indexers[defaultIndexerName] == nil {
-		return nil, errors.New("default index is not initialized")
-	}
-	return indexer, nil
-}
-
-func defaultInstance() (*Indexer, error) {
-	if defaultIndexer == nil {
-		return nil, ErrNotInitialized
-	}
-	return defaultIndexer, nil
-}
-
-func GetMetadata() (int, string, error) {
-	indexer, err := currentIndexer()
-	if err != nil {
-		return -1, "", err
-	}
-	return indexer.GetMetadata()
-}
-
 func (i *Indexer) GetMetadata() (int, string, error) {
 	metadata, err := i.getMetadata()
 	return metadata.Version, metadata.AnalyzerFingerprint, err
-}
-
-func SetMetadata(version int, analyzerFingerprint string) error {
-	indexer, err := currentIndexer()
-	if err != nil {
-		return err
-	}
-	return indexer.SetMetadata(version, analyzerFingerprint)
 }
 
 func (i *Indexer) SetMetadata(version int, analyzerFingerprint string) error {

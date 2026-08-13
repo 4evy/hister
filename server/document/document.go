@@ -71,7 +71,7 @@ func (e *ReadFileError) Error() string {
 }
 
 // SetSensitiveContentPattern sets the regexp used to detect sensitive content.
-// Call this from indexer.Init() after building the pattern from config.
+// Process uses this pattern when no pattern is supplied explicitly.
 func SetSensitiveContentPattern(re *regexp.Regexp) {
 	sensitiveContentRe = re
 }

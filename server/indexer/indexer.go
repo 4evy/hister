@@ -267,14 +267,10 @@ type MultiBatch struct {
 }
 
 var (
-	defaultIndexer           *Indexer
 	registerHighlightersOnce sync.Once
 	registerHighlightersErr  error
 	// allFields      []string       = []string{"url", "title", "text", "favicon", "html", "domain", "added", "updated", "type", "user_id"}
-	allFields []string = []string{"*"}
-	// ErrNotInitialized indicates that a compatibility package function was
-	// called before Init configured the default indexer.
-	ErrNotInitialized                   = errors.New("indexer is not initialized")
+	allFields            []string       = []string{"*"}
 	ErrEmptyFilter                      = errors.New("delete query must not be empty")
 	ErrFileURLNotAllowed                = errors.New("file URL is not allowed")
 	bleveConfig          map[string]any = map[string]any{
@@ -293,16 +289,6 @@ var (
 		},
 	}
 )
-
-func Init(cfg *config.Config) error {
-	idx, err := New(cfg)
-	if err != nil {
-		return err
-	}
-	defaultIndexer = idx
-	document.SetSensitiveContentPattern(idx.sensitivePattern)
-	return nil
-}
 
 // New creates an independent indexer instance from cfg.
 func New(cfg *config.Config) (*Indexer, error) {
@@ -549,14 +535,6 @@ func openReindexSources(basePath string, current map[string]bleve.Index) (map[st
 	return sources, closeExtraSources, nil
 }
 
-func Reindex(basePath string, rules *config.Rules, skipSensitiveChecks bool, detectLanguages, keepStopwords bool, dirs []*config.Directory) error {
-	idx, err := currentIndexer()
-	if err != nil {
-		return err
-	}
-	return idx.reindex(basePath, rules, skipSensitiveChecks, detectLanguages, keepStopwords, dirs)
-}
-
 func (i *Indexer) Reindex(rules *config.Rules, skipSensitiveChecks bool, detectLanguages, keepStopwords bool, dirs []*config.Directory) error {
 	return i.reindex(i.dir, rules, skipSensitiveChecks, detectLanguages, keepStopwords, dirs)
 }
@@ -762,7 +740,7 @@ func (idx *Indexer) reindex(basePath string, rules *config.Rules, skipSensitiveC
 	// Restore settings that are not part of the index state.
 	idx.disablePreviews = tmpIdx.disablePreviews
 	idx.directories = dirs
-	// Restore the vector store and embedder on the newly initialized global indexer.
+	// Restore the vector store and embedder on the replacement indexer.
 	if vs != nil && embedder != nil {
 		idx.vectorStore = vs
 		idx.embedder = embedder
@@ -797,14 +775,6 @@ type CleanupResult struct {
 
 // Cleanup removes local documents that no longer match the directory config,
 // then removes orphaned HTML and favicon data files.
-func Cleanup(_ string, dirs []*config.Directory) (CleanupResult, error) {
-	idx, err := currentIndexer()
-	if err != nil {
-		return CleanupResult{}, err
-	}
-	return idx.Cleanup(dirs)
-}
-
 func (i *Indexer) Cleanup(dirs []*config.Directory) (CleanupResult, error) {
 	result := CleanupResult{}
 	localResult, err := i.CleanupLocalDocuments(dirs)
@@ -825,14 +795,6 @@ func (i *Indexer) Cleanup(dirs []*config.Directory) (CleanupResult, error) {
 // Each candidate file is checked with a live ref-count query while holding the
 // per-key shard lock, so the check and the removal are atomic and safe against
 // concurrent /api/add calls.
-func CleanupDataFiles(_ string) (int, int, error) {
-	idx, err := currentIndexer()
-	if err != nil {
-		return 0, 0, err
-	}
-	return idx.CleanupDataFiles()
-}
-
 func (i *Indexer) CleanupDataFiles() (int, int, error) {
 	htmlRemoved, err := i.data.cleanup("html_key", htmlSubdir, i.countKeyRefs)
 	if err != nil {
@@ -843,14 +805,6 @@ func (i *Indexer) CleanupDataFiles() (int, int, error) {
 		return htmlRemoved, faviconRemoved, fmt.Errorf("failed to clean up orphaned favicon data files: %w", err)
 	}
 	return htmlRemoved, faviconRemoved, nil
-}
-
-func ReadFavicon(key string) ([]byte, error) {
-	idx, err := currentIndexer()
-	if err != nil {
-		return nil, err
-	}
-	return idx.ReadFavicon(key)
 }
 
 func (i *Indexer) ReadFavicon(key string) ([]byte, error) {
@@ -870,27 +824,6 @@ func validDataKey(key string) bool {
 		}
 	}
 	return true
-}
-
-func DocumentCount() uint64 {
-	idx, err := currentIndexer()
-	if err != nil {
-		return 0
-	}
-	return idx.Total()
-}
-
-func DocumentCountByUser(userID uint) uint64 {
-	idx, err := currentIndexer()
-	if err != nil {
-		return 0
-	}
-	return idx.TotalByUser(userID)
-}
-
-// SemanticSearchEnabled reports whether the vector store and embedder are active.
-func SemanticSearchEnabled() bool {
-	return defaultIndexer != nil && defaultIndexer.SemanticSearchEnabled()
 }
 
 func (i *Indexer) SemanticSearchEnabled() bool {
@@ -962,14 +895,6 @@ func embedDocumentChunks(ctx context.Context, idx *Indexer, d *document.Document
 	}
 	log.Debug().Str("url", d.URL).Int("chunks", len(chunks)).Dur("duration", time.Since(start)).Msg("embedded document chunks")
 	return nil
-}
-
-func Add(d *document.Document) error {
-	idx, err := defaultInstance()
-	if err != nil {
-		return err
-	}
-	return idx.Add(d)
 }
 
 func (i *Indexer) Add(d *document.Document) error {
@@ -1260,14 +1185,6 @@ func (i *Indexer) prepareForStorage(d *document.Document) error {
 }
 
 // Saves a document without any processing
-func Save(d *document.Document) error {
-	idx, err := currentIndexer()
-	if err != nil {
-		return err
-	}
-	return idx.Save(d)
-}
-
 func (i *Indexer) Save(d *document.Document) error {
 	return i.save(d)
 }
@@ -1352,13 +1269,6 @@ func (i *Indexer) adopt(replacement *Indexer) {
 	i.maxFileSize = replacement.maxFileSize
 	i.sensitivePattern = replacement.sensitivePattern
 	i.semanticConfig = replacement.semanticConfig
-}
-
-func NewMultiBatch() *MultiBatch {
-	if defaultIndexer == nil {
-		return nil
-	}
-	return defaultIndexer.NewMultiBatch()
 }
 
 func (i *Indexer) NewMultiBatch() *MultiBatch {
@@ -1500,14 +1410,6 @@ func (b *MultiBatch) Save() error {
 	return nil
 }
 
-func Delete(id string) error {
-	idx, err := currentIndexer()
-	if err != nil {
-		return err
-	}
-	return idx.Delete(id)
-}
-
 func (i *Indexer) Delete(id string) error {
 	htmlKeys, faviconKeys := i.getDocKeysByID(id)
 	for _, idx := range i.indexers {
@@ -1530,14 +1432,6 @@ func (i *Indexer) Delete(id string) error {
 		i.data.deleteIfOrphaned("favicon_key", faviconSubdir, k, i.countKeyRefs)
 	}
 	return nil
-}
-
-func DeleteByQuery(text string, userID *uint, onDelete func(url string, userID uint)) (int, error) {
-	idx, err := currentIndexer()
-	if err != nil {
-		return 0, err
-	}
-	return idx.DeleteByQuery(text, userID, onDelete)
 }
 
 func (i *Indexer) DeleteByQuery(text string, userID *uint, onDelete func(url string, userID uint)) (int, error) {
@@ -1594,14 +1488,6 @@ func (i *Indexer) DeleteByQuery(text string, userID *uint, onDelete func(url str
 		searchAfter = res.Hits[n-1].Sort
 	}
 	return count, nil
-}
-
-func Search(cfg *config.Config, q *Query) (*Results, error) {
-	idx, err := currentIndexer()
-	if err != nil {
-		return nil, err
-	}
-	return idx.search(cfg.SemanticSearch, q)
 }
 
 func (i *Indexer) Search(q *Query) (*Results, error) {
@@ -1778,13 +1664,6 @@ func (i *Indexer) search(semanticConfig config.SemanticSearch, q *Query) (*Resul
 // selects the global (single-user) owner; an instance that mixes uid-0 public
 // docs with per-user private docs still gets the right one because the lookup
 // goes through document.GetDocID.
-func GetByURLAndUser(u string, uid uint) *document.Document {
-	if defaultIndexer == nil {
-		return nil
-	}
-	return defaultIndexer.GetByURLAndUser(u, uid)
-}
-
 func (i *Indexer) GetByURLAndUser(u string, uid uint) *document.Document {
 	if uid > 0 {
 		if d := i.GetByDocID(document.GetDocID(uid, u)); d != nil {
@@ -1793,13 +1672,6 @@ func (i *Indexer) GetByURLAndUser(u string, uid uint) *document.Document {
 	}
 	// try to get the document with 0 UID if the document was not found for the > 0 UID
 	return i.GetByDocID(document.GetDocID(0, u))
-}
-
-func GetAddCountByURLAndUser(u string, uid uint) uint {
-	if defaultIndexer == nil {
-		return 0
-	}
-	return defaultIndexer.GetAddCountByURLAndUser(u, uid)
 }
 
 func (i *Indexer) GetAddCountByURLAndUser(u string, uid uint) uint {
@@ -1835,13 +1707,6 @@ func (i *Indexer) getAddCountByDocID(id string) (uint, bool) {
 
 // GetByDocID returns the document with the given bleve document ID, or nil if
 // none exists. The ID is the uid-prefixed form produced by document.GetDocID.
-func GetByDocID(id string) *document.Document {
-	if defaultIndexer == nil {
-		return nil
-	}
-	return defaultIndexer.GetByDocID(id)
-}
-
 func (i *Indexer) GetByDocID(id string) *document.Document {
 	return i.getByDocID(id, resultIncludeAll)
 }
@@ -1856,13 +1721,6 @@ func (i *Indexer) getByDocID(id string, include resultInclude) *document.Documen
 		return nil
 	}
 	return i.resFromHit(res.Hits[0], include)
-}
-
-func Iterate(fn func(*document.Document)) {
-	if defaultIndexer == nil {
-		return
-	}
-	defaultIndexer.Iterate(fn)
 }
 
 func (i *Indexer) Iterate(fn func(*document.Document)) {

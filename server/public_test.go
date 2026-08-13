@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/asciimoo/hister/config"
+	"github.com/asciimoo/hister/server/indexer"
 	"github.com/asciimoo/hister/server/indexer/searchschema"
 	"github.com/asciimoo/hister/server/model"
 	"github.com/asciimoo/hister/server/testutil"
@@ -17,6 +18,16 @@ import (
 
 func newPublicTokenTestServer(t *testing.T) (*config.Config, http.Handler) {
 	return newTokenTestServer(t, true)
+}
+
+func newServerTestIndexer(t *testing.T, cfg *config.Config) *indexer.Indexer {
+	t.Helper()
+	idx, err := indexer.New(cfg)
+	if err != nil {
+		t.Fatalf("initialize test indexer: %v", err)
+	}
+	t.Cleanup(idx.Close)
+	return idx
 }
 
 func newTokenTestServer(t *testing.T, public bool) (*config.Config, http.Handler) {
@@ -39,7 +50,7 @@ func newTokenTestServerWithLogLevel(t *testing.T, public bool, logLevel string) 
 	cfg.Server.Database = "file::memory:"
 	testutil.InitModelWithConfig(t, cfg)
 	sessionStore = newSessionStore([]byte(strings.Repeat("x", 32)), cfg.BaseURL(""), sessionMaxAge)
-	return cfg, registerEndpoints(cfg)
+	return cfg, registerEndpoints(cfg, newServerTestIndexer(t, cfg))
 }
 
 func TestPublicModeConfigResponse(t *testing.T) {

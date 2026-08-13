@@ -212,7 +212,7 @@ func TestUserSessionStoresOnlyUserIDAndRejectsDeletedUser(t *testing.T) {
 	testutil.InitModelWithConfig(t, cfg)
 	sessionStore = newSessionStore([]byte(strings.Repeat("x", 32)), cfg.BaseURL(""), sessionMaxAge)
 	user := testutil.CreateUser(t, "alice")
-	handler := registerEndpoints(cfg)
+	handler := registerEndpoints(cfg, newServerTestIndexer(t, cfg))
 
 	loginReq := httptest.NewRequest(http.MethodPost, "/api/login", strings.NewReader(`{"username":"alice","password":"password123"}`))
 	loginReq.Header.Set("Content-Type", "application/json")

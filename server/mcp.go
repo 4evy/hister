@@ -156,7 +156,7 @@ func serveMCP(c *webContext) {
 }
 
 func mcpSemanticSearchEnabled(c *webContext) bool {
-	return c != nil && c.Config.SemanticSearch.Enable && indexer.SemanticSearchEnabled()
+	return c != nil && c.Indexer != nil && c.Config.SemanticSearch.Enable && c.Indexer.SemanticSearchEnabled()
 }
 
 func mcpSearchQueryDescription() string {
@@ -427,7 +427,7 @@ func mcpToolSearch(c *webContext, id json.RawMessage, rawArgs json.RawMessage) {
 	if fieldSet["html"] {
 		q.IncludeHTML = true
 	}
-	res, err := doSearch(q, c.Config, c.effectiveRules(), c.UserID, historyEnabled(c))
+	res, err := doSearch(c.Indexer, q, c.effectiveRules(), c.UserID, historyEnabled(c))
 	if err != nil {
 		log.Error().Err(err).Str("query", args.Query).Msg("MCP search failed")
 		mcpWriteError(c, id, mcpErrInternal, "search failed")
@@ -473,7 +473,7 @@ func mcpToolGetPreview(c *webContext, id json.RawMessage, rawArgs json.RawMessag
 		return
 	}
 
-	doc := indexer.GetByURLAndUser(args.URL, c.UserID)
+	doc := c.Indexer.GetByURLAndUser(args.URL, c.UserID)
 	if doc == nil {
 		mcpWriteError(c, id, mcpErrNotFound, "document not found: "+args.URL)
 		return
@@ -527,7 +527,7 @@ func mcpToolGetHistory(c *webContext, id json.RawMessage, rawArgs json.RawMessag
 				Title:    item.Title,
 				Query:    item.Query,
 				Added:    item.UpdatedAt.Unix(),
-				AddCount: indexer.GetAddCountByURLAndUser(item.URL, c.UserID),
+				AddCount: c.Indexer.GetAddCountByURLAndUser(item.URL, c.UserID),
 			})
 		}
 		var nextLastID uint
@@ -537,7 +537,7 @@ func mcpToolGetHistory(c *webContext, id json.RawMessage, rawArgs json.RawMessag
 		mcpWriteToolResult(c, id, mcpBuildOpenedHistoryResult(historyItems, nextLastID))
 
 	case "indexed":
-		res := indexer.GetLatestDocuments(args.Limit, args.PageKey, c.UserID)
+		res := c.Indexer.GetLatestDocuments(args.Limit, args.PageKey, c.UserID)
 		mcpWriteToolResult(c, id, mcpBuildIndexedHistoryResult(res))
 
 	default:

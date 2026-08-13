@@ -6,16 +6,47 @@ import (
 	"testing"
 	"time"
 
+	"github.com/asciimoo/hister/config"
 	"github.com/asciimoo/hister/server/document"
 	"github.com/asciimoo/hister/server/testutil"
 )
 
+func newTestIndexer(t *testing.T, cfg *config.Config) *Indexer {
+	t.Helper()
+	idx, err := New(cfg)
+	if err != nil {
+		t.Fatalf("New indexer: %v", err)
+	}
+	return idx
+}
+
+func TestIndexerInstancesAreIndependent(t *testing.T) {
+	first := newTestIndexer(t, testutil.Config(t))
+	defer first.Close()
+	second := newTestIndexer(t, testutil.Config(t))
+	defer second.Close()
+
+	doc := &document.Document{
+		URL:       "https://example.com/first-indexer",
+		Title:     "First indexer",
+		Text:      "Stored only in the first indexer",
+		Processed: true,
+	}
+	if err := first.Add(doc); err != nil {
+		t.Fatalf("add to first indexer: %v", err)
+	}
+	if first.GetByURLAndUser(doc.URL, 0) == nil {
+		t.Fatal("first indexer did not store its document")
+	}
+	if second.GetByURLAndUser(doc.URL, 0) != nil {
+		t.Fatal("second indexer contains a document from the first indexer")
+	}
+}
+
 func TestSearchSortsByMostVisited(t *testing.T) {
 	idxCfg := testutil.Config(t)
-	if err := Init(idxCfg); err != nil {
-		t.Fatalf("failed to init indexer: %v", err)
-	}
-	defer defaultIndexer.Close()
+	idx := newTestIndexer(t, idxCfg)
+	defer idx.Close()
 
 	lessVisitedURL := "https://example.com/less-visited"
 	mostVisitedURL := "https://example.com/most-visited"
@@ -26,7 +57,7 @@ func TestSearchSortsByMostVisited(t *testing.T) {
 		mostVisitedURL,
 	}
 	for _, url := range docs {
-		if err := Add(&document.Document{
+		if err := idx.Add(&document.Document{
 			URL:   url,
 			Title: "Visited sort",
 			Text:  "Visited sort document text",
@@ -35,7 +66,7 @@ func TestSearchSortsByMostVisited(t *testing.T) {
 		}
 	}
 
-	res, err := Search(idxCfg, &Query{Text: "*", Sort: "visits"})
+	res, err := idx.Search(&Query{Text: "*", Sort: "visits"})
 	if err != nil {
 		t.Fatalf("Search failed: %v", err)
 	}
@@ -55,7 +86,7 @@ func TestSearchSortsByMostVisited(t *testing.T) {
 		t.Fatalf("second result URL = %q, want %q", res.Documents[1].URL, lessVisitedURL)
 	}
 
-	res, err = Search(idxCfg, &Query{Text: "* sort:-visits"})
+	res, err = idx.Search(&Query{Text: "* sort:-visits"})
 	if err != nil {
 		t.Fatalf("reverse visit search failed: %v", err)
 	}
@@ -66,10 +97,8 @@ func TestSearchSortsByMostVisited(t *testing.T) {
 
 func TestSearchSortDirective(t *testing.T) {
 	idxCfg := testutil.Config(t)
-	if err := Init(idxCfg); err != nil {
-		t.Fatalf("failed to init indexer: %v", err)
-	}
-	defer defaultIndexer.Close()
+	idx := newTestIndexer(t, idxCfg)
+	defer idx.Close()
 
 	older := &document.Document{
 		URL:       "https://a.example.com/sort-directive-older",
@@ -88,13 +117,13 @@ func TestSearchSortDirective(t *testing.T) {
 		Processed: true,
 	}
 	for _, doc := range []*document.Document{older, newer} {
-		if err := Add(doc); err != nil {
+		if err := idx.Add(doc); err != nil {
 			t.Fatalf("Add failed: %v", err)
 		}
 	}
 
 	q := &Query{Text: "directive document sort:date", Sort: "domain", Limit: 1}
-	res, err := Search(idxCfg, q)
+	res, err := idx.Search(q)
 	if err != nil {
 		t.Fatalf("Search failed: %v", err)
 	}
@@ -106,7 +135,7 @@ func TestSearchSortDirective(t *testing.T) {
 	}
 
 	q = &Query{Text: "directive document sort:-date", Limit: 1}
-	res, err = Search(idxCfg, q)
+	res, err = idx.Search(q)
 	if err != nil {
 		t.Fatalf("reverse date search failed: %v", err)
 	}
@@ -118,7 +147,7 @@ func TestSearchSortDirective(t *testing.T) {
 	}
 
 	q = &Query{Text: "directive document sort:-domain", Limit: 1}
-	res, err = Search(idxCfg, q)
+	res, err = idx.Search(q)
 	if err != nil {
 		t.Fatalf("reverse domain search failed: %v", err)
 	}
@@ -127,7 +156,7 @@ func TestSearchSortDirective(t *testing.T) {
 	}
 
 	q = &Query{Text: "sort:date", Limit: 1}
-	res, err = Search(idxCfg, q)
+	res, err = idx.Search(q)
 	if err != nil {
 		t.Fatalf("directive only search failed: %v", err)
 	}
@@ -136,7 +165,7 @@ func TestSearchSortDirective(t *testing.T) {
 	}
 
 	q = &Query{Text: "directive sort:relevance", Sort: "date"}
-	if _, err := Search(idxCfg, q); err != nil {
+	if _, err := idx.Search(q); err != nil {
 		t.Fatalf("relevance directive search failed: %v", err)
 	}
 	if q.Sort != "" {
@@ -144,7 +173,7 @@ func TestSearchSortDirective(t *testing.T) {
 	}
 
 	q = &Query{Text: "directive sort:-relevance", Limit: 1}
-	firstPage, err := Search(idxCfg, q)
+	firstPage, err := idx.Search(q)
 	if err != nil {
 		t.Fatalf("reverse relevance search failed: %v", err)
 	}
@@ -154,7 +183,7 @@ func TestSearchSortDirective(t *testing.T) {
 	if len(firstPage.Documents) != 1 || firstPage.PageKey == "" {
 		t.Fatalf("reverse relevance first page = %#v, want one document and a page key", firstPage)
 	}
-	secondPage, err := Search(idxCfg, q)
+	secondPage, err := idx.Search(q)
 	if err != nil {
 		t.Fatalf("reverse relevance second page failed: %v", err)
 	}
@@ -165,10 +194,8 @@ func TestSearchSortDirective(t *testing.T) {
 
 func TestSearchFiltersMetadataSourceByLatestUpdate(t *testing.T) {
 	idxCfg := testutil.Config(t)
-	if err := Init(idxCfg); err != nil {
-		t.Fatalf("failed to init indexer: %v", err)
-	}
-	defer defaultIndexer.Close()
+	idx := newTestIndexer(t, idxCfg)
+	defer idx.Close()
 
 	docs := []*document.Document{
 		{
@@ -194,12 +221,12 @@ func TestSearchFiltersMetadataSourceByLatestUpdate(t *testing.T) {
 		},
 	}
 	for _, doc := range docs {
-		if err := Add(doc); err != nil {
+		if err := idx.Add(doc); err != nil {
 			t.Fatalf("Add failed: %v", err)
 		}
 	}
 
-	res, err := Search(idxCfg, &Query{Text: "metadata.source:linkwarden", Sort: "date", Limit: 1})
+	res, err := idx.Search(&Query{Text: "metadata.source:linkwarden", Sort: "date", Limit: 1})
 	if err != nil {
 		t.Fatalf("Search failed: %v", err)
 	}
@@ -213,10 +240,8 @@ func TestSearchFiltersMetadataSourceByLatestUpdate(t *testing.T) {
 
 func TestSearchFiltersByVisitCount(t *testing.T) {
 	idxCfg := testutil.Config(t)
-	if err := Init(idxCfg); err != nil {
-		t.Fatalf("failed to init indexer: %v", err)
-	}
-	defer defaultIndexer.Close()
+	idx := newTestIndexer(t, idxCfg)
+	defer idx.Close()
 
 	lessVisitedURL := "https://example.com/visit-filter-less"
 	mostVisitedURL := "https://example.com/visit-filter-most"
@@ -227,7 +252,7 @@ func TestSearchFiltersByVisitCount(t *testing.T) {
 		mostVisitedURL,
 	}
 	for _, url := range docs {
-		if err := Add(&document.Document{
+		if err := idx.Add(&document.Document{
 			URL:   url,
 			Title: "Visited filter",
 			Text:  "Visited filter document text",
@@ -236,7 +261,7 @@ func TestSearchFiltersByVisitCount(t *testing.T) {
 		}
 	}
 
-	res, err := Search(idxCfg, &Query{Text: "Visited filter visits:2..4"})
+	res, err := idx.Search(&Query{Text: "Visited filter visits:2..4"})
 	if err != nil {
 		t.Fatalf("Search failed: %v", err)
 	}
@@ -250,10 +275,8 @@ func TestSearchFiltersByVisitCount(t *testing.T) {
 
 func TestSearchAndDeleteFilterByRelativeTime(t *testing.T) {
 	idxCfg := testutil.Config(t)
-	if err := Init(idxCfg); err != nil {
-		t.Fatalf("failed to init indexer: %v", err)
-	}
-	defer defaultIndexer.Close()
+	idx := newTestIndexer(t, idxCfg)
+	defer idx.Close()
 
 	now := time.Now()
 	oldDocument := &document.Document{
@@ -281,12 +304,12 @@ func TestSearchAndDeleteFilterByRelativeTime(t *testing.T) {
 		Processed: true,
 	}
 	for _, doc := range []*document.Document{oldDocument, revisitedDocument, recentDocument} {
-		if err := Add(doc); err != nil {
+		if err := idx.Add(doc); err != nil {
 			t.Fatalf("Add failed: %v", err)
 		}
 	}
 
-	res, err := Search(idxCfg, &Query{Text: "Time filter added:>90d updated:<90d"})
+	res, err := idx.Search(&Query{Text: "Time filter added:>90d updated:<90d"})
 	if err != nil {
 		t.Fatalf("Search failed: %v", err)
 	}
@@ -294,30 +317,28 @@ func TestSearchAndDeleteFilterByRelativeTime(t *testing.T) {
 		t.Fatalf("combined relative time search returned %#v, want only %q", res.Documents, revisitedDocument.URL)
 	}
 
-	deleted, err := DeleteByQuery("updated:>90d", nil, nil)
+	deleted, err := idx.DeleteByQuery("updated:>90d", nil, nil)
 	if err != nil {
 		t.Fatalf("DeleteByQuery failed: %v", err)
 	}
 	if deleted != 1 {
 		t.Fatalf("DeleteByQuery deleted %d documents, want 1", deleted)
 	}
-	if GetByURLAndUser(oldDocument.URL, 0) != nil {
+	if idx.GetByURLAndUser(oldDocument.URL, 0) != nil {
 		t.Fatal("old document still exists after relative time deletion")
 	}
-	if GetByURLAndUser(revisitedDocument.URL, 0) == nil {
+	if idx.GetByURLAndUser(revisitedDocument.URL, 0) == nil {
 		t.Fatal("recently updated document was removed by relative time deletion")
 	}
-	if GetByURLAndUser(recentDocument.URL, 0) == nil {
+	if idx.GetByURLAndUser(recentDocument.URL, 0) == nil {
 		t.Fatal("recent document was removed by relative time deletion")
 	}
 }
 
 func TestSearchFiltersByAbsoluteDate(t *testing.T) {
 	idxCfg := testutil.Config(t)
-	if err := Init(idxCfg); err != nil {
-		t.Fatalf("failed to init indexer: %v", err)
-	}
-	defer defaultIndexer.Close()
+	idx := newTestIndexer(t, idxCfg)
+	defer idx.Close()
 
 	beforeCutoff := time.Date(2025, time.December, 31, 23, 59, 59, 0, time.UTC).Unix()
 	atCutoff := time.Date(2026, time.January, 1, 0, 0, 0, 0, time.UTC).Unix()
@@ -349,12 +370,12 @@ func TestSearchFiltersByAbsoluteDate(t *testing.T) {
 		},
 	}
 	for _, doc := range documents {
-		if err := Add(doc); err != nil {
+		if err := idx.Add(doc); err != nil {
 			t.Fatalf("Add failed: %v", err)
 		}
 	}
 
-	res, err := Search(idxCfg, &Query{Text: "Absolute date added:<2026-01-01"})
+	res, err := idx.Search(&Query{Text: "Absolute date added:<2026-01-01"})
 	if err != nil {
 		t.Fatalf("Search before absolute date failed: %v", err)
 	}
@@ -362,7 +383,7 @@ func TestSearchFiltersByAbsoluteDate(t *testing.T) {
 		t.Fatalf("absolute date search returned %#v, want only %q", res.Documents, documents[0].URL)
 	}
 
-	res, err = Search(idxCfg, &Query{Text: "Absolute date updated:>=2026-01-01"})
+	res, err = idx.Search(&Query{Text: "Absolute date updated:>=2026-01-01"})
 	if err != nil {
 		t.Fatalf("Search from absolute date failed: %v", err)
 	}
@@ -377,10 +398,8 @@ func TestSearchFiltersByAbsoluteDate(t *testing.T) {
 
 func TestSearchVisitCountFacets(t *testing.T) {
 	idxCfg := testutil.Config(t)
-	if err := Init(idxCfg); err != nil {
-		t.Fatalf("failed to init indexer: %v", err)
-	}
-	defer defaultIndexer.Close()
+	idx := newTestIndexer(t, idxCfg)
+	defer idx.Close()
 
 	lessVisitedURL := "https://example.com/visit-facet-less"
 	mostVisitedURL := "https://example.com/visit-facet-most"
@@ -391,7 +410,7 @@ func TestSearchVisitCountFacets(t *testing.T) {
 		mostVisitedURL,
 	}
 	for _, url := range docs {
-		if err := Add(&document.Document{
+		if err := idx.Add(&document.Document{
 			URL:   url,
 			Title: "Visited facet",
 			Text:  "Visited facet document text",
@@ -400,7 +419,7 @@ func TestSearchVisitCountFacets(t *testing.T) {
 		}
 	}
 
-	res, err := Search(idxCfg, &Query{Text: "Visited facet", Facets: true, FacetsOnly: true})
+	res, err := idx.Search(&Query{Text: "Visited facet", Facets: true, FacetsOnly: true})
 	if err != nil {
 		t.Fatalf("Search failed: %v", err)
 	}
@@ -427,10 +446,8 @@ func TestSearchVisitCountFacets(t *testing.T) {
 
 func TestSearchDateFacetCountsMatchPresetFilters(t *testing.T) {
 	idxCfg := testutil.Config(t)
-	if err := Init(idxCfg); err != nil {
-		t.Fatalf("failed to init indexer: %v", err)
-	}
-	defer defaultIndexer.Close()
+	idx := newTestIndexer(t, idxCfg)
+	defer idx.Close()
 
 	now := time.Now()
 	for index, age := range []time.Duration{
@@ -440,7 +457,7 @@ func TestSearchDateFacetCountsMatchPresetFilters(t *testing.T) {
 		400 * 24 * time.Hour,
 	} {
 		updated := now.Add(-age).Unix()
-		if err := Add(&document.Document{
+		if err := idx.Add(&document.Document{
 			URL:       fmt.Sprintf("https://example.com/date-facet-%d", index),
 			Title:     "Date facet",
 			Text:      "Date facet document text",
@@ -452,7 +469,7 @@ func TestSearchDateFacetCountsMatchPresetFilters(t *testing.T) {
 		}
 	}
 
-	res, err := Search(idxCfg, &Query{Text: "Date facet", Facets: true, FacetsOnly: true})
+	res, err := idx.Search(&Query{Text: "Date facet", Facets: true, FacetsOnly: true})
 	if err != nil {
 		t.Fatalf("facet search failed: %v", err)
 	}
@@ -471,7 +488,7 @@ func TestSearchDateFacetCountsMatchPresetFilters(t *testing.T) {
 		{bucket: "last_year", query: "Date facet updated:<365d"},
 		{bucket: "older", query: "Date facet updated:>365d"},
 	} {
-		filtered, err := Search(idxCfg, &Query{Text: test.query})
+		filtered, err := idx.Search(&Query{Text: test.query})
 		if err != nil {
 			t.Fatalf("search %q failed: %v", test.query, err)
 		}
@@ -483,13 +500,11 @@ func TestSearchDateFacetCountsMatchPresetFilters(t *testing.T) {
 
 func TestSearchReturnsFaviconKeyWithoutFaviconData(t *testing.T) {
 	idxCfg := testutil.Config(t)
-	if err := Init(idxCfg); err != nil {
-		t.Fatalf("failed to init indexer: %v", err)
-	}
-	defer defaultIndexer.Close()
+	idx := newTestIndexer(t, idxCfg)
+	defer idx.Close()
 
 	const faviconData = "data:image/png;base64,ZmF2aWNvbg=="
-	if err := Add(&document.Document{
+	if err := idx.Add(&document.Document{
 		URL:     "https://example.com/favicon-key",
 		Title:   "Favicon key",
 		Text:    "Favicon key document text",
@@ -498,7 +513,7 @@ func TestSearchReturnsFaviconKeyWithoutFaviconData(t *testing.T) {
 		t.Fatalf("Add failed: %v", err)
 	}
 
-	res, err := Search(idxCfg, &Query{Text: "Favicon key"})
+	res, err := idx.Search(&Query{Text: "Favicon key"})
 	if err != nil {
 		t.Fatalf("Search failed: %v", err)
 	}
@@ -516,7 +531,7 @@ func TestSearchReturnsFaviconKeyWithoutFaviconData(t *testing.T) {
 		t.Fatalf("FaviconKey contains inline data: %q", doc.FaviconKey)
 	}
 
-	data, err := ReadFavicon(doc.FaviconKey)
+	data, err := idx.ReadFavicon(doc.FaviconKey)
 	if err != nil {
 		t.Fatalf("ReadFavicon failed: %v", err)
 	}

@@ -81,13 +81,11 @@ func TestEmbeddingQueueSkipsUnchangedDocumentText(t *testing.T) {
 	cfg.SemanticSearch.ChunkOverlap = 4
 	cfg.SemanticSearch.MaxEmbeddingConcurrency = 1
 	testutil.InitModelWithConfig(t, cfg)
-	if err := Init(cfg); err != nil {
-		t.Fatalf("failed to init indexer: %v", err)
-	}
-	defer defaultIndexer.Close()
+	idx := newTestIndexer(t, cfg)
+	defer idx.Close()
 
 	const url = "https://example.com/queue"
-	if err := Add(&document.Document{
+	if err := idx.Add(&document.Document{
 		URL:       url,
 		Title:     "Queued document",
 		Text:      "original text",
@@ -97,7 +95,7 @@ func TestEmbeddingQueueSkipsUnchangedDocumentText(t *testing.T) {
 	}
 	waitForEmbeddingJobs(t, &requests, 1)
 
-	if err := Add(&document.Document{
+	if err := idx.Add(&document.Document{
 		URL:       url,
 		Title:     "A title change is intentionally ignored",
 		Text:      "original text",
@@ -116,7 +114,7 @@ func TestEmbeddingQueueSkipsUnchangedDocumentText(t *testing.T) {
 		t.Fatalf("unchanged document embedding requests = %d, want 1", got)
 	}
 
-	if err := Add(&document.Document{
+	if err := idx.Add(&document.Document{
 		URL:       url,
 		Title:     "Queued document",
 		Text:      "changed text",
@@ -172,13 +170,11 @@ func TestEmbeddingQueueReprocessesDocumentChangedWhileActive(t *testing.T) {
 	cfg.SemanticSearch.ChunkOverlap = 4
 	cfg.SemanticSearch.MaxEmbeddingConcurrency = 1
 	testutil.InitModelWithConfig(t, cfg)
-	if err := Init(cfg); err != nil {
-		t.Fatalf("failed to init indexer: %v", err)
-	}
-	defer defaultIndexer.Close()
+	idx := newTestIndexer(t, cfg)
+	defer idx.Close()
 
 	const url = "https://example.com/active"
-	if err := Add(&document.Document{URL: url, Title: "Active", Text: "old contents", Processed: true}); err != nil {
+	if err := idx.Add(&document.Document{URL: url, Title: "Active", Text: "old contents", Processed: true}); err != nil {
 		t.Fatalf("first Add() error: %v", err)
 	}
 	select {
@@ -186,10 +182,10 @@ func TestEmbeddingQueueReprocessesDocumentChangedWhileActive(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		t.Fatal("first embedding request did not start")
 	}
-	if err := Add(&document.Document{URL: url, Title: "Active", Text: "latest contents", Processed: true}); err != nil {
+	if err := idx.Add(&document.Document{URL: url, Title: "Active", Text: "latest contents", Processed: true}); err != nil {
 		t.Fatalf("changed Add() error: %v", err)
 	}
-	if err := Add(&document.Document{URL: url, Title: "Active", Text: "latest contents", Processed: true}); err != nil {
+	if err := idx.Add(&document.Document{URL: url, Title: "Active", Text: "latest contents", Processed: true}); err != nil {
 		t.Fatalf("duplicate changed Add() error: %v", err)
 	}
 	close(releaseFirst)
@@ -227,13 +223,11 @@ func TestDeleteCancelsActiveEmbeddingJob(t *testing.T) {
 	cfg.SemanticSearch.ChunkOverlap = 4
 	cfg.SemanticSearch.MaxEmbeddingConcurrency = 1
 	testutil.InitModelWithConfig(t, cfg)
-	if err := Init(cfg); err != nil {
-		t.Fatalf("failed to init indexer: %v", err)
-	}
-	defer defaultIndexer.Close()
+	idx := newTestIndexer(t, cfg)
+	defer idx.Close()
 
 	const url = "https://example.com/delete-active"
-	if err := Add(&document.Document{URL: url, Title: "Delete", Text: "active contents", Processed: true}); err != nil {
+	if err := idx.Add(&document.Document{URL: url, Title: "Delete", Text: "active contents", Processed: true}); err != nil {
 		t.Fatalf("Add() error: %v", err)
 	}
 	select {
@@ -244,7 +238,7 @@ func TestDeleteCancelsActiveEmbeddingJob(t *testing.T) {
 
 	deleted := make(chan error, 1)
 	go func() {
-		deleted <- Delete(url)
+		deleted <- idx.Delete(url)
 	}()
 	select {
 	case err := <-deleted:
@@ -261,7 +255,7 @@ func TestDeleteCancelsActiveEmbeddingJob(t *testing.T) {
 	if jobs != 0 {
 		t.Fatalf("embedding job count after delete = %d, want 0", jobs)
 	}
-	if d := GetByDocID(url); d != nil {
+	if d := idx.GetByDocID(url); d != nil {
 		t.Fatalf("deleted document remains indexed: %#v", d)
 	}
 }

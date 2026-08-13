@@ -38,14 +38,6 @@ func (orgFileType) Index(i *Indexer, d *document.Document, orgData []byte) error
 
 // AddOrg renders Org files to HTML, stores it in d.HTML, and stores the raw
 // source in d.Text for full-text indexing.
-func AddOrg(d *document.Document, orgData []byte) error {
-	idx, err := currentIndexer()
-	if err != nil {
-		return err
-	}
-	return idx.AddOrg(d, orgData)
-}
-
 func (i *Indexer) AddOrg(d *document.Document, orgData []byte) error {
 	return orgFileType{}.Index(i, d, orgData)
 }

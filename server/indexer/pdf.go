@@ -40,14 +40,6 @@ func (pdfFileType) Index(i *Indexer, d *document.Document, pdfData []byte) error
 // AddPDF extracts plain text from pdfData, stores it in d.Text, then indexes
 // the document via Add. d.URL and d.Type must already be set by the caller.
 // d.Title is set to the last path segment of the URL if it is not already set.
-func AddPDF(d *document.Document, pdfData []byte) error {
-	idx, err := currentIndexer()
-	if err != nil {
-		return err
-	}
-	return idx.AddPDF(d, pdfData)
-}
-
 func (i *Indexer) AddPDF(d *document.Document, pdfData []byte) error {
 	return pdfFileType{}.Index(i, d, pdfData)
 }

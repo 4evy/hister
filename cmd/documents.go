@@ -18,16 +18,12 @@ var listURLsCmd = &cobra.Command{
 	Use:   "list-urls",
 	Short: "List indexed URLs",
 	Long:  `List all indexed URLs by fetching them from the running server`,
-	PreRun: func(cmd *cobra.Command, _ []string) {
-		offline, _ := cmd.Flags().GetBool("offline")
-		if offline {
-			initIndex()
-		}
-	},
 	Run: func(cmd *cobra.Command, _ []string) {
 		offline, _ := cmd.Flags().GetBool("offline")
 		if offline {
-			indexer.Iterate(func(doc *document.Document) {
+			idx := initIndex()
+			defer idx.Close()
+			idx.Iterate(func(doc *document.Document) {
 				fmt.Println(doc.URL)
 			})
 			return

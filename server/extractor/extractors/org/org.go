@@ -11,7 +11,7 @@ import (
 )
 
 // OrgModeExtractor serves previews for locally indexed Org files.
-// During indexing, indexer.AddOrg renders the source to HTML and stores
+// During indexing, Indexer.AddOrg renders the source to HTML and stores
 // it in doc.HTML, so Preview only needs to sanitize that HTML.
 type OrgModeExtractor struct {
 	cfg *config.Extractor
@@ -47,7 +47,7 @@ func (e *OrgModeExtractor) Match(d *document.Document) bool {
 	return strings.HasSuffix(lower, ".org")
 }
 
-// Extract is a no-op: indexing is handled by indexer.AddOrg.
+// Extract is a no-op: indexing is handled by Indexer.AddOrg.
 func (e *OrgModeExtractor) Extract(_ *document.Document) (types.ExtractorState, error) {
 	return types.ExtractorContinue, nil
 }

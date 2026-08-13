@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/asciimoo/hister/config"
+	"github.com/asciimoo/hister/server/indexer"
 	"github.com/asciimoo/hister/server/model"
 	"github.com/asciimoo/hister/server/static"
 
@@ -67,6 +68,7 @@ type webContext struct {
 	Request       *http.Request
 	Response      http.ResponseWriter
 	Config        *config.Config
+	Indexer       *indexer.Indexer
 	nonce         string
 	csrf          string
 	UserID        uint
@@ -139,7 +141,7 @@ func recParseStaticFiles(entries []iofs.DirEntry, dir, baseDir string) error {
 	return nil
 }
 
-func Listen(cfg *config.Config) {
+func Listen(cfg *config.Config, idx *indexer.Indexer) {
 	sessionStore = newSessionStore(cfg.SecretKey(), cfg.BaseURL(""), sessionMaxAge)
 
 	// This is an ugly hack required to set the base path dynamically in svelte files.
@@ -153,7 +155,7 @@ func Listen(cfg *config.Config) {
 		panic(err)
 	}
 
-	handler := registerEndpoints(cfg)
+	handler := registerEndpoints(cfg, idx)
 	handler = withLogging(handler)
 
 	log.Info().Str("Address", cfg.Server.Address).Str("Version", Version).Str("URL", cfg.BaseURL("/")).Msg("Starting webserver")
@@ -163,12 +165,13 @@ func Listen(cfg *config.Config) {
 	}
 }
 
-func createHandler(cfg *config.Config, h func(*webContext)) func(w http.ResponseWriter, r *http.Request) {
+func createHandler(cfg *config.Config, idx *indexer.Indexer, h func(*webContext)) func(w http.ResponseWriter, r *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		c := &webContext{
 			Request:  r,
 			Response: w,
 			Config:   cfg,
+			Indexer:  idx,
 			nonce:    rand.Text(),
 		}
 		if cfg.App.UserHandling {

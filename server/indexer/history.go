@@ -17,33 +17,12 @@ import (
 	"github.com/blevesearch/bleve/v2/search/query"
 )
 
-func GetLatestDocuments(limit int, latest string, userID uint) *Results {
-	if defaultIndexer == nil {
-		return nil
-	}
-	return defaultIndexer.GetLatestDocuments(limit, latest, userID)
-}
-
 func (i *Indexer) GetLatestDocuments(limit int, latest string, userID uint) *Results {
 	return i.GetLatestDocumentsFiltered(limit, latest, userID, "")
 }
 
-func GetLatestDocumentsFiltered(limit int, latest string, userID uint, filter string) *Results {
-	if defaultIndexer == nil {
-		return nil
-	}
-	return defaultIndexer.GetLatestDocumentsFiltered(limit, latest, userID, filter)
-}
-
 func (i *Indexer) GetLatestDocumentsFiltered(limit int, latest string, userID uint, filter string) *Results {
 	return i.GetLatestDocumentsFilteredByDate(limit, latest, userID, filter, 0, 0)
-}
-
-func GetLatestDocumentsFilteredByDate(limit int, latest string, userID uint, filter string, dateFrom, dateTo int64) *Results {
-	if defaultIndexer == nil {
-		return nil
-	}
-	return defaultIndexer.GetLatestDocumentsFilteredByDate(limit, latest, userID, filter, dateFrom, dateTo)
 }
 
 func (i *Indexer) GetLatestDocumentsFilteredByDate(limit int, latest string, userID uint, filter string, dateFrom, dateTo int64) *Results {
@@ -142,13 +121,6 @@ func latestDocumentsQuery(userID uint, filter string, dateFrom, dateTo int64) qu
 	return q
 }
 
-func GetHistoryTimeline(userID uint, filter string, loc *time.Location) (*timeline.Result, error) {
-	if defaultIndexer == nil {
-		return timeline.New(time.Now(), loc, 0), nil
-	}
-	return defaultIndexer.GetHistoryTimeline(userID, filter, loc)
-}
-
 func (i *Indexer) GetHistoryTimeline(userID uint, filter string, loc *time.Location) (*timeline.Result, error) {
 	q := latestDocumentsQuery(userID, filter, 0, 0)
 	var oldest int64
@@ -171,13 +143,6 @@ func (i *Indexer) GetHistoryTimeline(userID uint, filter string, loc *time.Locat
 		return nil, err
 	}
 	return result, nil
-}
-
-func GetHistoryTimelineDays(userID uint, filter string, loc *time.Location, dateFrom, dateTo int64) (*timeline.DailyResult, error) {
-	if defaultIndexer == nil {
-		return timeline.NewDays(dateFrom, dateTo, loc), nil
-	}
-	return defaultIndexer.GetHistoryTimelineDays(userID, filter, loc, dateFrom, dateTo)
 }
 
 func (i *Indexer) GetHistoryTimelineDays(userID uint, filter string, loc *time.Location, dateFrom, dateTo int64) (*timeline.DailyResult, error) {

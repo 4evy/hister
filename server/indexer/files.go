@@ -62,10 +62,6 @@ type FileIndexQueue struct {
 	indexer *Indexer
 }
 
-func NewFileIndexQueue() *FileIndexQueue {
-	return newFileIndexQueue(defaultIndexer)
-}
-
 func (i *Indexer) NewFileIndexQueue() *FileIndexQueue {
 	return newFileIndexQueue(i)
 }
@@ -145,14 +141,6 @@ func (q *FileIndexQueue) process(item fileIndexQueueItem) {
 			log.Debug().Err(err).Str("path", item.path).Msg("Failed to delete file from index")
 		}
 	}
-}
-
-func IndexAll(dirs []*config.Directory) {
-	if defaultIndexer == nil {
-		log.Error().Msg("Cannot index directories before indexer initialization")
-		return
-	}
-	defaultIndexer.IndexAll(dirs)
 }
 
 func (i *Indexer) IndexAll(dirs []*config.Directory) {
@@ -259,14 +247,6 @@ func walkDirectoryFilesForUser(dir string, cfg *config.Directory, userID uint, c
 // CleanupLocalDocuments removes indexed local documents that no longer match
 // the current directory filters or ownership. It only inspects indexed fields
 // and does not walk, stat, or read the filesystem.
-func CleanupLocalDocuments(dirs []*config.Directory) (LocalDocumentCleanupResult, error) {
-	idx, err := currentIndexer()
-	if err != nil {
-		return LocalDocumentCleanupResult{}, err
-	}
-	return idx.CleanupLocalDocuments(dirs)
-}
-
 func (i *Indexer) CleanupLocalDocuments(dirs []*config.Directory) (LocalDocumentCleanupResult, error) {
 	result := LocalDocumentCleanupResult{}
 
@@ -369,14 +349,6 @@ func configuredFileLabel(dirs []*config.Directory, path string) string {
 	return dir.Label
 }
 
-func IndexFile(path string, userID uint) error {
-	idx, err := currentIndexer()
-	if err != nil {
-		return err
-	}
-	return idx.IndexFile(path, userID)
-}
-
 func (i *Indexer) IndexFile(path string, userID uint) error {
 	info, err := os.Stat(path)
 	if err != nil {
@@ -427,14 +399,6 @@ func (i *Indexer) IndexFile(path string, userID uint) error {
 // DeleteFile removes the document for the given filesystem path from the index.
 // It uses a url: field query so it removes the file across all users and
 // language-specific sub-indexes. Returns nil if the document is not found.
-func DeleteFile(path string) error {
-	idx, err := currentIndexer()
-	if err != nil {
-		return err
-	}
-	return idx.DeleteFile(path)
-}
-
 func (i *Indexer) DeleteFile(path string) error {
 	absPath, err := filepath.Abs(path)
 	if err != nil {

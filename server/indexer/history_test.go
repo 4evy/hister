@@ -10,10 +10,8 @@ import (
 
 func TestGetLatestDocumentsFiltered(t *testing.T) {
 	cfg := testutil.Config(t)
-	if err := Init(cfg); err != nil {
-		t.Fatalf("failed to init indexer: %v", err)
-	}
-	defer defaultIndexer.Close()
+	idx := newTestIndexer(t, cfg)
+	defer idx.Close()
 
 	docs := []*document.Document{
 		{
@@ -36,7 +34,7 @@ func TestGetLatestDocumentsFiltered(t *testing.T) {
 		},
 	}
 	for _, doc := range docs {
-		if err := Add(doc); err != nil {
+		if err := idx.Add(doc); err != nil {
 			t.Fatalf("Add failed: %v", err)
 		}
 	}
@@ -52,7 +50,7 @@ func TestGetLatestDocumentsFiltered(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := GetLatestDocumentsFiltered(100, "", 0, tt.filter)
+			result := idx.GetLatestDocumentsFiltered(100, "", 0, tt.filter)
 			if result == nil {
 				t.Fatal("filtered result is nil")
 			}
@@ -68,10 +66,8 @@ func TestGetLatestDocumentsFiltered(t *testing.T) {
 
 func TestHistoryTimelineAndDateFilter(t *testing.T) {
 	cfg := testutil.Config(t)
-	if err := Init(cfg); err != nil {
-		t.Fatalf("failed to init indexer: %v", err)
-	}
-	defer defaultIndexer.Close()
+	idx := newTestIndexer(t, cfg)
+	defer idx.Close()
 
 	now := time.Now().UTC()
 	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
@@ -102,12 +98,12 @@ func TestHistoryTimelineAndDateFilter(t *testing.T) {
 		},
 	}
 	for _, doc := range docs {
-		if err := Add(doc); err != nil {
+		if err := idx.Add(doc); err != nil {
 			t.Fatalf("Add failed: %v", err)
 		}
 	}
 
-	result, err := GetHistoryTimeline(0, "Timeline", time.UTC)
+	result, err := idx.GetHistoryTimeline(0, "Timeline", time.UTC)
 	if err != nil {
 		t.Fatalf("GetHistoryTimeline failed: %v", err)
 	}
@@ -130,7 +126,7 @@ func TestHistoryTimelineAndDateFilter(t *testing.T) {
 	if populatedMonthCount == 0 {
 		t.Fatal("no populated monthly bucket")
 	}
-	dailyResult, err := GetHistoryTimelineDays(
+	dailyResult, err := idx.GetHistoryTimelineDays(
 		0,
 		"Timeline",
 		time.UTC,
@@ -151,7 +147,7 @@ func TestHistoryTimelineAndDateFilter(t *testing.T) {
 		t.Fatalf("drilldown result count = %d, want %d", drilldownCount, populatedMonthCount)
 	}
 
-	filtered := GetLatestDocumentsFilteredByDate(
+	filtered := idx.GetLatestDocumentsFilteredByDate(
 		100,
 		"",
 		0,
@@ -169,10 +165,8 @@ func TestHistoryTimelineAndDateFilter(t *testing.T) {
 
 func TestLatestDocumentsDatePaginationWithEqualTimestamps(t *testing.T) {
 	cfg := testutil.Config(t)
-	if err := Init(cfg); err != nil {
-		t.Fatalf("failed to init indexer: %v", err)
-	}
-	defer defaultIndexer.Close()
+	idx := newTestIndexer(t, cfg)
+	defer idx.Close()
 
 	timestamp := time.Now().UTC().Truncate(time.Second).Unix()
 	for n := range 3 {
@@ -184,16 +178,16 @@ func TestLatestDocumentsDatePaginationWithEqualTimestamps(t *testing.T) {
 			Updated:   timestamp,
 			Processed: true,
 		}
-		if err := Add(doc); err != nil {
+		if err := idx.Add(doc); err != nil {
 			t.Fatalf("Add failed: %v", err)
 		}
 	}
 
-	first := GetLatestDocumentsFilteredByDate(2, "", 0, "", timestamp, timestamp+1)
+	first := idx.GetLatestDocumentsFilteredByDate(2, "", 0, "", timestamp, timestamp+1)
 	if first == nil || len(first.Documents) != 2 || first.PageKey == "" {
 		t.Fatalf("first page = %+v, want two documents and a cursor", first)
 	}
-	second := GetLatestDocumentsFilteredByDate(2, first.PageKey, 0, "", timestamp, timestamp+1)
+	second := idx.GetLatestDocumentsFilteredByDate(2, first.PageKey, 0, "", timestamp, timestamp+1)
 	if second == nil || len(second.Documents) != 1 {
 		t.Fatalf("second page = %+v, want one document", second)
 	}

@@ -34,9 +34,7 @@ func TestIndexMetadataPersistence(t *testing.T) {
 	if err != nil {
 		t.Fatalf("initialize indexer: %v", err)
 	}
-	defaultIndexer = idx
-
-	version, fingerprint, err := GetMetadata()
+	version, fingerprint, err := idx.GetMetadata()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -48,7 +46,7 @@ func TestIndexMetadataPersistence(t *testing.T) {
 		t.Fatalf("fingerprint = %q, want %q", fingerprint, wantFingerprint)
 	}
 
-	if err := SetMetadata(Version-1, "custom"); err != nil {
+	if err := idx.SetMetadata(Version-1, "custom"); err != nil {
 		t.Fatal(err)
 	}
 	idx.Close()
@@ -57,10 +55,9 @@ func TestIndexMetadataPersistence(t *testing.T) {
 	if err != nil {
 		t.Fatalf("reopen indexer: %v", err)
 	}
-	defaultIndexer = idx
 	defer idx.Close()
 
-	version, fingerprint, err = GetMetadata()
+	version, fingerprint, err = idx.GetMetadata()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -78,13 +75,12 @@ func TestGetMetadataRejectsInvalidInternalValue(t *testing.T) {
 	if err != nil {
 		t.Fatalf("initialize indexer: %v", err)
 	}
-	defaultIndexer = idx
 	defer idx.Close()
 
 	if err := idx.indexers[defaultIndexerName].DeleteInternal([]byte(indexVersionKey)); err != nil {
 		t.Fatal(err)
 	}
-	version, fingerprint, err := GetMetadata()
+	version, fingerprint, err := idx.GetMetadata()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -98,7 +94,7 @@ func TestGetMetadataRejectsInvalidInternalValue(t *testing.T) {
 	if err := idx.indexers[defaultIndexerName].SetInternal([]byte(indexVersionKey), []byte("invalid")); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := GetMetadata(); err == nil {
+	if _, _, err := idx.GetMetadata(); err == nil {
 		t.Fatal("GetMetadata accepted an invalid internal value")
 	}
 }
@@ -109,7 +105,6 @@ func TestGetMetadataValidatesAllSubIndexes(t *testing.T) {
 	if err != nil {
 		t.Fatalf("initialize indexer: %v", err)
 	}
-	defaultIndexer = idx
 	defer idx.Close()
 
 	languageIndexName := indexNameForLanguage("en")
@@ -125,7 +120,7 @@ func TestGetMetadataValidatesAllSubIndexes(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	version, gotFingerprint, err := GetMetadata()
+	version, gotFingerprint, err := idx.GetMetadata()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -139,7 +134,7 @@ func TestGetMetadataValidatesAllSubIndexes(t *testing.T) {
 	if err := languageIndex.DeleteInternal([]byte(indexVersionKey)); err != nil {
 		t.Fatal(err)
 	}
-	version, gotFingerprint, err = GetMetadata()
+	version, gotFingerprint, err = idx.GetMetadata()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -156,7 +151,7 @@ func TestGetMetadataValidatesAllSubIndexes(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := GetMetadata(); err == nil {
+	if _, _, err := idx.GetMetadata(); err == nil {
 		t.Fatal("GetMetadata accepted inconsistent analyzer fingerprints")
 	}
 }
@@ -167,15 +162,13 @@ func TestLanguageIndexMetadataIsSelfContained(t *testing.T) {
 	if err != nil {
 		t.Fatalf("initialize indexer: %v", err)
 	}
-	defaultIndexer = idx
-
 	languageIndexName := indexNameForLanguage("en")
 	if err := idx.addIndexer(languageIndexName, "en"); err != nil {
 		idx.Close()
 		t.Fatalf("add language index: %v", err)
 	}
 	wantMetadata := indexMetadata{Version: Version - 1, AnalyzerFingerprint: "custom"}
-	if err := SetMetadata(wantMetadata.Version, wantMetadata.AnalyzerFingerprint); err != nil {
+	if err := idx.SetMetadata(wantMetadata.Version, wantMetadata.AnalyzerFingerprint); err != nil {
 		idx.Close()
 		t.Fatal(err)
 	}
@@ -208,7 +201,6 @@ func TestReindexStoresReplacementIndexMetadata(t *testing.T) {
 	if err != nil {
 		t.Fatalf("initialize indexer: %v", err)
 	}
-	defaultIndexer = idx
 	if err := idx.save(&document.Document{
 		URL:      "https://example.com/english",
 		Title:    "English document",
@@ -219,13 +211,12 @@ func TestReindexStoresReplacementIndexMetadata(t *testing.T) {
 		idx.Close()
 		t.Fatalf("save English document: %v", err)
 	}
-	if err := SetMetadata(Version-1, "old"); err != nil {
+	if err := idx.SetMetadata(Version-1, "old"); err != nil {
 		idx.Close()
 		t.Fatal(err)
 	}
 
-	if err := Reindex(
-		cfg.FullPath(""),
+	if err := idx.Reindex(
 		&config.Rules{},
 		false,
 		true,
@@ -234,9 +225,9 @@ func TestReindexStoresReplacementIndexMetadata(t *testing.T) {
 	); err != nil {
 		t.Fatalf("Reindex returned an error: %v", err)
 	}
-	defer defaultIndexer.Close()
+	defer idx.Close()
 
-	version, fingerprint, err := GetMetadata()
+	version, fingerprint, err := idx.GetMetadata()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -249,11 +240,11 @@ func TestReindexStoresReplacementIndexMetadata(t *testing.T) {
 	}
 
 	languageIndexName := indexNameForLanguage("en")
-	if _, exists := defaultIndexer.indexers[languageIndexName]; !exists {
+	if _, exists := idx.indexers[languageIndexName]; !exists {
 		t.Fatalf("replacement language index %s was not created", languageIndexName)
 	}
 	wantMetadata := indexMetadata{Version: Version, AnalyzerFingerprint: wantFingerprint}
-	for _, subIndex := range defaultIndexer.indexers {
+	for _, subIndex := range idx.indexers {
 		requireIndexMetadata(t, subIndex, wantMetadata)
 	}
 }

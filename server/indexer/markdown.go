@@ -34,14 +34,6 @@ func (markdownFileType) Index(i *Indexer, d *document.Document, mdData []byte) e
 
 // AddMarkdown renders mdData to HTML, stores it in d.HTML, and stores the raw
 // source in d.Text for full-text indexing.
-func AddMarkdown(d *document.Document, mdData []byte) error {
-	idx, err := currentIndexer()
-	if err != nil {
-		return err
-	}
-	return idx.AddMarkdown(d, mdData)
-}
-
 func (i *Indexer) AddMarkdown(d *document.Document, mdData []byte) error {
 	return markdownFileType{}.Index(i, d, mdData)
 }

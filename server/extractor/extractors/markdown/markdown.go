@@ -14,7 +14,7 @@ import (
 )
 
 // MarkdownExtractor serves previews for locally indexed Markdown files.
-// During indexing, indexer.AddMarkdown renders the source to HTML and stores
+// During indexing, Indexer.AddMarkdown renders the source to HTML and stores
 // it in doc.HTML, so Preview only needs to sanitize that HTML.
 type MarkdownExtractor struct {
 	cfg *config.Extractor
@@ -50,7 +50,7 @@ func (e *MarkdownExtractor) Match(d *document.Document) bool {
 	return strings.HasSuffix(lower, ".md") || strings.HasSuffix(lower, ".markdown")
 }
 
-// Extract is a no-op: indexing is handled by indexer.AddMarkdown.
+// Extract is a no-op: indexing is handled by Indexer.AddMarkdown.
 func (e *MarkdownExtractor) Extract(_ *document.Document) (types.ExtractorState, error) {
 	return types.ExtractorContinue, nil
 }

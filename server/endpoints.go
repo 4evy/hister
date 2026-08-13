@@ -48,7 +48,7 @@ var ws = websocket.Upgrader{
 	},
 }
 
-func registerEndpoints(cfg *config.Config) http.Handler {
+func registerEndpoints(cfg *config.Config, idx *indexer.Indexer) http.Handler {
 	mux := http.NewServeMux()
 	tokenAuth := cfg.App.AccessToken != ""
 	userHandling := cfg.App.UserHandling
@@ -68,16 +68,16 @@ func registerEndpoints(cfg *config.Config) http.Handler {
 				h = withUserAuth(h)
 			}
 		}
-		mux.HandleFunc(e.Pattern(), createHandler(cfg, h))
+		mux.HandleFunc(e.Pattern(), createHandler(cfg, idx, h))
 	}
 	if cfg.App.LogLevel == "debug" {
-		registerDebugEndpoints(mux, cfg)
+		registerDebugEndpoints(mux, cfg, idx)
 	}
 	// SPA catch-all: serve index.html for any path not matched above
-	mux.HandleFunc("GET /static/", createHandler(cfg, serveStatic))
-	mux.HandleFunc("GET /favicon.ico", createHandler(cfg, serveFavicon))
-	mux.HandleFunc("GET /opensearch.xml", createHandler(cfg, serveOpensearch))
-	mux.HandleFunc("/", createHandler(cfg, serveSPA))
+	mux.HandleFunc("GET /static/", createHandler(cfg, idx, serveStatic))
+	mux.HandleFunc("GET /favicon.ico", createHandler(cfg, idx, serveFavicon))
+	mux.HandleFunc("GET /opensearch.xml", createHandler(cfg, idx, serveOpensearch))
+	mux.HandleFunc("/", createHandler(cfg, idx, serveSPA))
 	// If base_url contains a non-root path prefix (e.g. https://x.com/subfolder),
 	// accept requests both with and without that prefix.
 	basePrefix := cfg.BasePathPrefix()
@@ -87,7 +87,7 @@ func registerEndpoints(cfg *config.Config) http.Handler {
 	return mux
 }
 
-func registerDebugEndpoints(mux *http.ServeMux, cfg *config.Config) {
+func registerDebugEndpoints(mux *http.ServeMux, cfg *config.Config, idx *indexer.Indexer) {
 	register := func(pattern string, handler http.HandlerFunc) {
 		h := endpointHandler(func(c *webContext) {
 			handler(c.Response, c.Request)
@@ -97,7 +97,7 @@ func registerDebugEndpoints(mux *http.ServeMux, cfg *config.Config) {
 		} else if cfg.App.AccessToken != "" {
 			h = withTokenAuth(h)
 		}
-		mux.HandleFunc(pattern, createHandler(cfg, h))
+		mux.HandleFunc(pattern, createHandler(cfg, idx, h))
 	}
 	register("GET /debug/pprof", pprof.Index)
 	register("GET /debug/pprof/", pprof.Index)
@@ -213,7 +213,7 @@ func serveSPA(c *webContext) {
 
 	// redirect to configured search engine if query string exists but we have no matching results
 	if q != "" && c.Config.App.RedirectOnNoResults {
-		res, err := indexer.Search(c.Config, &indexer.Query{
+		res, err := c.Indexer.Search(&indexer.Query{
 			Text:   c.effectiveRules().ResolveAliases(q),
 			UserID: c.UserID,
 		})
@@ -403,7 +403,7 @@ func serveConfig(c *webContext) {
 		HistoryEnabled:      historyEnabled(c),
 		Username:            c.Username,
 		UserID:              c.UserID,
-		SemanticEnabled:     indexer.SemanticSearchEnabled(),
+		SemanticEnabled:     c.Indexer != nil && c.Indexer.SemanticSearchEnabled(),
 		SemanticWeight:      c.Config.SemanticSearch.SemanticWeight,
 		SimilarityThreshold: c.Config.SemanticSearch.SimilarityThreshold,
 		OAuthProviders:      oauthProviders,
@@ -460,7 +460,7 @@ func parseSearchQueryParams(r *http.Request) (*indexer.Query, error) {
 
 // serveSearchHTTP executes a single search and writes a JSON response.
 func serveSearchHTTP(c *webContext, query *indexer.Query) {
-	r, err := doSearch(query, c.Config, c.effectiveRules(), c.UserID, historyEnabled(c))
+	r, err := doSearch(c.Indexer, query, c.effectiveRules(), c.UserID, historyEnabled(c))
 	if err != nil {
 		log.Error().Err(err).Msg("search error")
 		serve500(c)
@@ -507,7 +507,7 @@ func serveSearchWebSocket(c *webContext) {
 		if !c.Config.SemanticSearch.Enable {
 			query.SemanticEnabled = false
 		}
-		res, err := doSearch(query, c.Config, c.effectiveRules(), c.UserID, historyEnabled(c))
+		res, err := doSearch(c.Indexer, query, c.effectiveRules(), c.UserID, historyEnabled(c))
 		if err != nil {
 			log.Error().Err(err).Msg("search error")
 			continue
@@ -554,7 +554,7 @@ func serveSearch(c *webContext) {
 	serveSearchWebSocket(c)
 }
 
-func doSearch(query *indexer.Query, cfg *config.Config, rules *config.Rules, userID uint, includeHistory bool) (*indexer.Results, error) {
+func doSearch(idx *indexer.Indexer, query *indexer.Query, rules *config.Rules, userID uint, includeHistory bool) (*indexer.Results, error) {
 	start := time.Now()
 	oq := query.Text
 	if rules != nil {
@@ -564,7 +564,7 @@ func doSearch(query *indexer.Query, cfg *config.Config, rules *config.Rules, use
 	if rules != nil && rules.Priority != nil {
 		query.PriorityPatterns = rules.Priority.ReStrs
 	}
-	res, err := indexer.Search(cfg, query)
+	res, err := idx.Search(query)
 	if err != nil {
 		log.Error().Err(err).Msg("failed to get indexer results")
 	}
@@ -711,9 +711,9 @@ func serveAdd(c *webContext) {
 		rules := c.effectiveRules()
 		var existingDoc *document.Document
 		if rules.IsVersioning(d.URL) {
-			existingDoc = indexer.GetByURLAndUser(d.URL, d.UserID)
+			existingDoc = c.Indexer.GetByURLAndUser(d.URL, d.UserID)
 		}
-		err := indexer.Add(d)
+		err := c.Indexer.Add(d)
 		if err != nil {
 			if errors.Is(err, document.ErrSensitiveContent) {
 				log.Warn().Str("URL", d.URL).Msg("rejected document: sensitive content")
@@ -725,7 +725,7 @@ func serveAdd(c *webContext) {
 			return
 		}
 		if existingDoc != nil {
-			newDoc := indexer.GetByURLAndUser(d.URL, d.UserID)
+			newDoc := c.Indexer.GetByURLAndUser(d.URL, d.UserID)
 			if newDoc != nil {
 				htmlDiff, textDiff := computeDocumentDiff(existingDoc, newDoc)
 				if htmlDiff != "" || textDiff != "" {
@@ -779,7 +779,7 @@ func serveAddPDF(c *webContext) {
 
 	d.UserID = submittedDocumentUserID(c)
 
-	if err := indexer.AddPDF(d, pdfData); err != nil {
+	if err := c.Indexer.AddPDF(d, pdfData); err != nil {
 		if errors.Is(err, document.ErrSensitiveContent) {
 			log.Warn().Str("URL", d.URL).Msg("rejected pdf document: sensitive content")
 			http.Error(c.Response, document.ErrSensitiveContent.Error(), http.StatusUnprocessableEntity)
@@ -807,13 +807,13 @@ func serveUpdateLabel(c *webContext) {
 		http.Error(c.Response, "missing url", http.StatusBadRequest)
 		return
 	}
-	doc := indexer.GetByURLAndUser(req.URL, c.UserID)
+	doc := c.Indexer.GetByURLAndUser(req.URL, c.UserID)
 	if doc == nil {
 		http.Error(c.Response, "document not found", http.StatusNotFound)
 		return
 	}
 	doc.Label = req.Label
-	if err := indexer.Save(doc); err != nil {
+	if err := c.Indexer.Save(doc); err != nil {
 		log.Error().Err(err).Str("url", req.URL).Msg("failed to save label")
 		serve500(c)
 		return
@@ -874,7 +874,7 @@ func serveHistory(c *webContext) {
 				Title:    item.Title,
 				Query:    item.Query,
 				Added:    item.UpdatedAt.Unix(),
-				AddCount: indexer.GetAddCountByURLAndUser(item.URL, c.UserID),
+				AddCount: c.Indexer.GetAddCountByURLAndUser(item.URL, c.UserID),
 			})
 		}
 		var nextLastID uint
@@ -903,7 +903,7 @@ func serveHistory(c *webContext) {
 		c.JSON(&openedResponse{Documents: docs, LastID: nextLastID, LastUpdatedAt: nextLastUpdatedAt})
 		return
 	}
-	ds := indexer.GetLatestDocumentsFilteredByDate(100, c.Request.URL.Query().Get("last"), c.UserID, filter, dateFrom, dateTo)
+	ds := c.Indexer.GetLatestDocumentsFilteredByDate(100, c.Request.URL.Query().Get("last"), c.UserID, filter, dateFrom, dateTo)
 	if rssFormat {
 		var rssItems []rssItem
 		if ds != nil {
@@ -1004,7 +1004,7 @@ func serveHistoryTimeline(c *webContext) {
 		return
 	}
 	if dateFrom != 0 {
-		result, err := indexer.GetHistoryTimelineDays(c.UserID, filter, loc, dateFrom, dateTo)
+		result, err := c.Indexer.GetHistoryTimelineDays(c.UserID, filter, loc, dateFrom, dateTo)
 		if err != nil {
 			serve500(c)
 			return
@@ -1012,7 +1012,7 @@ func serveHistoryTimeline(c *webContext) {
 		c.JSON(result)
 		return
 	}
-	result, err := indexer.GetHistoryTimeline(c.UserID, filter, loc)
+	result, err := c.Indexer.GetHistoryTimeline(c.UserID, filter, loc)
 	if err != nil {
 		serve500(c)
 		return
@@ -1211,7 +1211,7 @@ func serveGetFacets(c *webContext) {
 			}
 		}
 	}
-	res, err := doSearch(q, c.Config, c.effectiveRules(), c.UserID, historyEnabled(c))
+	res, err := doSearch(c.Indexer, q, c.effectiveRules(), c.UserID, historyEnabled(c))
 	if err != nil || res.Facets == nil {
 		c.JSON(map[string]any{})
 		return
@@ -1221,7 +1221,7 @@ func serveGetFacets(c *webContext) {
 
 func serveGet(c *webContext) {
 	u := c.Request.URL.Query().Get("url")
-	doc := indexer.GetByURLAndUser(u, c.UserID)
+	doc := c.Indexer.GetByURLAndUser(u, c.UserID)
 	if doc == nil {
 		http.Error(c.Response, "document not found", http.StatusNotFound)
 		return
@@ -1238,7 +1238,7 @@ func servePreview(c *webContext) {
 	u := c.Request.URL.Query().Get("url")
 	extractorName := c.Request.URL.Query().Get("extractor")
 	versionIDStr := c.Request.URL.Query().Get("version")
-	doc := indexer.GetByURLAndUser(u, c.UserID)
+	doc := c.Indexer.GetByURLAndUser(u, c.UserID)
 	if doc == nil {
 		serve500(c)
 		return
@@ -1305,7 +1305,7 @@ func serveFile(c *webContext) {
 		http.Error(c.Response, "missing id parameter", http.StatusBadRequest)
 		return
 	}
-	doc := indexer.GetByDocID(id)
+	doc := c.Indexer.GetByDocID(id)
 	filePath, dir, ok := authorizedFilePath(c, id, doc)
 	if !ok {
 		http.Error(c.Response, "file not found", http.StatusNotFound)
@@ -1415,9 +1415,9 @@ func serveStats(c *webContext) {
 	}
 	var docCount uint64
 	if c.Config.App.UserHandling {
-		docCount = indexer.DocumentCountByUser(c.UserID)
+		docCount = c.Indexer.TotalByUser(c.UserID)
 	} else {
-		docCount = indexer.DocumentCount()
+		docCount = c.Indexer.Total()
 	}
 	rules := c.effectiveRules()
 	resp := map[string]any{
@@ -1437,7 +1437,7 @@ func serveStats(c *webContext) {
 func serveExtractors(c *webContext) {
 	u := c.Request.URL.Query().Get("url")
 	if u != "" {
-		doc := indexer.GetByURLAndUser(u, c.UserID)
+		doc := c.Indexer.GetByURLAndUser(u, c.UserID)
 		if doc == nil {
 			serve500(c)
 			return
@@ -1484,7 +1484,7 @@ func serveSuggest(c *webContext) {
 	q := c.Request.URL.Query().Get("q")
 	suggestions := []string{}
 	if q != "" {
-		res, err := indexer.Search(c.Config, &indexer.Query{
+		res, err := c.Indexer.Search(&indexer.Query{
 			Text:   c.effectiveRules().ResolveAliases(q),
 			UserID: c.UserID,
 			Limit:  suggestLimit,
@@ -1587,7 +1587,7 @@ func serveDelete(c *webContext) {
 	if c.Config.App.UserHandling && !c.IsAdmin {
 		userID = &c.UserID
 	}
-	count, err := indexer.DeleteByQuery(req.Query, userID, func(url string, uid uint) {
+	count, err := c.Indexer.DeleteByQuery(req.Query, userID, func(url string, uid uint) {
 		if err := model.DeleteHistoryURL(uid, url); err != nil {
 			log.Warn().Err(err).Str("url", url).Msg("failed to delete history for deleted document")
 		}
@@ -1661,7 +1661,7 @@ func serveBatch(c *webContext) {
 		return
 	}
 
-	batch := indexer.NewMultiBatch()
+	batch := c.Indexer.NewMultiBatch()
 	uid := targetUserID(c)
 	results := make([]batchOpResult, len(req.Ops))
 	for i, op := range req.Ops {
@@ -1694,7 +1694,7 @@ func serveBatch(c *webContext) {
 				continue
 			}
 			id := document.GetDocID(uid, op.URL)
-			if d := indexer.GetByDocID(id); d != nil {
+			if d := c.Indexer.GetByDocID(id); d != nil {
 				if err := model.DeleteHistoryURL(d.UserID, d.URL); err != nil {
 					log.Warn().Err(err).Str("url", d.URL).Msg("failed to delete history for batch deleted document")
 				}
@@ -1706,7 +1706,7 @@ func serveBatch(c *webContext) {
 				results[i] = batchOpResult{Status: http.StatusBadRequest, Error: "missing url"}
 				continue
 			}
-			d := indexer.GetByURLAndUser(op.URL, uid)
+			d := c.Indexer.GetByURLAndUser(op.URL, uid)
 			if d == nil {
 				results[i] = batchOpResult{Status: http.StatusNotFound, Error: "document not found"}
 			} else {
@@ -1738,7 +1738,7 @@ func serveReindex(c *webContext) {
 		serve500(c)
 		return
 	}
-	if err := indexer.Reindex(c.Config.FullPath(""), c.Config.Rules, req.SkipSensitive, req.DetectLanguages, c.Config.Indexer.KeepStopwords, c.Config.Indexer.Directories); err != nil {
+	if err := c.Indexer.Reindex(c.Config.Rules, req.SkipSensitive, req.DetectLanguages, c.Config.Indexer.KeepStopwords, c.Config.Indexer.Directories); err != nil {
 		log.Error().Err(err).Msg("reindex failed")
 		serve500(c)
 		return
@@ -1747,7 +1747,7 @@ func serveReindex(c *webContext) {
 }
 
 func serveCleanup(c *webContext) {
-	result, err := indexer.Cleanup(c.Config.FullPath(""), c.Config.Indexer.Directories)
+	result, err := c.Indexer.Cleanup(c.Config.Indexer.Directories)
 	if err != nil {
 		log.Error().Err(err).Msg("cleanup failed")
 		serve500(c)
@@ -1772,7 +1772,7 @@ const storedFaviconCacheControl = "public, max-age=604800, immutable"
 
 func serveStoredFavicon(c *webContext) {
 	key := c.Request.URL.Query().Get("key")
-	dataURI, err := indexer.ReadFavicon(key)
+	dataURI, err := c.Indexer.ReadFavicon(key)
 	if err != nil {
 		http.Error(c.Response, "favicon not found", http.StatusNotFound)
 		return
