@@ -488,6 +488,81 @@ func TestAddDocumentTimestamps(t *testing.T) {
 	}
 }
 
+func TestAddDocumentAndMultiBatchUseSamePreparation(t *testing.T) {
+	for _, batched := range []bool{false, true} {
+		name := "direct"
+		if batched {
+			name = "batch"
+		}
+		t.Run(name, func(t *testing.T) {
+			idx := newTestIndexer(t, testutil.Config(t))
+			defer idx.Close()
+
+			url := "https://example.com/shared-preparation"
+			initial := &document.Document{
+				URL:      url,
+				Title:    "Initial document",
+				Text:     "Initial document text",
+				HTML:     "<p>old preview</p>",
+				Language: "en",
+				Label:    "preserved label",
+				Added:    100,
+				AddCount: 2,
+			}
+			if err := idx.save(initial); err != nil {
+				t.Fatalf("save initial document: %v", err)
+			}
+			oldHTMLKey := initial.HTMLKey
+
+			updated := &document.Document{
+				URL:       url,
+				Title:     "Updated document",
+				Text:      "Updated document text",
+				HTML:      "<p>new preview</p>",
+				Updated:   200,
+				Processed: true,
+			}
+			if batched {
+				batch := idx.NewMultiBatch()
+				if err := batch.Add(updated); err != nil {
+					t.Fatalf("add document to batch: %v", err)
+				}
+				if err := batch.Save(); err != nil {
+					t.Fatalf("save batch: %v", err)
+				}
+			} else if err := idx.Add(updated); err != nil {
+				t.Fatalf("add document: %v", err)
+			}
+
+			got := idx.GetByURLAndUser(url, 0)
+			if got == nil {
+				t.Fatal("updated document not found")
+			}
+			if got.Added != 100 || got.Updated != 200 {
+				t.Fatalf("timestamps are Added=%d Updated=%d, want 100 and 200", got.Added, got.Updated)
+			}
+			if got.AddCount != 3 {
+				t.Fatalf("AddCount = %d, want 3", got.AddCount)
+			}
+			if got.Label != "preserved label" {
+				t.Fatalf("Label = %q, want preserved label", got.Label)
+			}
+			if got.Language != "" {
+				t.Fatalf("Language = %q, want the default index", got.Language)
+			}
+			if got.HTML != "<p>new preview</p>" {
+				t.Fatalf("HTML = %q, want updated preview", got.HTML)
+			}
+			if copies := countDocIDCopies(t, idx, document.GetDocID(0, url)); copies != 1 {
+				t.Fatalf("document copies = %d, want 1", copies)
+			}
+			if _, err := os.Stat(dataFilePath(idx.dir, htmlSubdir, oldHTMLKey)); !errors.Is(err, os.ErrNotExist) {
+				t.Fatalf("old preview file stat error = %v, want not found", err)
+			}
+		})
+	}
+}
+
 func TestInitBackfillsLegacyUpdatedTimestamp(t *testing.T) {
 	idxCfg := testutil.Config(t)
 	svc := newTestIndexer(t, idxCfg)

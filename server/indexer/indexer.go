@@ -235,12 +235,17 @@ type Results struct {
 	Facets          *FacetsResult        `json:"facets,omitempty"`
 }
 
-type batchKeyChange struct {
-	oldHTMLKey    string
-	newHTMLKey    string
-	oldFaviconKey string
-	newFaviconKey string
+type documentWritePlan struct {
+	target         bleve.Index
+	staleIndexes   []bleve.Index
+	oldHTMLKeys    []string
+	oldFaviconKeys []string
+	newHTMLKey     string
+	newFaviconKey  string
+	needsEmbedding bool
 }
+
+type documentWriteFunc func(*document.Document, documentWritePlan) error
 
 type storedDocumentState struct {
 	htmlKeys    []string
@@ -258,12 +263,13 @@ func (s storedDocumentState) embeddingTextChanged(text string) bool {
 }
 
 type MultiBatch struct {
-	indexer           *Indexer
-	batches           map[string]*bleve.Batch
-	keyChanges        []batchKeyChange
-	embeddingIDs      map[string]struct{}
-	deletedIDs        map[string]struct{}
-	incrementAddCount bool
+	indexer             *Indexer
+	batches             map[string]*bleve.Batch
+	orphanedHTMLKeys    []string
+	orphanedFaviconKeys []string
+	embeddingIDs        map[string]struct{}
+	deletedIDs          map[string]struct{}
+	incrementAddCount   bool
 }
 
 var (
@@ -960,46 +966,57 @@ func (i *Indexer) TotalByUser(userID uint) uint64 {
 }
 
 func (i *Indexer) AddDocument(d *document.Document) error {
-	return i.addDocument(d, true)
+	return i.addDocument(d, true, i.applyDocumentWrite)
 }
 
-func (i *Indexer) addDocument(d *document.Document, incrementAddCount bool) error {
-	if !d.IsProcessed() {
-		if err := i.processDocument(d); err != nil {
-			return err
-		}
+func (i *Indexer) addDocument(d *document.Document, incrementAddCount bool, write documentWriteFunc) error {
+	plan, err := i.prepareDocumentWrite(d, incrementAddCount)
+	if err != nil {
+		return err
 	}
-	if !d.SkipIndexing {
-		state := i.getStoredDocumentState(d.ID())
-		needsEmbedding := i.embedder != nil && i.vectorStore != nil && state.embeddingTextChanged(d.Text)
-		applySubmissionTimestamps(d, state)
-		if incrementAddCount {
-			if state.found {
-				d.AddCount = state.addCount + 1
-			} else {
-				d.AddCount = 1
-			}
-		} else if d.AddCount < 1 {
-			d.AddCount = 1
-		}
-		if d.Label == "" {
-			d.Label = state.label
-		}
-		if err := i.saveWithState(d, state); err != nil {
+	if plan != nil {
+		if err := write(d, *plan); err != nil {
 			return err
-		}
-		if needsEmbedding {
-			if err := i.enqueueEmbedding(d.ID()); err != nil {
-				return fmt.Errorf("enqueue embedding: %w", err)
-			}
 		}
 	}
 	for _, extra := range d.ExtraDocuments {
-		if err := i.addDocument(extra, false); err != nil {
+		if err := i.addDocument(extra, false, write); err != nil {
 			log.Warn().Err(err).Str("url", extra.URL).Msg("failed to index extra document")
 		}
 	}
 	return nil
+}
+
+func (i *Indexer) prepareDocumentWrite(d *document.Document, incrementAddCount bool) (*documentWritePlan, error) {
+	if !d.IsProcessed() {
+		if err := i.processDocument(d); err != nil {
+			return nil, err
+		}
+	}
+	if d.SkipIndexing {
+		return nil, nil
+	}
+	state := i.getStoredDocumentState(d.ID())
+	needsEmbedding := i.embedder != nil && i.vectorStore != nil && state.embeddingTextChanged(d.Text)
+	applySubmissionTimestamps(d, state)
+	if incrementAddCount {
+		if state.found {
+			d.AddCount = state.addCount + 1
+		} else {
+			d.AddCount = 1
+		}
+	} else if d.AddCount < 1 {
+		d.AddCount = 1
+	}
+	if d.Label == "" {
+		d.Label = state.label
+	}
+	plan, err := i.prepareStorageWrite(d, state)
+	if err != nil {
+		return nil, err
+	}
+	plan.needsEmbedding = needsEmbedding
+	return &plan, nil
 }
 
 func applySubmissionTimestamps(d *document.Document, state storedDocumentState) {
@@ -1023,6 +1040,15 @@ func (i *Indexer) save(d *document.Document) error {
 }
 
 func (i *Indexer) saveWithState(d *document.Document, state storedDocumentState) error {
+	plan, err := i.prepareStorageWrite(d, state)
+	if err != nil {
+		return err
+	}
+	return i.applyDocumentWrite(d, plan)
+}
+
+func (i *Indexer) prepareStorageWrite(d *document.Document, state storedDocumentState) (documentWritePlan, error) {
+	plan := documentWritePlan{}
 	existingIndexes := state.indexNames
 	if existingIndexes == nil {
 		existingIndexes = make(map[string]struct{}, len(i.indexers))
@@ -1031,36 +1057,56 @@ func (i *Indexer) saveWithState(d *document.Document, state storedDocumentState)
 		}
 	}
 	if err := i.prepareForStorage(d); err != nil {
-		return err
+		return plan, err
 	}
-	log.Debug().Str("URL", d.URL).Msg("item added to index")
-	targetIdx := i.getOrCreate(d.Language)
-	if err := targetIdx.Index(d.ID(), d); err != nil {
-		return err
-	}
+	plan.oldHTMLKeys = state.htmlKeys
+	plan.oldFaviconKeys = state.faviconKeys
+	plan.newHTMLKey = d.HTMLKey
+	plan.newFaviconKey = d.FaviconKey
+	plan.target = i.getOrCreate(d.Language)
 	for name := range existingIndexes {
-		if name == targetIdx.Name() {
+		if name == plan.target.Name() {
 			continue
 		}
 		idx, ok := i.indexers[name]
 		if !ok {
 			continue
 		}
+		plan.staleIndexes = append(plan.staleIndexes, idx)
+	}
+	return plan, nil
+}
+
+func (i *Indexer) applyDocumentWrite(d *document.Document, plan documentWritePlan) error {
+	log.Debug().Str("URL", d.URL).Msg("item added to index")
+	if err := plan.target.Index(d.ID(), d); err != nil {
+		return err
+	}
+	for _, idx := range plan.staleIndexes {
 		if err := idx.Delete(d.ID()); err != nil {
 			return err
 		}
 	}
-	for _, k := range state.htmlKeys {
-		if k != d.HTMLKey {
-			i.data.deleteIfOrphaned("html_key", htmlSubdir, k, i.countKeyRefs)
-		}
-	}
-	for _, k := range state.faviconKeys {
-		if k != d.FaviconKey {
-			i.data.deleteIfOrphaned("favicon_key", faviconSubdir, k, i.countKeyRefs)
+	i.cleanupDataKeys(plan.oldHTMLKeys, plan.newHTMLKey, plan.oldFaviconKeys, plan.newFaviconKey)
+	if plan.needsEmbedding {
+		if err := i.enqueueEmbedding(d.ID()); err != nil {
+			return fmt.Errorf("enqueue embedding: %w", err)
 		}
 	}
 	return nil
+}
+
+func (i *Indexer) cleanupDataKeys(oldHTMLKeys []string, newHTMLKey string, oldFaviconKeys []string, newFaviconKey string) {
+	for _, key := range oldHTMLKeys {
+		if key != "" && key != newHTMLKey {
+			i.data.deleteIfOrphaned("html_key", htmlSubdir, key, i.countKeyRefs)
+		}
+	}
+	for _, key := range oldFaviconKeys {
+		if key != "" && key != newFaviconKey {
+			i.data.deleteIfOrphaned("favicon_key", faviconSubdir, key, i.countKeyRefs)
+		}
+	}
 }
 
 // getStoredDocumentState fetches the fields needed to update an existing
@@ -1298,66 +1344,32 @@ func (b *MultiBatch) Add(d *document.Document) error {
 	if err := b.indexer.validateFileDocument(d); err != nil {
 		return err
 	}
-	return b.add(d, b.incrementAddCount)
+	return b.indexer.addDocument(d, b.incrementAddCount, b.applyDocumentWrite)
 }
 
-func (b *MultiBatch) add(d *document.Document, incrementAddCount bool) error {
-	if !d.IsProcessed() {
-		if err := b.indexer.processDocument(d); err != nil {
-			return err
+func (b *MultiBatch) applyDocumentWrite(d *document.Document, plan documentWritePlan) error {
+	delete(b.deletedIDs, d.ID())
+	if plan.needsEmbedding {
+		if b.indexer.embeddingWorkers > 0 {
+			b.embeddingIDs[d.ID()] = struct{}{}
+		} else {
+			_ = embedDocumentChunks(b.indexer.embedCtx, b.indexer, d)
 		}
 	}
-	if !d.SkipIndexing {
-		state := b.indexer.getStoredDocumentState(d.ID())
-		needsEmbedding := b.indexer.embedder != nil && b.indexer.vectorStore != nil && state.embeddingTextChanged(d.Text)
-		applySubmissionTimestamps(d, state)
-		if incrementAddCount {
-			if state.found {
-				d.AddCount = state.addCount + 1
-			} else {
-				d.AddCount = 1
-			}
-		} else if d.AddCount < 1 {
-			d.AddCount = 1
-		}
-		if d.Label == "" {
-			d.Label = state.label
-		}
-		delete(b.deletedIDs, d.ID())
-		if needsEmbedding {
-			if b.indexer.embeddingWorkers > 0 {
-				b.embeddingIDs[d.ID()] = struct{}{}
-			} else {
-				_ = embedDocumentChunks(b.indexer.embedCtx, b.indexer, d)
-			}
-		}
-		if err := b.indexer.prepareForStorage(d); err != nil {
-			return err
-		}
-		idx := b.indexer.getOrCreate(d.Language)
-		for name, subIdx := range b.indexer.indexers {
-			if name == idx.Name() {
-				continue
-			}
-			b.getOrCreateBatch(name, subIdx).Delete(d.ID())
-		}
-		if err := b.getOrCreateBatch(idx.Name(), idx).Index(d.ID(), d); err != nil {
-			return err
-		}
-		for _, k := range state.htmlKeys {
-			if k != d.HTMLKey {
-				b.keyChanges = append(b.keyChanges, batchKeyChange{oldHTMLKey: k, newHTMLKey: d.HTMLKey})
-			}
-		}
-		for _, k := range state.faviconKeys {
-			if k != d.FaviconKey {
-				b.keyChanges = append(b.keyChanges, batchKeyChange{oldFaviconKey: k, newFaviconKey: d.FaviconKey})
-			}
+	for _, idx := range plan.staleIndexes {
+		b.getOrCreateBatch(idx.Name(), idx).Delete(d.ID())
+	}
+	if err := b.getOrCreateBatch(plan.target.Name(), plan.target).Index(d.ID(), d); err != nil {
+		return err
+	}
+	for _, key := range plan.oldHTMLKeys {
+		if key != plan.newHTMLKey {
+			b.orphanedHTMLKeys = append(b.orphanedHTMLKeys, key)
 		}
 	}
-	for _, extra := range d.ExtraDocuments {
-		if err := b.add(extra, false); err != nil {
-			log.Warn().Err(err).Str("url", extra.URL).Msg("failed to index extra document")
+	for _, key := range plan.oldFaviconKeys {
+		if key != plan.newFaviconKey {
+			b.orphanedFaviconKeys = append(b.orphanedFaviconKeys, key)
 		}
 	}
 	return nil
@@ -1370,12 +1382,8 @@ func (b *MultiBatch) Delete(id string) {
 	for name, idx := range b.indexer.indexers {
 		b.getOrCreateBatch(name, idx).Delete(id)
 	}
-	for _, k := range oldHTMLKeys {
-		b.keyChanges = append(b.keyChanges, batchKeyChange{oldHTMLKey: k})
-	}
-	for _, k := range oldFaviconKeys {
-		b.keyChanges = append(b.keyChanges, batchKeyChange{oldFaviconKey: k})
-	}
+	b.orphanedHTMLKeys = append(b.orphanedHTMLKeys, oldHTMLKeys...)
+	b.orphanedFaviconKeys = append(b.orphanedFaviconKeys, oldFaviconKeys...)
 }
 
 func (b *MultiBatch) Save() error {
@@ -1384,14 +1392,7 @@ func (b *MultiBatch) Save() error {
 			return err
 		}
 	}
-	for _, kc := range b.keyChanges {
-		if kc.oldHTMLKey != "" && kc.oldHTMLKey != kc.newHTMLKey {
-			b.indexer.data.deleteIfOrphaned("html_key", htmlSubdir, kc.oldHTMLKey, b.indexer.countKeyRefs)
-		}
-		if kc.oldFaviconKey != "" && kc.oldFaviconKey != kc.newFaviconKey {
-			b.indexer.data.deleteIfOrphaned("favicon_key", faviconSubdir, kc.oldFaviconKey, b.indexer.countKeyRefs)
-		}
-	}
+	b.indexer.cleanupDataKeys(b.orphanedHTMLKeys, "", b.orphanedFaviconKeys, "")
 	for id := range b.deletedIDs {
 		if err := b.indexer.cancelEmbedding(id); err != nil {
 			log.Warn().Err(err).Str("id", id).Msg("failed to cancel embedding job")
