@@ -18,17 +18,35 @@ import (
 )
 
 func GetLatestDocuments(limit int, latest string, userID uint) *Results {
-	return GetLatestDocumentsFiltered(limit, latest, userID, "")
+	if defaultIndexer == nil {
+		return nil
+	}
+	return defaultIndexer.GetLatestDocuments(limit, latest, userID)
+}
+
+func (i *Indexer) GetLatestDocuments(limit int, latest string, userID uint) *Results {
+	return i.GetLatestDocumentsFiltered(limit, latest, userID, "")
 }
 
 func GetLatestDocumentsFiltered(limit int, latest string, userID uint, filter string) *Results {
-	return GetLatestDocumentsFilteredByDate(limit, latest, userID, filter, 0, 0)
+	if defaultIndexer == nil {
+		return nil
+	}
+	return defaultIndexer.GetLatestDocumentsFiltered(limit, latest, userID, filter)
+}
+
+func (i *Indexer) GetLatestDocumentsFiltered(limit int, latest string, userID uint, filter string) *Results {
+	return i.GetLatestDocumentsFilteredByDate(limit, latest, userID, filter, 0, 0)
 }
 
 func GetLatestDocumentsFilteredByDate(limit int, latest string, userID uint, filter string, dateFrom, dateTo int64) *Results {
-	if i == nil {
+	if defaultIndexer == nil {
 		return nil
 	}
+	return defaultIndexer.GetLatestDocumentsFilteredByDate(limit, latest, userID, filter, dateFrom, dateTo)
+}
+
+func (i *Indexer) GetLatestDocumentsFilteredByDate(limit int, latest string, userID uint, filter string, dateFrom, dateTo int64) *Results {
 	q := latestDocumentsQuery(userID, filter, dateFrom, dateTo)
 	req := bleve.NewSearchRequest(q)
 	req.Fields = []string{"url", "title", "added", "updated", "add_count", "favicon_key", "favicon"}
@@ -125,9 +143,13 @@ func latestDocumentsQuery(userID uint, filter string, dateFrom, dateTo int64) qu
 }
 
 func GetHistoryTimeline(userID uint, filter string, loc *time.Location) (*timeline.Result, error) {
-	if i == nil {
+	if defaultIndexer == nil {
 		return timeline.New(time.Now(), loc, 0), nil
 	}
+	return defaultIndexer.GetHistoryTimeline(userID, filter, loc)
+}
+
+func (i *Indexer) GetHistoryTimeline(userID uint, filter string, loc *time.Location) (*timeline.Result, error) {
 	q := latestDocumentsQuery(userID, filter, 0, 0)
 	var oldest int64
 	oldestRequest := bleve.NewSearchRequest(q)
@@ -145,20 +167,27 @@ func GetHistoryTimeline(userID uint, filter string, loc *time.Location) (*timeli
 	}
 
 	result := timeline.New(time.Now(), loc, oldest)
-	if err := populateTimelineFacet(q, result); err != nil {
+	if err := i.populateTimelineFacet(q, result); err != nil {
 		return nil, err
 	}
 	return result, nil
 }
 
 func GetHistoryTimelineDays(userID uint, filter string, loc *time.Location, dateFrom, dateTo int64) (*timeline.DailyResult, error) {
+	if defaultIndexer == nil {
+		return timeline.NewDays(dateFrom, dateTo, loc), nil
+	}
+	return defaultIndexer.GetHistoryTimelineDays(userID, filter, loc, dateFrom, dateTo)
+}
+
+func (i *Indexer) GetHistoryTimelineDays(userID uint, filter string, loc *time.Location, dateFrom, dateTo int64) (*timeline.DailyResult, error) {
 	result := timeline.NewDays(dateFrom, dateTo, loc)
-	if i == nil || len(result.Days) == 0 {
+	if len(result.Days) == 0 {
 		return result, nil
 	}
 
 	q := latestDocumentsQuery(userID, filter, dateFrom, dateTo)
-	if err := populateTimelineFacet(q, result); err != nil {
+	if err := i.populateTimelineFacet(q, result); err != nil {
 		return nil, err
 	}
 	return result, nil
@@ -169,7 +198,7 @@ type timelineFacetBuckets interface {
 	SetCount(string, int)
 }
 
-func populateTimelineFacet(q query.Query, result timelineFacetBuckets) error {
+func (i *Indexer) populateTimelineFacet(q query.Query, result timelineFacetBuckets) error {
 	buckets := result.Buckets()
 	if len(buckets) == 0 {
 		return nil

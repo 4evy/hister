@@ -12,7 +12,7 @@ import (
 
 type fileTypeHandler interface {
 	Match(path string) bool
-	Index(d *document.Document, content []byte) error
+	Index(*Indexer, *document.Document, []byte) error
 }
 
 var fileTypeHandlers = []fileTypeHandler{
@@ -23,8 +23,8 @@ var fileTypeHandlers = []fileTypeHandler{
 	plainTextFileType{},
 }
 
-func indexFileContent(path string, d *document.Document, content []byte) error {
-	return fileTypeHandlerForPath(path).Index(d, content)
+func (i *Indexer) indexFileContent(path string, d *document.Document, content []byte) error {
+	return fileTypeHandlerForPath(path).Index(i, d, content)
 }
 
 func fileTypeHandlerForPath(path string) fileTypeHandler {
@@ -42,11 +42,11 @@ func (plainTextFileType) Match(_ string) bool {
 	return true
 }
 
-func (plainTextFileType) Index(d *document.Document, content []byte) error {
+func (plainTextFileType) Index(i *Indexer, d *document.Document, content []byte) error {
 	if !utf8.Valid(content) {
 		return ErrBinaryFile
 	}
-	if int64(len(content)) > maxFileSize {
+	if int64(len(content)) > i.maxFileSize {
 		return fmt.Errorf("%w: %d bytes", ErrFileTooLarge, int64(len(content)))
 	}
 

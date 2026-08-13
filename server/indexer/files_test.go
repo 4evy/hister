@@ -22,7 +22,7 @@ func TestFileDocumentValidation(t *testing.T) {
 	testutil.InitModel(t)
 	user := testutil.CreateUser(t, "fileowner")
 	dir := t.TempDir()
-	idx := &indexer{directories: []*config.Directory{{
+	idx := &Indexer{directories: []*config.Directory{{
 		Path:      dir,
 		Filetypes: []string{"txt"},
 		Patterns:  []string{"note*"},
@@ -53,16 +53,16 @@ func TestFileDocumentValidation(t *testing.T) {
 }
 
 func TestAddFunctionsValidateFileDocuments(t *testing.T) {
-	idx := &indexer{}
+	idx := &Indexer{}
 	d := &document.Document{
 		URL:       "file:///not/configured/note.txt",
 		Text:      "submitted content",
 		Processed: true,
 	}
 
-	originalIndexer := i
-	i = idx
-	t.Cleanup(func() { i = originalIndexer })
+	originalIndexer := defaultIndexer
+	defaultIndexer = idx
+	t.Cleanup(func() { defaultIndexer = originalIndexer })
 	if err := Add(d); !errors.Is(err, ErrFileURLNotAllowed) {
 		t.Fatalf("Add error = %v, want %v", err, ErrFileURLNotAllowed)
 	}
@@ -178,7 +178,7 @@ func TestIndexFileWithUserID(t *testing.T) {
 	if err := Init(idxCfg); err != nil {
 		t.Fatalf("failed to init indexer: %v", err)
 	}
-	defer i.Close()
+	defer defaultIndexer.Close()
 
 	if err := IndexFile(testFile, u.ID); err != nil {
 		t.Fatalf("IndexFile with user ID failed: %v", err)
@@ -198,7 +198,7 @@ func TestIndexFileAppliesDirectoryLabel(t *testing.T) {
 	if err := Init(idxCfg); err != nil {
 		t.Fatalf("failed to init indexer: %v", err)
 	}
-	defer i.Close()
+	defer defaultIndexer.Close()
 
 	if err := IndexFile(testFile, 0); err != nil {
 		t.Fatalf("IndexFile failed: %v", err)
@@ -234,7 +234,7 @@ func TestCleanupRemovesDocumentsExcludedByConfig(t *testing.T) {
 	if err := Init(cfg); err != nil {
 		t.Fatalf("failed to init indexer: %v", err)
 	}
-	defer func() { i.Close() }()
+	defer func() { defaultIndexer.Close() }()
 
 	if err := IndexFile(notePath, 0); err != nil {
 		t.Fatalf("index note: %v", err)
@@ -244,7 +244,7 @@ func TestCleanupRemovesDocumentsExcludedByConfig(t *testing.T) {
 	}
 
 	restricted := []*config.Directory{{Path: testDir, Filetypes: []string{"txt"}}}
-	i.directories = restricted
+	defaultIndexer.directories = restricted
 	result, err := Cleanup(cfg.FullPath(""), restricted)
 	if err != nil {
 		t.Fatalf("Cleanup returned an error: %v", err)
@@ -270,7 +270,7 @@ func TestCleanupLocalDocumentsDoesNotInspectFilesystem(t *testing.T) {
 	if err := Init(cfg); err != nil {
 		t.Fatalf("failed to init indexer: %v", err)
 	}
-	defer func() { i.Close() }()
+	defer func() { defaultIndexer.Close() }()
 
 	if err := IndexFile(filePath, 0); err != nil {
 		t.Fatalf("index file: %v", err)
@@ -303,7 +303,7 @@ func TestCleanupLocalDocumentsRemovesDocumentWithWrongOwner(t *testing.T) {
 	if err := Init(cfg); err != nil {
 		t.Fatalf("failed to init indexer: %v", err)
 	}
-	defer func() { i.Close() }()
+	defer func() { defaultIndexer.Close() }()
 	if err := IndexFile(filePath, alice.ID); err != nil {
 		t.Fatalf("index file for alice: %v", err)
 	}
@@ -336,7 +336,7 @@ func TestCleanupLocalDocumentsPreservesDocumentWhenOwnerCannotBeResolved(t *test
 	if err := Init(cfg); err != nil {
 		t.Fatalf("failed to init indexer: %v", err)
 	}
-	defer func() { i.Close() }()
+	defer func() { defaultIndexer.Close() }()
 	if err := IndexFile(filePath, alice.ID); err != nil {
 		t.Fatalf("index file for alice: %v", err)
 	}
@@ -361,7 +361,7 @@ func TestCleanupLocalDocumentsDeletesMultipleBatches(t *testing.T) {
 	if err := Init(cfg); err != nil {
 		t.Fatalf("failed to init indexer: %v", err)
 	}
-	defer func() { i.Close() }()
+	defer func() { defaultIndexer.Close() }()
 
 	batch := NewMultiBatch()
 	for n := range 201 {
@@ -402,7 +402,7 @@ func TestReindexSkipsLocalFilesExcludedByConfig(t *testing.T) {
 	if err := Init(cfg); err != nil {
 		t.Fatalf("failed to init indexer: %v", err)
 	}
-	defer func() { i.Close() }()
+	defer func() { defaultIndexer.Close() }()
 
 	if err := IndexFile(notePath, 0); err != nil {
 		t.Fatalf("index note: %v", err)
@@ -428,7 +428,7 @@ func TestAddDocumentIncrementsAddCount(t *testing.T) {
 	if err := Init(idxCfg); err != nil {
 		t.Fatalf("failed to init indexer: %v", err)
 	}
-	defer i.Close()
+	defer defaultIndexer.Close()
 
 	url := "https://example.com/count"
 	for range 2 {
@@ -466,7 +466,7 @@ func TestAddDocumentTimestamps(t *testing.T) {
 	if err := Init(idxCfg); err != nil {
 		t.Fatalf("failed to init indexer: %v", err)
 	}
-	defer i.Close()
+	defer defaultIndexer.Close()
 
 	url := "https://example.com/timestamps"
 	if err := Add(&document.Document{
@@ -531,19 +531,19 @@ func TestInitBackfillsLegacyUpdatedTimestamp(t *testing.T) {
 		"add_count":      int64(1),
 		"metadata.topic": "compatibility",
 	}
-	idx := i.indexers[defaultIndexerName]
+	idx := defaultIndexer.indexers[defaultIndexerName]
 	if err := idx.Index(id, legacy); err != nil {
 		t.Fatalf("failed to index legacy document: %v", err)
 	}
 	if err := idx.DeleteInternal([]byte(updatedBackfillKey)); err != nil {
 		t.Fatalf("failed to clear backfill marker: %v", err)
 	}
-	i.Close()
+	defaultIndexer.Close()
 
 	if err := Init(idxCfg); err != nil {
 		t.Fatalf("failed to reopen indexer: %v", err)
 	}
-	defer i.Close()
+	defer defaultIndexer.Close()
 
 	doc := GetByURLAndUser(url, 0)
 	if doc == nil {
@@ -555,7 +555,7 @@ func TestInitBackfillsLegacyUpdatedTimestamp(t *testing.T) {
 	if doc.Metadata["topic"] != "compatibility" {
 		t.Fatalf("metadata topic = %#v, want compatibility", doc.Metadata["topic"])
 	}
-	marker, err := i.indexers[defaultIndexerName].GetInternal([]byte(updatedBackfillKey))
+	marker, err := defaultIndexer.indexers[defaultIndexerName].GetInternal([]byte(updatedBackfillKey))
 	if err != nil {
 		t.Fatalf("failed to read backfill marker: %v", err)
 	}
@@ -569,7 +569,7 @@ func TestUpdatedControlsDateSearch(t *testing.T) {
 	if err := Init(idxCfg); err != nil {
 		t.Fatalf("failed to init indexer: %v", err)
 	}
-	defer i.Close()
+	defer defaultIndexer.Close()
 
 	docs := []*document.Document{
 		{
@@ -627,7 +627,7 @@ func TestIndexFileUsesModificationTimeAsUpdated(t *testing.T) {
 	if err := Init(idxCfg); err != nil {
 		t.Fatalf("failed to init indexer: %v", err)
 	}
-	defer i.Close()
+	defer defaultIndexer.Close()
 
 	if err := IndexFile(testFile, 0); err != nil {
 		t.Fatalf("IndexFile failed: %v", err)
@@ -656,7 +656,7 @@ func TestAddDocumentDoesNotIncrementAddCountForExtraDocuments(t *testing.T) {
 	if err := Init(idxCfg); err != nil {
 		t.Fatalf("failed to init indexer: %v", err)
 	}
-	defer i.Close()
+	defer defaultIndexer.Close()
 
 	parentURL := "https://example.com/parent"
 	extraURL := "https://example.com/extra"
@@ -699,7 +699,7 @@ func TestMultiBatchAddsExtraDocuments(t *testing.T) {
 	if err := Init(idxCfg); err != nil {
 		t.Fatalf("failed to init indexer: %v", err)
 	}
-	defer i.Close()
+	defer defaultIndexer.Close()
 
 	parentURL := "https://example.com/batch-parent"
 	extraURL := "https://example.com/batch-extra"
@@ -739,10 +739,10 @@ func TestAddDocumentTreatsMissingAddCountAsOne(t *testing.T) {
 	if err := Init(idxCfg); err != nil {
 		t.Fatalf("failed to init indexer: %v", err)
 	}
-	defer i.Close()
+	defer defaultIndexer.Close()
 
 	url := "https://example.com/legacy-count"
-	err := i.save(&document.Document{
+	err := defaultIndexer.save(&document.Document{
 		URL:   url,
 		Title: "Legacy counted",
 		Text:  "Legacy counted document text",
@@ -782,10 +782,10 @@ func TestAddDocumentReusesExistingDocumentLookup(t *testing.T) {
 	if err := Init(idxCfg); err != nil {
 		t.Fatalf("failed to init indexer: %v", err)
 	}
-	defer i.Close()
+	defer defaultIndexer.Close()
 
 	url := "https://example.com/reused-lookup"
-	if err := i.save(&document.Document{
+	if err := defaultIndexer.save(&document.Document{
 		URL:      url,
 		Title:    "Existing document",
 		Text:     "Existing document text",
@@ -795,7 +795,7 @@ func TestAddDocumentReusesExistingDocumentLookup(t *testing.T) {
 		t.Fatalf("initial save failed: %v", err)
 	}
 
-	searchesBefore := indexSearchCount(t, i.indexers[defaultIndexerName])
+	searchesBefore := indexSearchCount(t, defaultIndexer.indexers[defaultIndexerName])
 	if err := Add(&document.Document{
 		URL:   url,
 		Title: "Updated document",
@@ -803,7 +803,7 @@ func TestAddDocumentReusesExistingDocumentLookup(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("Add failed: %v", err)
 	}
-	searches := indexSearchCount(t, i.indexers[defaultIndexerName]) - searchesBefore
+	searches := indexSearchCount(t, defaultIndexer.indexers[defaultIndexerName]) - searchesBefore
 	if searches != 1 {
 		t.Fatalf("existing document searches = %d, want 1", searches)
 	}
@@ -825,10 +825,10 @@ func TestSaveRemovesStaleLanguageCopy(t *testing.T) {
 	if err := Init(idxCfg); err != nil {
 		t.Fatalf("failed to init indexer: %v", err)
 	}
-	defer i.Close()
+	defer defaultIndexer.Close()
 
 	url := "https://example.com/language-copy"
-	err := i.save(&document.Document{
+	err := defaultIndexer.save(&document.Document{
 		URL:      url,
 		Title:    "Language copy",
 		Text:     "Language copy text",
@@ -842,12 +842,12 @@ func TestSaveRemovesStaleLanguageCopy(t *testing.T) {
 		t.Fatalf("copies after first save = %d, want 1", copies)
 	}
 
-	staleIndex := i.indexers[indexNameForLanguage("en")]
-	unrelated := i.getOrCreate("fr")
+	staleIndex := defaultIndexer.indexers[indexNameForLanguage("en")]
+	unrelated := defaultIndexer.getOrCreate("fr")
 	staleDeletesBefore := indexDeleteCount(t, staleIndex)
 	unrelatedDeletesBefore := indexDeleteCount(t, unrelated)
 
-	err = i.save(&document.Document{
+	err = defaultIndexer.save(&document.Document{
 		URL:      url,
 		Title:    "Language copy",
 		Text:     "Language copy text",
@@ -907,7 +907,7 @@ func countDocIDCopies(t *testing.T, id string) uint64 {
 	q := bleve.NewDocIDQuery([]string{id})
 	req := bleve.NewSearchRequest(q)
 	req.Size = 10
-	res, err := i.idx.Search(req)
+	res, err := defaultIndexer.idx.Search(req)
 	if err != nil {
 		t.Fatalf("search failed: %v", err)
 	}

@@ -20,7 +20,7 @@ func (markdownFileType) Match(path string) bool {
 	return hasExtension(path, ".md", ".markdown")
 }
 
-func (markdownFileType) Index(d *document.Document, mdData []byte) error {
+func (markdownFileType) Index(i *Indexer, d *document.Document, mdData []byte) error {
 	src := strings.TrimSpace(string(mdData))
 	if src == "" {
 		return errors.New("markdown file is empty")
@@ -29,13 +29,21 @@ func (markdownFileType) Index(d *document.Document, mdData []byte) error {
 	d.Text = sanitizer.SanitizeText(d.HTML)
 	d.Title = extractMarkdownTitle(src)
 	d.AddMetadata("type", "markdown")
-	return Add(d)
+	return i.Add(d)
 }
 
 // AddMarkdown renders mdData to HTML, stores it in d.HTML, and stores the raw
 // source in d.Text for full-text indexing.
 func AddMarkdown(d *document.Document, mdData []byte) error {
-	return markdownFileType{}.Index(d, mdData)
+	idx, err := currentIndexer()
+	if err != nil {
+		return err
+	}
+	return idx.AddMarkdown(d, mdData)
+}
+
+func (i *Indexer) AddMarkdown(d *document.Document, mdData []byte) error {
+	return markdownFileType{}.Index(i, d, mdData)
 }
 
 // extractMarkdownTitle returns the text of the first ATX H1 heading ("# ...").

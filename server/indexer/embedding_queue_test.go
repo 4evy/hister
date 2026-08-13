@@ -84,7 +84,7 @@ func TestEmbeddingQueueSkipsUnchangedDocumentText(t *testing.T) {
 	if err := Init(cfg); err != nil {
 		t.Fatalf("failed to init indexer: %v", err)
 	}
-	defer i.Close()
+	defer defaultIndexer.Close()
 
 	const url = "https://example.com/queue"
 	if err := Add(&document.Document{
@@ -175,7 +175,7 @@ func TestEmbeddingQueueReprocessesDocumentChangedWhileActive(t *testing.T) {
 	if err := Init(cfg); err != nil {
 		t.Fatalf("failed to init indexer: %v", err)
 	}
-	defer i.Close()
+	defer defaultIndexer.Close()
 
 	const url = "https://example.com/active"
 	if err := Add(&document.Document{URL: url, Title: "Active", Text: "old contents", Processed: true}); err != nil {
@@ -230,7 +230,7 @@ func TestDeleteCancelsActiveEmbeddingJob(t *testing.T) {
 	if err := Init(cfg); err != nil {
 		t.Fatalf("failed to init indexer: %v", err)
 	}
-	defer i.Close()
+	defer defaultIndexer.Close()
 
 	const url = "https://example.com/delete-active"
 	if err := Add(&document.Document{URL: url, Title: "Delete", Text: "active contents", Processed: true}); err != nil {

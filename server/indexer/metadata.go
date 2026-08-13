@@ -73,14 +73,22 @@ func writeIndexMetadata(idx bleve.Index, metadata indexMetadata) error {
 	return nil
 }
 
-func currentIndexer() (*indexer, error) {
-	if i == nil {
-		return nil, errors.New("indexer is not initialized")
+func currentIndexer() (*Indexer, error) {
+	indexer, err := defaultInstance()
+	if err != nil {
+		return nil, err
 	}
-	if i.indexers[defaultIndexerName] == nil {
+	if indexer.indexers[defaultIndexerName] == nil {
 		return nil, errors.New("default index is not initialized")
 	}
-	return i, nil
+	return indexer, nil
+}
+
+func defaultInstance() (*Indexer, error) {
+	if defaultIndexer == nil {
+		return nil, ErrNotInitialized
+	}
+	return defaultIndexer, nil
 }
 
 func GetMetadata() (int, string, error) {
@@ -88,7 +96,11 @@ func GetMetadata() (int, string, error) {
 	if err != nil {
 		return -1, "", err
 	}
-	metadata, err := indexer.getMetadata()
+	return indexer.GetMetadata()
+}
+
+func (i *Indexer) GetMetadata() (int, string, error) {
+	metadata, err := i.getMetadata()
 	return metadata.Version, metadata.AnalyzerFingerprint, err
 }
 
@@ -97,13 +109,17 @@ func SetMetadata(version int, analyzerFingerprint string) error {
 	if err != nil {
 		return err
 	}
-	return indexer.setMetadata(indexMetadata{
+	return indexer.SetMetadata(version, analyzerFingerprint)
+}
+
+func (i *Indexer) SetMetadata(version int, analyzerFingerprint string) error {
+	return i.setMetadata(indexMetadata{
 		Version:             version,
 		AnalyzerFingerprint: analyzerFingerprint,
 	})
 }
 
-func (i *indexer) getMetadata() (indexMetadata, error) {
+func (i *Indexer) getMetadata() (indexMetadata, error) {
 	metadata := indexMetadata{Version: -1}
 	versionsComplete := true
 	fingerprintsComplete := true
@@ -144,7 +160,7 @@ func (i *indexer) getMetadata() (indexMetadata, error) {
 	return metadata, nil
 }
 
-func (i *indexer) setMetadata(metadata indexMetadata) error {
+func (i *Indexer) setMetadata(metadata indexMetadata) error {
 	for name, idx := range i.indexers {
 		if err := writeIndexMetadata(idx, metadata); err != nil {
 			return fmt.Errorf("store metadata in %s: %w", name, err)

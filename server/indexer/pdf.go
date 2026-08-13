@@ -24,7 +24,7 @@ func (pdfFileType) Match(path string) bool {
 	return strings.EqualFold(filepath.Ext(path), ".pdf")
 }
 
-func (pdfFileType) Index(d *document.Document, pdfData []byte) error {
+func (pdfFileType) Index(i *Indexer, d *document.Document, pdfData []byte) error {
 	text, err := extractPDFText(pdfData)
 	if err != nil {
 		return fmt.Errorf("pdf text extraction: %w", err)
@@ -34,14 +34,22 @@ func (pdfFileType) Index(d *document.Document, pdfData []byte) error {
 	}
 	d.Text = text
 	d.AddMetadata("type", "pdf")
-	return Add(d)
+	return i.Add(d)
 }
 
 // AddPDF extracts plain text from pdfData, stores it in d.Text, then indexes
 // the document via Add. d.URL and d.Type must already be set by the caller.
 // d.Title is set to the last path segment of the URL if it is not already set.
 func AddPDF(d *document.Document, pdfData []byte) error {
-	return pdfFileType{}.Index(d, pdfData)
+	idx, err := currentIndexer()
+	if err != nil {
+		return err
+	}
+	return idx.AddPDF(d, pdfData)
+}
+
+func (i *Indexer) AddPDF(d *document.Document, pdfData []byte) error {
+	return pdfFileType{}.Index(i, d, pdfData)
 }
 
 // extractPDFText reads all pages of a PDF from pdfData and returns the

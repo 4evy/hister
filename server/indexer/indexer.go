@@ -13,6 +13,7 @@ import (
 	"runtime"
 	"slices"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -44,7 +45,9 @@ import (
 
 var Version = 8
 
-type indexer struct {
+// Indexer owns the search indexes and related document storage for one Hister
+// data directory.
+type Indexer struct {
 	idx               bleve.IndexAlias       // used only for Search()
 	indexers          map[string]bleve.Index // default and language specific indexers
 	dir               string
@@ -60,6 +63,9 @@ type indexer struct {
 	disablePreviews   bool
 	keepStopwords     bool
 	directories       []*config.Directory
+	maxFileSize       int64
+	sensitivePattern  *regexp.Regexp
+	semanticConfig    config.SemanticSearch
 }
 
 const (
@@ -95,7 +101,6 @@ type Query struct {
 	// PriorityPatterns contains URL regex patterns whose matching documents
 	// receive a score boost.  Set by doSearch from the user's priority rules.
 	PriorityPatterns []string `json:"priority_patterns,omitempty"`
-	cfg              *config.Config
 }
 
 // TermCount and RangeCount are the shape of facet buckets returned by Search
@@ -253,7 +258,7 @@ func (s storedDocumentState) embeddingTextChanged(text string) bool {
 }
 
 type MultiBatch struct {
-	indexer           *indexer
+	indexer           *Indexer
 	batches           map[string]*bleve.Batch
 	keyChanges        []batchKeyChange
 	embeddingIDs      map[string]struct{}
@@ -262,9 +267,14 @@ type MultiBatch struct {
 }
 
 var (
-	i *indexer
+	defaultIndexer           *Indexer
+	registerHighlightersOnce sync.Once
+	registerHighlightersErr  error
 	// allFields      []string       = []string{"url", "title", "text", "favicon", "html", "domain", "added", "updated", "type", "user_id"}
-	allFields            []string       = []string{"*"}
+	allFields []string = []string{"*"}
+	// ErrNotInitialized indicates that a compatibility package function was
+	// called before Init configured the default indexer.
+	ErrNotInitialized                   = errors.New("indexer is not initialized")
 	ErrEmptyFilter                      = errors.New("delete query must not be empty")
 	ErrFileURLNotAllowed                = errors.New("file URL is not allowed")
 	bleveConfig          map[string]any = map[string]any{
@@ -285,59 +295,82 @@ var (
 )
 
 func Init(cfg *config.Config) error {
-	if cfg.Indexer.MaxFileSize > 0 {
-		maxFileSize = cfg.Indexer.MaxFileSize * 1024 * 1024 // bytes
+	idx, err := New(cfg)
+	if err != nil {
+		return err
 	}
+	defaultIndexer = idx
+	document.SetSensitiveContentPattern(idx.sensitivePattern)
+	return nil
+}
+
+// New creates an independent indexer instance from cfg.
+func New(cfg *config.Config) (*Indexer, error) {
 	sp := make([]string, 0, len(cfg.SensitiveContentPatterns))
 	for _, v := range cfg.SensitiveContentPatterns {
 		sp = append(sp, v)
 	}
-	document.SetSensitiveContentPattern(regexp.MustCompile(fmt.Sprintf("(%s)", strings.Join(sp, "|"))))
-	var err error
-	i, err = initializeIndexer(cfg.FullPath(""), cfg.Indexer.DetectLanguages, cfg.Indexer.KeepStopwords)
+	sensitivePattern := regexp.MustCompile(fmt.Sprintf("(%s)", strings.Join(sp, "|")))
+	idx, err := initializeIndexer(cfg.FullPath(""), cfg.Indexer.DetectLanguages, cfg.Indexer.KeepStopwords)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	i.disablePreviews = cfg.App.DisablePreviews
-	i.directories = cfg.Indexer.Directories
+	idx.disablePreviews = cfg.App.DisablePreviews
+	idx.directories = cfg.Indexer.Directories
+	idx.maxFileSize = defaultMaxFileSize
+	idx.sensitivePattern = sensitivePattern
+	idx.semanticConfig = cfg.SemanticSearch
+	if cfg.Indexer.MaxFileSize > 0 {
+		idx.maxFileSize = cfg.Indexer.MaxFileSize * 1024 * 1024 // bytes
+	}
 	if cfg.SemanticSearch.Enable {
 		vs, err := vectorstore.New(cfg)
 		if err != nil {
 			log.Warn().Err(err).Msg("failed to create vector store, semantic search disabled")
 		} else if err := vs.Init(); err != nil {
 			log.Warn().Err(err).Msg("failed to init vector store, semantic search disabled")
+			if closeErr := vs.Close(); closeErr != nil {
+				log.Warn().Err(closeErr).Msg("failed to close vector store")
+			}
 		} else {
 			workers := normalizeEmbeddingWorkerCount(cfg.SemanticSearch.MaxEmbeddingConcurrency)
 			embedCfg := cfg.SemanticSearch
 			embedCfg.MaxEmbeddingConcurrency = workers
-			i.vectorStore = vs
-			i.embedder = vectorstore.NewEmbedder(&embedCfg)
-			if err := i.startEmbeddingQueue(workers); err != nil {
-				i.vectorStore = nil
-				i.embedder = nil
+			idx.vectorStore = vs
+			idx.embedder = vectorstore.NewEmbedder(&embedCfg)
+			if err := idx.startEmbeddingQueue(workers); err != nil {
+				idx.vectorStore = nil
+				idx.embedder = nil
 				if closeErr := vs.Close(); closeErr != nil {
 					log.Warn().Err(closeErr).Msg("failed to close vector store")
 				}
-				i.Close()
-				return fmt.Errorf("start embedding queue: %w", err)
+				idx.Close()
+				return nil, fmt.Errorf("start embedding queue: %w", err)
 			}
 			log.Info().Msg("semantic search enabled")
 		}
 	}
-	if err := registry.RegisterHighlighter("ansi", invertedAnsiHighlighter); err != nil {
-		if !strings.Contains(err.Error(), "duplicate highlighter") {
-			return err
-		}
+	if err := registerHighlighters(); err != nil {
+		idx.Close()
+		return nil, err
 	}
-	if err := registry.RegisterHighlighter("tui", tuiHighlighter); err != nil {
-		if !strings.Contains(err.Error(), "duplicate highlighter") {
-			return err
-		}
-	}
-	return nil
+	return idx, nil
 }
 
-func initializeIndexer(basePath string, detectLanguages, keepStopwords bool) (*indexer, error) {
+func registerHighlighters() error {
+	registerHighlightersOnce.Do(func() {
+		if err := registry.RegisterHighlighter("ansi", invertedAnsiHighlighter); err != nil && !strings.Contains(err.Error(), "duplicate highlighter") {
+			registerHighlightersErr = err
+			return
+		}
+		if err := registry.RegisterHighlighter("tui", tuiHighlighter); err != nil && !strings.Contains(err.Error(), "duplicate highlighter") {
+			registerHighlightersErr = err
+		}
+	})
+	return registerHighlightersErr
+}
+
+func initializeIndexer(basePath string, detectLanguages, keepStopwords bool) (*Indexer, error) {
 	if _, err := os.Stat(basePath); errors.Is(err, os.ErrNotExist) {
 		if err := os.MkdirAll(basePath, os.ModePerm); err != nil {
 			return nil, err
@@ -359,7 +392,7 @@ func initializeIndexer(basePath string, detectLanguages, keepStopwords bool) (*i
 	}
 	idx.SetName(defaultIndexerName)
 	embedCtx, embedCancel := context.WithCancel(context.Background())
-	i := &indexer{
+	i := &Indexer{
 		idx: bleve.NewIndexAlias(idx),
 		indexers: map[string]bleve.Index{
 			defaultIndexerName: idx,
@@ -369,6 +402,7 @@ func initializeIndexer(basePath string, detectLanguages, keepStopwords bool) (*i
 		embedCtx:      embedCtx,
 		embedCancel:   embedCancel,
 		data:          newDataStore(filepath.Join(basePath, dataDirName)),
+		maxFileSize:   defaultMaxFileSize,
 	}
 	initialized := false
 	defer func() {
@@ -418,7 +452,7 @@ func initializeIndexer(basePath string, detectLanguages, keepStopwords bool) (*i
 // backfillUpdatedTimestamps exists only for backward compatibility with
 // indexes created before Document.Updated was added. Remove this function and
 // its marker after support for those indexes is no longer needed.
-func (i *indexer) backfillUpdatedTimestamps() error {
+func (i *Indexer) backfillUpdatedTimestamps() error {
 	for name, idx := range i.indexers {
 		marker, err := idx.GetInternal([]byte(updatedBackfillKey))
 		if err != nil {
@@ -515,12 +549,23 @@ func openReindexSources(basePath string, current map[string]bleve.Index) (map[st
 	return sources, closeExtraSources, nil
 }
 
-func Reindex(basePath string, rules *config.Rules, skipSensitiveChecks bool, detectLanguages, keepStopwords bool, dirs []*config.Directory) (retErr error) {
+func Reindex(basePath string, rules *config.Rules, skipSensitiveChecks bool, detectLanguages, keepStopwords bool, dirs []*config.Directory) error {
+	idx, err := currentIndexer()
+	if err != nil {
+		return err
+	}
+	return idx.reindex(basePath, rules, skipSensitiveChecks, detectLanguages, keepStopwords, dirs)
+}
+
+func (i *Indexer) Reindex(rules *config.Rules, skipSensitiveChecks bool, detectLanguages, keepStopwords bool, dirs []*config.Directory) error {
+	return i.reindex(i.dir, rules, skipSensitiveChecks, detectLanguages, keepStopwords, dirs)
+}
+
+func (idx *Indexer) reindex(basePath string, rules *config.Rules, skipSensitiveChecks bool, detectLanguages, keepStopwords bool, dirs []*config.Directory) (retErr error) {
 	// TODO store new documents in both indexes while running reindex to guarantee not losing any data.
-	if !i.reindexInProgress.CompareAndSwap(false, true) {
+	if !idx.reindexInProgress.CompareAndSwap(false, true) {
 		return errors.New("Reindex is already running")
 	}
-	idx := i
 	workers := idx.embeddingWorkers
 	queueStopped := false
 	oldIndexClosed := false
@@ -548,6 +593,8 @@ func Reindex(basePath string, rules *config.Rules, skipSensitiveChecks bool, det
 		return err
 	}
 	tmpIdx.directories = dirs
+	tmpIdx.maxFileSize = idx.maxFileSize
+	tmpIdx.sensitivePattern = idx.sensitivePattern
 	// Propagate the disablePreviews flag so the temp indexer skips HTML storage too.
 	tmpIdx.disablePreviews = idx.disablePreviews
 	// The data store is shared between the live and temp indexers so that
@@ -638,7 +685,7 @@ func Reindex(basePath string, rules *config.Rules, skipSensitiveChecks bool, det
 				d.SetSkipSensitiveCheck(skipSensitiveChecks)
 				origAdded := d.Added
 				origUpdated := d.Updated
-				if err := d.Process(tmpIdx.langDetector, extractor.Extract); err != nil {
+				if err := tmpIdx.processDocument(d); err != nil {
 					if errors.Is(err, document.ErrSensitiveContent) {
 						log.Warn().Err(err).Str("URL", d.URL).Msg("Skipping document, sensitive content")
 						continue
@@ -704,19 +751,23 @@ func Reindex(basePath string, rules *config.Rules, skipSensitiveChecks bool, det
 	if renameError != nil {
 		return errors.New("failed to rename tmp indexes during the reindex, resolve the issue manually")
 	}
-	i, err = initializeIndexer(basePath, detectLanguages, keepStopwords)
+	replacement, err := initializeIndexer(basePath, detectLanguages, keepStopwords)
 	if err != nil {
 		return err
 	}
+	replacement.maxFileSize = idx.maxFileSize
+	replacement.sensitivePattern = idx.sensitivePattern
+	replacement.semanticConfig = idx.semanticConfig
+	idx.adopt(replacement)
 	// Restore settings that are not part of the index state.
-	i.disablePreviews = idx.disablePreviews
-	i.directories = dirs
+	idx.disablePreviews = tmpIdx.disablePreviews
+	idx.directories = dirs
 	// Restore the vector store and embedder on the newly initialized global indexer.
 	if vs != nil && embedder != nil {
-		i.vectorStore = vs
-		i.embedder = embedder
+		idx.vectorStore = vs
+		idx.embedder = embedder
 		if workers > 0 {
-			if err := i.startEmbeddingQueue(workers); err != nil {
+			if err := idx.startEmbeddingQueue(workers); err != nil {
 				return fmt.Errorf("restart embedding queue: %w", err)
 			}
 			queueStopped = false
@@ -726,10 +777,10 @@ func Reindex(basePath string, rules *config.Rules, skipSensitiveChecks bool, det
 		return err
 	}
 	// Remove data files no longer referenced by any document.
-	if _, err := i.data.cleanup("html_key", htmlSubdir, i.countKeyRefs); err != nil {
+	if _, err := idx.data.cleanup("html_key", htmlSubdir, idx.countKeyRefs); err != nil {
 		log.Warn().Err(err).Msg("failed to clean up orphaned HTML data files")
 	}
-	if _, err := i.data.cleanup("favicon_key", faviconSubdir, i.countKeyRefs); err != nil {
+	if _, err := idx.data.cleanup("favicon_key", faviconSubdir, idx.countKeyRefs); err != nil {
 		log.Warn().Err(err).Msg("failed to clean up orphaned favicon data files")
 	}
 	return nil
@@ -746,16 +797,24 @@ type CleanupResult struct {
 
 // Cleanup removes local documents that no longer match the directory config,
 // then removes orphaned HTML and favicon data files.
-func Cleanup(basePath string, dirs []*config.Directory) (CleanupResult, error) {
+func Cleanup(_ string, dirs []*config.Directory) (CleanupResult, error) {
+	idx, err := currentIndexer()
+	if err != nil {
+		return CleanupResult{}, err
+	}
+	return idx.Cleanup(dirs)
+}
+
+func (i *Indexer) Cleanup(dirs []*config.Directory) (CleanupResult, error) {
 	result := CleanupResult{}
-	localResult, err := CleanupLocalDocuments(dirs)
+	localResult, err := i.CleanupLocalDocuments(dirs)
 	result.LocalDocumentsChecked = localResult.Checked
 	result.LocalDocumentsSkipped = localResult.Skipped
 	result.LocalDocumentsRemoved = localResult.Removed
 	if err != nil {
 		return result, err
 	}
-	result.HTMLRemoved, result.FaviconRemoved, err = CleanupDataFiles(basePath)
+	result.HTMLRemoved, result.FaviconRemoved, err = i.CleanupDataFiles()
 	return result, err
 }
 
@@ -766,7 +825,15 @@ func Cleanup(basePath string, dirs []*config.Directory) (CleanupResult, error) {
 // Each candidate file is checked with a live ref-count query while holding the
 // per-key shard lock, so the check and the removal are atomic and safe against
 // concurrent /api/add calls.
-func CleanupDataFiles(basePath string) (int, int, error) {
+func CleanupDataFiles(_ string) (int, int, error) {
+	idx, err := currentIndexer()
+	if err != nil {
+		return 0, 0, err
+	}
+	return idx.CleanupDataFiles()
+}
+
+func (i *Indexer) CleanupDataFiles() (int, int, error) {
 	htmlRemoved, err := i.data.cleanup("html_key", htmlSubdir, i.countKeyRefs)
 	if err != nil {
 		return htmlRemoved, 0, fmt.Errorf("failed to clean up orphaned HTML data files: %w", err)
@@ -779,9 +846,14 @@ func CleanupDataFiles(basePath string) (int, int, error) {
 }
 
 func ReadFavicon(key string) ([]byte, error) {
-	if i == nil {
-		return nil, errors.New("indexer is not initialized")
+	idx, err := currentIndexer()
+	if err != nil {
+		return nil, err
 	}
+	return idx.ReadFavicon(key)
+}
+
+func (i *Indexer) ReadFavicon(key string) ([]byte, error) {
 	if !validDataKey(key) {
 		return nil, errors.New("invalid favicon key")
 	}
@@ -801,15 +873,27 @@ func validDataKey(key string) bool {
 }
 
 func DocumentCount() uint64 {
-	return i.Total()
+	idx, err := currentIndexer()
+	if err != nil {
+		return 0
+	}
+	return idx.Total()
 }
 
 func DocumentCountByUser(userID uint) uint64 {
-	return i.TotalByUser(userID)
+	idx, err := currentIndexer()
+	if err != nil {
+		return 0
+	}
+	return idx.TotalByUser(userID)
 }
 
 // SemanticSearchEnabled reports whether the vector store and embedder are active.
 func SemanticSearchEnabled() bool {
+	return defaultIndexer != nil && defaultIndexer.SemanticSearchEnabled()
+}
+
+func (i *Indexer) SemanticSearchEnabled() bool {
 	return i != nil && i.embedder != nil && i.vectorStore != nil
 }
 
@@ -858,7 +942,7 @@ func documentEmbeddingContext(d *document.Document) vectorstore.DocumentContext 
 // resulting vectors. Errors are logged and returned so durable queue workers
 // can retry them. Synchronous callers may ignore the error and continue Bleve
 // indexing.
-func embedDocumentChunks(ctx context.Context, idx *indexer, d *document.Document) error {
+func embedDocumentChunks(ctx context.Context, idx *Indexer, d *document.Document) error {
 	start := time.Now()
 	chunks, err := idx.embedder.ChunkAndEmbed(ctx, d.Text, documentEmbeddingContext(d))
 	if err != nil {
@@ -881,13 +965,25 @@ func embedDocumentChunks(ctx context.Context, idx *indexer, d *document.Document
 }
 
 func Add(d *document.Document) error {
+	idx, err := defaultInstance()
+	if err != nil {
+		return err
+	}
+	return idx.Add(d)
+}
+
+func (i *Indexer) Add(d *document.Document) error {
 	if err := i.validateFileDocument(d); err != nil {
 		return err
 	}
 	return i.AddDocument(d)
 }
 
-func (i *indexer) validateFileDocument(d *document.Document) error {
+func (i *Indexer) processDocument(d *document.Document) error {
+	return d.ProcessWithSensitivePattern(i.langDetector, extractor.Extract, i.sensitivePattern)
+}
+
+func (i *Indexer) validateFileDocument(d *document.Document) error {
 	pu, err := url.Parse(d.URL)
 	if err != nil {
 		return err
@@ -914,7 +1010,7 @@ func (i *indexer) validateFileDocument(d *document.Document) error {
 	return nil
 }
 
-func (i *indexer) Total() uint64 {
+func (i *Indexer) Total() uint64 {
 	q := query.NewMatchAllQuery()
 	req := bleve.NewSearchRequest(q)
 	req.Size = 1
@@ -925,7 +1021,7 @@ func (i *indexer) Total() uint64 {
 	return res.Total
 }
 
-func (i *indexer) TotalByUser(userID uint) uint64 {
+func (i *Indexer) TotalByUser(userID uint) uint64 {
 	uid := float64(userID)
 	q := bleve.NewNumericRangeInclusiveQuery(&uid, &uid, new(true), new(true))
 	q.SetField("user_id")
@@ -938,13 +1034,13 @@ func (i *indexer) TotalByUser(userID uint) uint64 {
 	return res.Total
 }
 
-func (i *indexer) AddDocument(d *document.Document) error {
+func (i *Indexer) AddDocument(d *document.Document) error {
 	return i.addDocument(d, true)
 }
 
-func (i *indexer) addDocument(d *document.Document, incrementAddCount bool) error {
+func (i *Indexer) addDocument(d *document.Document, incrementAddCount bool) error {
 	if !d.IsProcessed() {
-		if err := d.Process(i.langDetector, extractor.Extract); err != nil {
+		if err := i.processDocument(d); err != nil {
 			return err
 		}
 	}
@@ -997,11 +1093,11 @@ func applySubmissionTimestamps(d *document.Document, state storedDocumentState) 
 	}
 }
 
-func (i *indexer) save(d *document.Document) error {
+func (i *Indexer) save(d *document.Document) error {
 	return i.saveWithState(d, i.getStoredDocumentState(d.ID()))
 }
 
-func (i *indexer) saveWithState(d *document.Document, state storedDocumentState) error {
+func (i *Indexer) saveWithState(d *document.Document, state storedDocumentState) error {
 	existingIndexes := state.indexNames
 	if existingIndexes == nil {
 		existingIndexes = make(map[string]struct{}, len(i.indexers))
@@ -1045,7 +1141,7 @@ func (i *indexer) saveWithState(d *document.Document, state storedDocumentState)
 // getStoredDocumentState fetches the fields needed to update an existing
 // document. The same document can appear in more than one index when its
 // detected language changes between additions.
-func (i *indexer) getStoredDocumentState(id string) storedDocumentState {
+func (i *Indexer) getStoredDocumentState(id string) storedDocumentState {
 	var state storedDocumentState
 	q := bleve.NewDocIDQuery([]string{id})
 	req := bleve.NewSearchRequest(q)
@@ -1108,7 +1204,7 @@ func (i *indexer) getStoredDocumentState(id string) storedDocumentState {
 	return state
 }
 
-func (i *indexer) getDocKeysByID(id string) (htmlKeys, faviconKeys []string) {
+func (i *Indexer) getDocKeysByID(id string) (htmlKeys, faviconKeys []string) {
 	state := i.getStoredDocumentState(id)
 	return state.htmlKeys, state.faviconKeys
 }
@@ -1116,7 +1212,7 @@ func (i *indexer) getDocKeysByID(id string) (htmlKeys, faviconKeys []string) {
 // countKeyRefs returns the number of indexed documents that reference the
 // given key in the specified field (html_key or favicon_key).
 // Returns 1 on search error as a safe default to avoid accidental deletion.
-func (i *indexer) countKeyRefs(field, key string) uint64 {
+func (i *Indexer) countKeyRefs(field, key string) uint64 {
 	q := bleve.NewTermQuery(key)
 	q.SetField(field)
 	req := bleve.NewSearchRequest(q)
@@ -1134,7 +1230,7 @@ func (i *indexer) countKeyRefs(field, key string) uint64 {
 // When disablePreviews is true, HTML is discarded entirely and HTMLKey is cleared.
 // Inline blobs are cleared whenever a key is set, so they are never written into
 // the Bleve index DB (e.g. during reindex where resFromHit populates both fields).
-func (i *indexer) prepareForStorage(d *document.Document) error {
+func (i *Indexer) prepareForStorage(d *document.Document) error {
 	if i.disablePreviews {
 		d.HTML = ""
 		d.HTMLKey = ""
@@ -1165,10 +1261,18 @@ func (i *indexer) prepareForStorage(d *document.Document) error {
 
 // Saves a document without any processing
 func Save(d *document.Document) error {
+	idx, err := currentIndexer()
+	if err != nil {
+		return err
+	}
+	return idx.Save(d)
+}
+
+func (i *Indexer) Save(d *document.Document) error {
 	return i.save(d)
 }
 
-func (i *indexer) getOrCreate(lang string) bleve.Index {
+func (i *Indexer) getOrCreate(lang string) bleve.Index {
 	idxName := indexNameForLanguage(lang)
 	if idxName == defaultIndexerName {
 		return i.indexers[defaultIndexerName]
@@ -1192,7 +1296,7 @@ func indexNameForLanguage(lang string) string {
 	return fmt.Sprintf(langIndexerName, lang)
 }
 
-func (i *indexer) addIndexer(name, lang string) error {
+func (i *Indexer) addIndexer(name, lang string) error {
 	mapping := createMapping(lang, i.keepStopwords)
 	indexPath := filepath.Join(i.dir, name)
 	idx, err := bleve.NewUsing(indexPath, mapping, bleve.Config.DefaultIndexType, bleve.Config.DefaultMemKVStore, bleveRuntimeConfig())
@@ -1210,7 +1314,7 @@ func (i *indexer) addIndexer(name, lang string) error {
 	return nil
 }
 
-func (i *indexer) Close() {
+func (i *Indexer) Close() {
 	i.stopEmbeddingQueue()
 	if i.embedCancel != nil {
 		i.embedCancel()
@@ -1230,13 +1334,40 @@ func (i *indexer) Close() {
 	}
 }
 
+func (i *Indexer) adopt(replacement *Indexer) {
+	i.idx = replacement.idx
+	i.indexers = replacement.indexers
+	i.dir = replacement.dir
+	i.data = replacement.data
+	i.langDetector = replacement.langDetector
+	i.embedder = replacement.embedder
+	i.vectorStore = replacement.vectorStore
+	i.embedCtx = replacement.embedCtx
+	i.embedCancel = replacement.embedCancel
+	i.embeddingQueue = replacement.embeddingQueue
+	i.embeddingWorkers = replacement.embeddingWorkers
+	i.disablePreviews = replacement.disablePreviews
+	i.keepStopwords = replacement.keepStopwords
+	i.directories = replacement.directories
+	i.maxFileSize = replacement.maxFileSize
+	i.sensitivePattern = replacement.sensitivePattern
+	i.semanticConfig = replacement.semanticConfig
+}
+
 func NewMultiBatch() *MultiBatch {
+	if defaultIndexer == nil {
+		return nil
+	}
+	return defaultIndexer.NewMultiBatch()
+}
+
+func (i *Indexer) NewMultiBatch() *MultiBatch {
 	b := newMultiBatch(i)
 	b.incrementAddCount = true
 	return b
 }
 
-func newMultiBatch(idx *indexer) *MultiBatch {
+func newMultiBatch(idx *Indexer) *MultiBatch {
 	return &MultiBatch{
 		indexer:           idx,
 		batches:           make(map[string]*bleve.Batch),
@@ -1262,7 +1393,7 @@ func (b *MultiBatch) Add(d *document.Document) error {
 
 func (b *MultiBatch) add(d *document.Document, incrementAddCount bool) error {
 	if !d.IsProcessed() {
-		if err := d.Process(i.langDetector, extractor.Extract); err != nil {
+		if err := b.indexer.processDocument(d); err != nil {
 			return err
 		}
 	}
@@ -1370,6 +1501,14 @@ func (b *MultiBatch) Save() error {
 }
 
 func Delete(id string) error {
+	idx, err := currentIndexer()
+	if err != nil {
+		return err
+	}
+	return idx.Delete(id)
+}
+
+func (i *Indexer) Delete(id string) error {
 	htmlKeys, faviconKeys := i.getDocKeysByID(id)
 	for _, idx := range i.indexers {
 		if err := idx.Delete(id); err != nil {
@@ -1394,6 +1533,14 @@ func Delete(id string) error {
 }
 
 func DeleteByQuery(text string, userID *uint, onDelete func(url string, userID uint)) (int, error) {
+	idx, err := currentIndexer()
+	if err != nil {
+		return 0, err
+	}
+	return idx.DeleteByQuery(text, userID, onDelete)
+}
+
+func (i *Indexer) DeleteByQuery(text string, userID *uint, onDelete func(url string, userID uint)) (int, error) {
 	if strings.TrimSpace(text) == "" {
 		return 0, ErrEmptyFilter
 	}
@@ -1450,7 +1597,18 @@ func DeleteByQuery(text string, userID *uint, onDelete func(url string, userID u
 }
 
 func Search(cfg *config.Config, q *Query) (*Results, error) {
-	q.cfg = cfg
+	idx, err := currentIndexer()
+	if err != nil {
+		return nil, err
+	}
+	return idx.search(cfg.SemanticSearch, q)
+}
+
+func (i *Indexer) Search(q *Query) (*Results, error) {
+	return i.search(i.semanticConfig, q)
+}
+
+func (i *Indexer) search(semanticConfig config.SemanticSearch, q *Query) (*Results, error) {
 	expression := querybuilder.ParseSearch(q.Text)
 	if expression.HasSort {
 		q.Sort = expression.Sort
@@ -1545,9 +1703,9 @@ func Search(cfg *config.Config, q *Query) (*Results, error) {
 		} else {
 			threshold := q.SemanticThreshold
 			if threshold <= 0 {
-				threshold = cfg.SemanticSearch.SimilarityThreshold
+				threshold = semanticConfig.SimilarityThreshold
 			}
-			resultLimit := cfg.SemanticSearch.ResultLimit
+			resultLimit := semanticConfig.ResultLimit
 			vsResults, err := i.vectorStore.Search(vec, resultLimit, threshold, q.UserID)
 			if err != nil {
 				log.Warn().Err(err).Msg("vector store search failed")
@@ -1621,19 +1779,30 @@ func Search(cfg *config.Config, q *Query) (*Results, error) {
 // docs with per-user private docs still gets the right one because the lookup
 // goes through document.GetDocID.
 func GetByURLAndUser(u string, uid uint) *document.Document {
+	if defaultIndexer == nil {
+		return nil
+	}
+	return defaultIndexer.GetByURLAndUser(u, uid)
+}
+
+func (i *Indexer) GetByURLAndUser(u string, uid uint) *document.Document {
 	if uid > 0 {
-		if d := GetByDocID(document.GetDocID(uid, u)); d != nil {
+		if d := i.GetByDocID(document.GetDocID(uid, u)); d != nil {
 			return d
 		}
 	}
 	// try to get the document with 0 UID if the document was not found for the > 0 UID
-	return GetByDocID(document.GetDocID(0, u))
+	return i.GetByDocID(document.GetDocID(0, u))
 }
 
 func GetAddCountByURLAndUser(u string, uid uint) uint {
-	if i == nil {
+	if defaultIndexer == nil {
 		return 0
 	}
+	return defaultIndexer.GetAddCountByURLAndUser(u, uid)
+}
+
+func (i *Indexer) GetAddCountByURLAndUser(u string, uid uint) uint {
 	if uid > 0 {
 		if count, found := i.getAddCountByDocID(document.GetDocID(uid, u)); found {
 			return count
@@ -1643,7 +1812,7 @@ func GetAddCountByURLAndUser(u string, uid uint) uint {
 	return count
 }
 
-func (i *indexer) getAddCountByDocID(id string) (uint, bool) {
+func (i *Indexer) getAddCountByDocID(id string) (uint, bool) {
 	q := bleve.NewDocIDQuery([]string{id})
 	req := bleve.NewSearchRequest(q)
 	req.Fields = []string{"add_count"}
@@ -1667,13 +1836,17 @@ func (i *indexer) getAddCountByDocID(id string) (uint, bool) {
 // GetByDocID returns the document with the given bleve document ID, or nil if
 // none exists. The ID is the uid-prefixed form produced by document.GetDocID.
 func GetByDocID(id string) *document.Document {
-	if i == nil {
+	if defaultIndexer == nil {
 		return nil
 	}
+	return defaultIndexer.GetByDocID(id)
+}
+
+func (i *Indexer) GetByDocID(id string) *document.Document {
 	return i.getByDocID(id, resultIncludeAll)
 }
 
-func (i *indexer) getByDocID(id string, include resultInclude) *document.Document {
+func (i *Indexer) getByDocID(id string, include resultInclude) *document.Document {
 	q := bleve.NewDocIDQuery([]string{id})
 	req := bleve.NewSearchRequest(q)
 	req.Fields = allFields
@@ -1686,6 +1859,13 @@ func (i *indexer) getByDocID(id string, include resultInclude) *document.Documen
 }
 
 func Iterate(fn func(*document.Document)) {
+	if defaultIndexer == nil {
+		return
+	}
+	defaultIndexer.Iterate(fn)
+}
+
+func (i *Indexer) Iterate(fn func(*document.Document)) {
 	q := query.NewMatchAllQuery()
 	req := bleve.NewSearchRequest(q)
 	req.Fields = []string{"url"}
@@ -1723,7 +1903,7 @@ func (include resultInclude) has(flag resultInclude) bool {
 	return include&flag != 0
 }
 
-func (idx *indexer) resFromHit(h *search.DocumentMatch, include resultInclude) *document.Document {
+func (idx *Indexer) resFromHit(h *search.DocumentMatch, include resultInclude) *document.Document {
 	d := &document.Document{DocumentID: h.ID}
 	if t, ok := h.Fragments["title"]; ok {
 		d.Title = t[0]

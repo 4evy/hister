@@ -34,7 +34,7 @@ func TestIndexMetadataPersistence(t *testing.T) {
 	if err != nil {
 		t.Fatalf("initialize indexer: %v", err)
 	}
-	i = idx
+	defaultIndexer = idx
 
 	version, fingerprint, err := GetMetadata()
 	if err != nil {
@@ -57,7 +57,7 @@ func TestIndexMetadataPersistence(t *testing.T) {
 	if err != nil {
 		t.Fatalf("reopen indexer: %v", err)
 	}
-	i = idx
+	defaultIndexer = idx
 	defer idx.Close()
 
 	version, fingerprint, err = GetMetadata()
@@ -78,7 +78,7 @@ func TestGetMetadataRejectsInvalidInternalValue(t *testing.T) {
 	if err != nil {
 		t.Fatalf("initialize indexer: %v", err)
 	}
-	i = idx
+	defaultIndexer = idx
 	defer idx.Close()
 
 	if err := idx.indexers[defaultIndexerName].DeleteInternal([]byte(indexVersionKey)); err != nil {
@@ -109,7 +109,7 @@ func TestGetMetadataValidatesAllSubIndexes(t *testing.T) {
 	if err != nil {
 		t.Fatalf("initialize indexer: %v", err)
 	}
-	i = idx
+	defaultIndexer = idx
 	defer idx.Close()
 
 	languageIndexName := indexNameForLanguage("en")
@@ -167,7 +167,7 @@ func TestLanguageIndexMetadataIsSelfContained(t *testing.T) {
 	if err != nil {
 		t.Fatalf("initialize indexer: %v", err)
 	}
-	i = idx
+	defaultIndexer = idx
 
 	languageIndexName := indexNameForLanguage("en")
 	if err := idx.addIndexer(languageIndexName, "en"); err != nil {
@@ -208,7 +208,7 @@ func TestReindexStoresReplacementIndexMetadata(t *testing.T) {
 	if err != nil {
 		t.Fatalf("initialize indexer: %v", err)
 	}
-	i = idx
+	defaultIndexer = idx
 	if err := idx.save(&document.Document{
 		URL:      "https://example.com/english",
 		Title:    "English document",
@@ -234,7 +234,7 @@ func TestReindexStoresReplacementIndexMetadata(t *testing.T) {
 	); err != nil {
 		t.Fatalf("Reindex returned an error: %v", err)
 	}
-	defer i.Close()
+	defer defaultIndexer.Close()
 
 	version, fingerprint, err := GetMetadata()
 	if err != nil {
@@ -249,11 +249,11 @@ func TestReindexStoresReplacementIndexMetadata(t *testing.T) {
 	}
 
 	languageIndexName := indexNameForLanguage("en")
-	if _, exists := i.indexers[languageIndexName]; !exists {
+	if _, exists := defaultIndexer.indexers[languageIndexName]; !exists {
 		t.Fatalf("replacement language index %s was not created", languageIndexName)
 	}
 	wantMetadata := indexMetadata{Version: Version, AnalyzerFingerprint: wantFingerprint}
-	for _, subIndex := range i.indexers {
+	for _, subIndex := range defaultIndexer.indexers {
 		requireIndexMetadata(t, subIndex, wantMetadata)
 	}
 }

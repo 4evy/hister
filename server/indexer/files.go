@@ -25,9 +25,9 @@ var (
 	ErrEmptyFile    = errors.New("empty file")
 	ErrBinaryFile   = errors.New("binary file")
 	ErrFileTooLarge = errors.New("file too large")
-
-	maxFileSize int64 = 1024 * 1024 // 1MB default
 )
+
+const defaultMaxFileSize int64 = 1024 * 1024 // 1MB default
 
 type fileIndexOp int
 
@@ -59,12 +59,22 @@ type FileIndexQueue struct {
 	mu      sync.Mutex
 	pending map[string]fileIndexQueueItem
 	notify  chan struct{}
+	indexer *Indexer
 }
 
 func NewFileIndexQueue() *FileIndexQueue {
+	return newFileIndexQueue(defaultIndexer)
+}
+
+func (i *Indexer) NewFileIndexQueue() *FileIndexQueue {
+	return newFileIndexQueue(i)
+}
+
+func newFileIndexQueue(i *Indexer) *FileIndexQueue {
 	return &FileIndexQueue{
 		pending: make(map[string]fileIndexQueueItem),
 		notify:  make(chan struct{}, 1),
+		indexer: i,
 	}
 }
 
@@ -121,22 +131,34 @@ func (q *FileIndexQueue) pop() (fileIndexQueueItem, bool) {
 }
 
 func (q *FileIndexQueue) process(item fileIndexQueueItem) {
+	if q.indexer == nil {
+		log.Error().Msg("Cannot process file queue item before indexer initialization")
+		return
+	}
 	switch item.op {
 	case fileIndexAdd:
-		if err := IndexFile(item.path, item.userID); err != nil {
+		if err := q.indexer.IndexFile(item.path, item.userID); err != nil {
 			log.Debug().Err(err).Str("path", item.path).Msg("Failed to index file")
 		}
 	case fileIndexDelete:
-		if err := DeleteFile(item.path); err != nil {
+		if err := q.indexer.DeleteFile(item.path); err != nil {
 			log.Debug().Err(err).Str("path", item.path).Msg("Failed to delete file from index")
 		}
 	}
 }
 
 func IndexAll(dirs []*config.Directory) {
+	if defaultIndexer == nil {
+		log.Error().Msg("Cannot index directories before indexer initialization")
+		return
+	}
+	defaultIndexer.IndexAll(dirs)
+}
+
+func (i *Indexer) IndexAll(dirs []*config.Directory) {
 	for _, dir := range dirs {
 		expanded := files.ExpandHome(dir.Path)
-		if err := indexDirectory(expanded, dir); err != nil {
+		if err := i.indexDirectory(expanded, dir); err != nil {
 			log.Error().Err(err).Str("directory", expanded).Msg("Failed to index directory")
 		}
 	}
@@ -151,11 +173,11 @@ func (q *FileIndexQueue) EnqueueAll(dirs []*config.Directory) {
 	}
 }
 
-func indexDirectory(dir string, cfg *config.Directory) error {
+func (i *Indexer) indexDirectory(dir string, cfg *config.Directory) error {
 	log.Debug().Str("directory", dir).Msg("Indexing directory")
 
 	indexed, skipped, err := walkDirectoryFiles(dir, cfg, func(path string, userID uint) bool {
-		if err := IndexFile(path, userID); err != nil {
+		if err := i.IndexFile(path, userID); err != nil {
 			log.Debug().Err(err).Str("path", path).Msg("Skipping file")
 			return false
 		}
@@ -238,10 +260,15 @@ func walkDirectoryFilesForUser(dir string, cfg *config.Directory, userID uint, c
 // the current directory filters or ownership. It only inspects indexed fields
 // and does not walk, stat, or read the filesystem.
 func CleanupLocalDocuments(dirs []*config.Directory) (LocalDocumentCleanupResult, error) {
-	result := LocalDocumentCleanupResult{}
-	if i == nil {
-		return result, errors.New("indexer is not initialized")
+	idx, err := currentIndexer()
+	if err != nil {
+		return LocalDocumentCleanupResult{}, err
 	}
+	return idx.CleanupLocalDocuments(dirs)
+}
+
+func (i *Indexer) CleanupLocalDocuments(dirs []*config.Directory) (LocalDocumentCleanupResult, error) {
+	result := LocalDocumentCleanupResult{}
 
 	owners := make(map[*config.Directory]directoryOwner, len(dirs))
 	for _, dir := range dirs {
@@ -255,14 +282,14 @@ func CleanupLocalDocuments(dirs []*config.Directory) (LocalDocumentCleanupResult
 		}
 	}
 
-	checked, removed, skipped, err := pruneStaleLocalDocuments(dirs, owners)
+	checked, removed, skipped, err := i.pruneStaleLocalDocuments(dirs, owners)
 	result.Checked = checked
 	result.Removed = removed
 	result.Skipped = skipped
 	return result, err
 }
 
-func pruneStaleLocalDocuments(dirs []*config.Directory, owners map[*config.Directory]directoryOwner) (int, int, int, error) {
+func (i *Indexer) pruneStaleLocalDocuments(dirs []*config.Directory, owners map[*config.Directory]directoryOwner) (int, int, int, error) {
 	docType := float64(types.Local)
 	localQuery := bleve.NewNumericRangeInclusiveQuery(&docType, &docType, new(true), new(true))
 	localQuery.SetField("type")
@@ -343,6 +370,14 @@ func configuredFileLabel(dirs []*config.Directory, path string) string {
 }
 
 func IndexFile(path string, userID uint) error {
+	idx, err := currentIndexer()
+	if err != nil {
+		return err
+	}
+	return idx.IndexFile(path, userID)
+}
+
+func (i *Indexer) IndexFile(path string, userID uint) error {
 	info, err := os.Stat(path)
 	if err != nil {
 		return err
@@ -351,7 +386,7 @@ func IndexFile(path string, userID uint) error {
 		return ErrEmptyFile
 	}
 
-	if info.Size() > maxFileSize {
+	if info.Size() > i.maxFileSize {
 		return fmt.Errorf("%w: %d bytes", ErrFileTooLarge, info.Size())
 	}
 
@@ -363,13 +398,13 @@ func IndexFile(path string, userID uint) error {
 	label := configuredFileLabel(i.directories, absPath)
 
 	// Skip if already indexed with the same modification time
-	existing := GetByURLAndUser(fileURL, userID)
+	existing := i.GetByURLAndUser(fileURL, userID)
 	if existing != nil && existing.Updated == info.ModTime().Unix() {
 		if label == "" || existing.Label == label {
 			return nil
 		}
 		existing.Label = label
-		return Save(existing)
+		return i.Save(existing)
 	}
 
 	content, err := os.ReadFile(path)
@@ -386,18 +421,26 @@ func IndexFile(path string, userID uint) error {
 		Label:   label,
 	}
 
-	return indexFileContent(path, doc, content)
+	return i.indexFileContent(path, doc, content)
 }
 
 // DeleteFile removes the document for the given filesystem path from the index.
 // It uses a url: field query so it removes the file across all users and
 // language-specific sub-indexes. Returns nil if the document is not found.
 func DeleteFile(path string) error {
+	idx, err := currentIndexer()
+	if err != nil {
+		return err
+	}
+	return idx.DeleteFile(path)
+}
+
+func (i *Indexer) DeleteFile(path string) error {
 	absPath, err := filepath.Abs(path)
 	if err != nil {
 		return fmt.Errorf("failed to resolve path: %w", err)
 	}
 	fileURL := files.PathToFileURL(absPath)
-	_, err = DeleteByQuery("url:"+fileURL, nil, nil)
+	_, err = i.DeleteByQuery("url:"+fileURL, nil, nil)
 	return err
 }

@@ -30,7 +30,7 @@ type activeEmbedding struct {
 // The jobs channel is intentionally unbuffered so only active documents are
 // loaded from the index and retained in memory.
 type embeddingQueue struct {
-	idx       *indexer
+	idx       *Indexer
 	ctx       context.Context
 	cancel    context.CancelFunc
 	jobs      chan *model.EmbeddingJob
@@ -48,7 +48,7 @@ func normalizeEmbeddingWorkerCount(configured int) int {
 	return defaultEmbeddingWorkers
 }
 
-func newEmbeddingQueue(idx *indexer, workers int) (*embeddingQueue, error) {
+func newEmbeddingQueue(idx *Indexer, workers int) (*embeddingQueue, error) {
 	if err := model.ResetInProgressEmbeddingJobs(); err != nil {
 		return nil, err
 	}
@@ -69,7 +69,7 @@ func newEmbeddingQueue(idx *indexer, workers int) (*embeddingQueue, error) {
 	return q, nil
 }
 
-func (i *indexer) startEmbeddingQueue(workers int) error {
+func (i *Indexer) startEmbeddingQueue(workers int) error {
 	if i.embeddingQueue != nil {
 		return nil
 	}
@@ -83,7 +83,7 @@ func (i *indexer) startEmbeddingQueue(workers int) error {
 	return nil
 }
 
-func (i *indexer) stopEmbeddingQueue() {
+func (i *Indexer) stopEmbeddingQueue() {
 	if i.embeddingQueue == nil {
 		return
 	}
@@ -91,14 +91,14 @@ func (i *indexer) stopEmbeddingQueue() {
 	i.embeddingQueue = nil
 }
 
-func (i *indexer) enqueueEmbedding(docID string) error {
+func (i *Indexer) enqueueEmbedding(docID string) error {
 	if i.embeddingQueue != nil {
 		return i.embeddingQueue.Enqueue(docID)
 	}
 	return model.EnqueueEmbeddingJob(docID)
 }
 
-func (i *indexer) cancelEmbedding(docID string) error {
+func (i *Indexer) cancelEmbedding(docID string) error {
 	if i.embeddingQueue != nil {
 		return i.embeddingQueue.Cancel(docID)
 	}

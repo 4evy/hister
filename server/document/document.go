@@ -116,13 +116,20 @@ func (d *Document) DownloadFavicon(userAgent string) error {
 }
 
 func (d *Document) Process(ld LanguageDetector, extractFn func(*Document) error) error {
+	return d.ProcessWithSensitivePattern(ld, extractFn, sensitiveContentRe)
+}
+
+// ProcessWithSensitivePattern processes the document using the provided
+// sensitive content pattern. It allows callers with instance scoped
+// configuration to avoid relying on the package default pattern.
+func (d *Document) ProcessWithSensitivePattern(ld LanguageDetector, extractFn func(*Document) error, sensitivePattern *regexp.Regexp) error {
 	if d.Processed {
 		return nil
 	}
 	if ld == nil {
 		ld = NewNullLanguageDetector()
 	}
-	if !d.SkipSensitiveCheck && sensitiveContentRe != nil && sensitiveContentRe.MatchString(d.HTML) {
+	if !d.SkipSensitiveCheck && sensitivePattern != nil && sensitivePattern.MatchString(d.HTML) {
 		log.Debug().Msg("Sensitive content detected")
 		return ErrSensitiveContent
 	}
@@ -134,7 +141,7 @@ func (d *Document) Process(ld LanguageDetector, extractFn func(*Document) error)
 		return err
 	}
 	if pu.Scheme == "file" {
-		return d.processFile(ld)
+		return d.processFile(ld, sensitivePattern)
 	}
 	if pu.Scheme == "" || pu.Host == "" {
 		return errors.New("invalid URL: missing scheme/host")
@@ -176,7 +183,7 @@ func (d *Document) normalizeWebURL(pu *url.URL) {
 	}
 }
 
-func (d *Document) processFile(ld LanguageDetector) error {
+func (d *Document) processFile(ld LanguageDetector, sensitivePattern *regexp.Regexp) error {
 	osPath := files.FileURLToPath(d.URL)
 	if d.Text == "" {
 		content, err := os.ReadFile(osPath)
@@ -190,7 +197,7 @@ func (d *Document) processFile(ld LanguageDetector) error {
 		}
 		d.Text = string(content)
 	}
-	if !d.SkipSensitiveCheck && sensitiveContentRe != nil && sensitiveContentRe.MatchString(d.Text) {
+	if !d.SkipSensitiveCheck && sensitivePattern != nil && sensitivePattern.MatchString(d.Text) {
 		return ErrSensitiveContent
 	}
 	d.Type = types.Local

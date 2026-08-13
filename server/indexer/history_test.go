@@ -13,7 +13,7 @@ func TestGetLatestDocumentsFiltered(t *testing.T) {
 	if err := Init(cfg); err != nil {
 		t.Fatalf("failed to init indexer: %v", err)
 	}
-	defer i.Close()
+	defer defaultIndexer.Close()
 
 	docs := []*document.Document{
 		{
@@ -71,7 +71,7 @@ func TestHistoryTimelineAndDateFilter(t *testing.T) {
 	if err := Init(cfg); err != nil {
 		t.Fatalf("failed to init indexer: %v", err)
 	}
-	defer i.Close()
+	defer defaultIndexer.Close()
 
 	now := time.Now().UTC()
 	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
@@ -172,7 +172,7 @@ func TestLatestDocumentsDatePaginationWithEqualTimestamps(t *testing.T) {
 	if err := Init(cfg); err != nil {
 		t.Fatalf("failed to init indexer: %v", err)
 	}
-	defer i.Close()
+	defer defaultIndexer.Close()
 
 	timestamp := time.Now().UTC().Truncate(time.Second).Unix()
 	for n := range 3 {

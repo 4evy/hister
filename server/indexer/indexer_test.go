@@ -15,7 +15,7 @@ func TestSearchSortsByMostVisited(t *testing.T) {
 	if err := Init(idxCfg); err != nil {
 		t.Fatalf("failed to init indexer: %v", err)
 	}
-	defer i.Close()
+	defer defaultIndexer.Close()
 
 	lessVisitedURL := "https://example.com/less-visited"
 	mostVisitedURL := "https://example.com/most-visited"
@@ -69,7 +69,7 @@ func TestSearchSortDirective(t *testing.T) {
 	if err := Init(idxCfg); err != nil {
 		t.Fatalf("failed to init indexer: %v", err)
 	}
-	defer i.Close()
+	defer defaultIndexer.Close()
 
 	older := &document.Document{
 		URL:       "https://a.example.com/sort-directive-older",
@@ -168,7 +168,7 @@ func TestSearchFiltersMetadataSourceByLatestUpdate(t *testing.T) {
 	if err := Init(idxCfg); err != nil {
 		t.Fatalf("failed to init indexer: %v", err)
 	}
-	defer i.Close()
+	defer defaultIndexer.Close()
 
 	docs := []*document.Document{
 		{
@@ -216,7 +216,7 @@ func TestSearchFiltersByVisitCount(t *testing.T) {
 	if err := Init(idxCfg); err != nil {
 		t.Fatalf("failed to init indexer: %v", err)
 	}
-	defer i.Close()
+	defer defaultIndexer.Close()
 
 	lessVisitedURL := "https://example.com/visit-filter-less"
 	mostVisitedURL := "https://example.com/visit-filter-most"
@@ -253,7 +253,7 @@ func TestSearchAndDeleteFilterByRelativeTime(t *testing.T) {
 	if err := Init(idxCfg); err != nil {
 		t.Fatalf("failed to init indexer: %v", err)
 	}
-	defer i.Close()
+	defer defaultIndexer.Close()
 
 	now := time.Now()
 	oldDocument := &document.Document{
@@ -317,7 +317,7 @@ func TestSearchFiltersByAbsoluteDate(t *testing.T) {
 	if err := Init(idxCfg); err != nil {
 		t.Fatalf("failed to init indexer: %v", err)
 	}
-	defer i.Close()
+	defer defaultIndexer.Close()
 
 	beforeCutoff := time.Date(2025, time.December, 31, 23, 59, 59, 0, time.UTC).Unix()
 	atCutoff := time.Date(2026, time.January, 1, 0, 0, 0, 0, time.UTC).Unix()
@@ -380,7 +380,7 @@ func TestSearchVisitCountFacets(t *testing.T) {
 	if err := Init(idxCfg); err != nil {
 		t.Fatalf("failed to init indexer: %v", err)
 	}
-	defer i.Close()
+	defer defaultIndexer.Close()
 
 	lessVisitedURL := "https://example.com/visit-facet-less"
 	mostVisitedURL := "https://example.com/visit-facet-most"
@@ -430,7 +430,7 @@ func TestSearchDateFacetCountsMatchPresetFilters(t *testing.T) {
 	if err := Init(idxCfg); err != nil {
 		t.Fatalf("failed to init indexer: %v", err)
 	}
-	defer i.Close()
+	defer defaultIndexer.Close()
 
 	now := time.Now()
 	for index, age := range []time.Duration{
@@ -486,7 +486,7 @@ func TestSearchReturnsFaviconKeyWithoutFaviconData(t *testing.T) {
 	if err := Init(idxCfg); err != nil {
 		t.Fatalf("failed to init indexer: %v", err)
 	}
-	defer i.Close()
+	defer defaultIndexer.Close()
 
 	const faviconData = "data:image/png;base64,ZmF2aWNvbg=="
 	if err := Add(&document.Document{
