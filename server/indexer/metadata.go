@@ -86,6 +86,8 @@ func (i *Indexer) SetMetadata(version int, analyzerFingerprint string) error {
 }
 
 func (i *Indexer) getMetadata() (indexMetadata, error) {
+	i.indexesMu.RLock()
+	defer i.indexesMu.RUnlock()
 	metadata := indexMetadata{Version: -1}
 	versionsComplete := true
 	fingerprintsComplete := true
@@ -127,6 +129,8 @@ func (i *Indexer) getMetadata() (indexMetadata, error) {
 }
 
 func (i *Indexer) setMetadata(metadata indexMetadata) error {
+	i.indexesMu.Lock()
+	defer i.indexesMu.Unlock()
 	for name, idx := range i.indexers {
 		if err := writeIndexMetadata(idx, metadata); err != nil {
 			return fmt.Errorf("store metadata in %s: %w", name, err)

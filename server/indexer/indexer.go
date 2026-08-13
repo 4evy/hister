@@ -50,6 +50,9 @@ var Version = 8
 type Indexer struct {
 	idx               bleve.IndexAlias       // used only for Search()
 	indexers          map[string]bleve.Index // default and language specific indexers
+	indexesMu         sync.RWMutex           // protects idx, indexers, and indexesClosed
+	indexCreationMu   sync.Mutex             // serializes index creation, close, and adoption
+	indexesClosed     bool
 	dir               string
 	data              *dataStore
 	langDetector      document.LanguageDetector
@@ -247,6 +250,11 @@ type documentWritePlan struct {
 
 type documentWriteFunc func(*document.Document, documentWritePlan) error
 
+type indexBatch struct {
+	index bleve.Index
+	batch *bleve.Batch
+}
+
 type storedDocumentState struct {
 	htmlKeys    []string
 	faviconKeys []string
@@ -264,12 +272,31 @@ func (s storedDocumentState) embeddingTextChanged(text string) bool {
 
 type MultiBatch struct {
 	indexer             *Indexer
-	batches             map[string]*bleve.Batch
+	batches             map[string]*indexBatch
 	orphanedHTMLKeys    []string
 	orphanedFaviconKeys []string
 	embeddingIDs        map[string]struct{}
 	deletedIDs          map[string]struct{}
 	incrementAddCount   bool
+}
+
+func (i *Indexer) searchIndexes(req *bleve.SearchRequest) (*bleve.SearchResult, error) {
+	i.indexesMu.RLock()
+	defer i.indexesMu.RUnlock()
+	return i.idx.Search(req)
+}
+
+func (i *Indexer) indexes() map[string]bleve.Index {
+	i.indexesMu.RLock()
+	defer i.indexesMu.RUnlock()
+	return maps.Clone(i.indexers)
+}
+
+func (i *Indexer) indexByName(name string) (bleve.Index, bool) {
+	i.indexesMu.RLock()
+	defer i.indexesMu.RUnlock()
+	idx, ok := i.indexers[name]
+	return idx, ok
 }
 
 var (
@@ -426,8 +453,10 @@ func initializeIndexer(basePath string, detectLanguages, keepStopwords bool) (*I
 			return nil, err
 		}
 		langIdx.SetName(fn)
+		i.indexesMu.Lock()
 		i.idx.Add(langIdx)
 		i.indexers[fn] = langIdx
+		i.indexesMu.Unlock()
 	}
 	if err := i.backfillUpdatedTimestamps(); err != nil {
 		return nil, err
@@ -445,7 +474,7 @@ func initializeIndexer(basePath string, detectLanguages, keepStopwords bool) (*I
 // indexes created before Document.Updated was added. Remove this function and
 // its marker after support for those indexes is no longer needed.
 func (i *Indexer) backfillUpdatedTimestamps() error {
-	for name, idx := range i.indexers {
+	for name, idx := range i.indexes() {
 		marker, err := idx.GetInternal([]byte(updatedBackfillKey))
 		if err != nil {
 			return fmt.Errorf("read updated timestamp backfill marker for %s: %w", name, err)
@@ -567,7 +596,7 @@ func (idx *Indexer) reindex(basePath string, rules *config.Rules, skipSensitiveC
 			return err
 		}
 	}
-	sourceIndexes, closeExtraSources, err := openReindexSources(basePath, idx.indexers)
+	sourceIndexes, closeExtraSources, err := openReindexSources(basePath, idx.indexes())
 	if err != nil {
 		return err
 	}
@@ -725,7 +754,7 @@ func (idx *Indexer) reindex(basePath string, rules *config.Rules, skipSensitiveC
 		}
 	}
 	var renameError error
-	for n := range tmpIdx.indexers {
+	for n := range tmpIdx.indexes() {
 		idxPath := filepath.Join(basePath, n)
 		tmpIdxPath := filepath.Join(tmpBasePath, n)
 		if err := os.Rename(tmpIdxPath, idxPath); err != nil {
@@ -945,7 +974,7 @@ func (i *Indexer) Total() uint64 {
 	q := query.NewMatchAllQuery()
 	req := bleve.NewSearchRequest(q)
 	req.Size = 1
-	res, err := i.idx.Search(req)
+	res, err := i.searchIndexes(req)
 	if err != nil {
 		return 0
 	}
@@ -958,7 +987,7 @@ func (i *Indexer) TotalByUser(userID uint) uint64 {
 	q.SetField("user_id")
 	req := bleve.NewSearchRequest(q)
 	req.Size = 1
-	res, err := i.idx.Search(req)
+	res, err := i.searchIndexes(req)
 	if err != nil {
 		return 0
 	}
@@ -1051,8 +1080,9 @@ func (i *Indexer) prepareStorageWrite(d *document.Document, state storedDocument
 	plan := documentWritePlan{}
 	existingIndexes := state.indexNames
 	if existingIndexes == nil {
-		existingIndexes = make(map[string]struct{}, len(i.indexers))
-		for name := range i.indexers {
+		indexes := i.indexes()
+		existingIndexes = make(map[string]struct{}, len(indexes))
+		for name := range indexes {
 			existingIndexes[name] = struct{}{}
 		}
 	}
@@ -1068,7 +1098,7 @@ func (i *Indexer) prepareStorageWrite(d *document.Document, state storedDocument
 		if name == plan.target.Name() {
 			continue
 		}
-		idx, ok := i.indexers[name]
+		idx, ok := i.indexByName(name)
 		if !ok {
 			continue
 		}
@@ -1120,8 +1150,10 @@ func (i *Indexer) getStoredDocumentState(id string) storedDocumentState {
 	if i.embedder != nil && i.vectorStore != nil {
 		req.Fields = append(req.Fields, "text")
 	}
+	i.indexesMu.RLock()
 	req.Size = len(i.indexers) + 1 // at most one entry per index
 	res, err := i.idx.Search(req)
+	i.indexesMu.RUnlock()
 	if err != nil {
 		return state
 	}
@@ -1188,7 +1220,7 @@ func (i *Indexer) countKeyRefs(field, key string) uint64 {
 	q.SetField(field)
 	req := bleve.NewSearchRequest(q)
 	req.Size = 0
-	res, err := i.idx.Search(req)
+	res, err := i.searchIndexes(req)
 	if err != nil {
 		return 1
 	}
@@ -1237,18 +1269,15 @@ func (i *Indexer) Save(d *document.Document) error {
 
 func (i *Indexer) getOrCreate(lang string) bleve.Index {
 	idxName := indexNameForLanguage(lang)
-	if idxName == defaultIndexerName {
-		return i.indexers[defaultIndexerName]
+	if idx, ok := i.indexByName(idxName); ok {
+		return idx
 	}
-	idx, ok := i.indexers[idxName]
-	if !ok {
-		err := i.addIndexer(idxName, lang)
-		if err != nil {
-			log.Warn().Err(err).Str("Name", idxName).Msg("Failed to create language indexer")
-			return i.indexers[defaultIndexerName]
-		}
-		idx = i.indexers[idxName]
+	if err := i.addIndexer(idxName, lang); err != nil {
+		log.Warn().Err(err).Str("Name", idxName).Msg("Failed to create language indexer")
+		idx, _ := i.indexByName(defaultIndexerName)
+		return idx
 	}
+	idx, _ := i.indexByName(idxName)
 	return idx
 }
 
@@ -1260,6 +1289,11 @@ func indexNameForLanguage(lang string) string {
 }
 
 func (i *Indexer) addIndexer(name, lang string) error {
+	i.indexCreationMu.Lock()
+	defer i.indexCreationMu.Unlock()
+	if _, exists := i.indexByName(name); exists {
+		return nil
+	}
 	mapping := createMapping(lang, i.keepStopwords)
 	indexPath := filepath.Join(i.dir, name)
 	idx, err := bleve.NewUsing(indexPath, mapping, bleve.Config.DefaultIndexType, bleve.Config.DefaultMemKVStore, bleveRuntimeConfig())
@@ -1267,6 +1301,13 @@ func (i *Indexer) addIndexer(name, lang string) error {
 		return err
 	}
 	idx.SetName(name)
+	i.indexesMu.Lock()
+	defer i.indexesMu.Unlock()
+	if i.indexesClosed {
+		closeErr := idx.Close()
+		removeErr := os.RemoveAll(indexPath)
+		return errors.Join(bleve.ErrorIndexClosed, closeErr, removeErr)
+	}
 	if err := copyIndexMetadata(i.indexers[defaultIndexerName], idx); err != nil {
 		closeErr := idx.Close()
 		removeErr := os.RemoveAll(indexPath)
@@ -1287,6 +1328,14 @@ func (i *Indexer) Close() {
 			log.Warn().Err(err).Msg("failed to close vector store")
 		}
 	}
+	i.indexCreationMu.Lock()
+	defer i.indexCreationMu.Unlock()
+	i.indexesMu.Lock()
+	defer i.indexesMu.Unlock()
+	if i.indexesClosed {
+		return
+	}
+	i.indexesClosed = true
 	for name, idx := range i.indexers {
 		if err := idx.Close(); err != nil {
 			log.Warn().Err(err).Str("index", name).Msg("failed to close index")
@@ -1298,8 +1347,15 @@ func (i *Indexer) Close() {
 }
 
 func (i *Indexer) adopt(replacement *Indexer) {
+	replacement.indexesMu.RLock()
+	defer replacement.indexesMu.RUnlock()
+	i.indexCreationMu.Lock()
+	defer i.indexCreationMu.Unlock()
+	i.indexesMu.Lock()
+	defer i.indexesMu.Unlock()
 	i.idx = replacement.idx
-	i.indexers = replacement.indexers
+	i.indexers = maps.Clone(replacement.indexers)
+	i.indexesClosed = false
 	i.dir = replacement.dir
 	i.data = replacement.data
 	i.langDetector = replacement.langDetector
@@ -1326,7 +1382,7 @@ func (i *Indexer) NewMultiBatch() *MultiBatch {
 func newMultiBatch(idx *Indexer) *MultiBatch {
 	return &MultiBatch{
 		indexer:           idx,
-		batches:           make(map[string]*bleve.Batch),
+		batches:           make(map[string]*indexBatch),
 		embeddingIDs:      make(map[string]struct{}),
 		deletedIDs:        make(map[string]struct{}),
 		incrementAddCount: false,
@@ -1334,10 +1390,12 @@ func newMultiBatch(idx *Indexer) *MultiBatch {
 }
 
 func (b *MultiBatch) getOrCreateBatch(name string, idx bleve.Index) *bleve.Batch {
-	if _, ok := b.batches[name]; !ok {
-		b.batches[name] = idx.NewBatch()
+	entry, ok := b.batches[name]
+	if !ok {
+		entry = &indexBatch{index: idx, batch: idx.NewBatch()}
+		b.batches[name] = entry
 	}
-	return b.batches[name]
+	return entry.batch
 }
 
 func (b *MultiBatch) Add(d *document.Document) error {
@@ -1379,7 +1437,7 @@ func (b *MultiBatch) Delete(id string) {
 	oldHTMLKeys, oldFaviconKeys := b.indexer.getDocKeysByID(id)
 	delete(b.embeddingIDs, id)
 	b.deletedIDs[id] = struct{}{}
-	for name, idx := range b.indexer.indexers {
+	for name, idx := range b.indexer.indexes() {
 		b.getOrCreateBatch(name, idx).Delete(id)
 	}
 	b.orphanedHTMLKeys = append(b.orphanedHTMLKeys, oldHTMLKeys...)
@@ -1387,8 +1445,8 @@ func (b *MultiBatch) Delete(id string) {
 }
 
 func (b *MultiBatch) Save() error {
-	for name, lb := range b.batches {
-		if err := b.indexer.indexers[name].Batch(lb); err != nil {
+	for _, entry := range b.batches {
+		if err := entry.index.Batch(entry.batch); err != nil {
 			return err
 		}
 	}
@@ -1413,7 +1471,7 @@ func (b *MultiBatch) Save() error {
 
 func (i *Indexer) Delete(id string) error {
 	htmlKeys, faviconKeys := i.getDocKeysByID(id)
-	for _, idx := range i.indexers {
+	for _, idx := range i.indexes() {
 		if err := idx.Delete(id); err != nil {
 			return err
 		}
@@ -1458,7 +1516,7 @@ func (i *Indexer) DeleteByQuery(text string, userID *uint, onDelete func(url str
 		if len(searchAfter) > 0 {
 			req.SetSearchAfter(searchAfter)
 		}
-		res, err := i.idx.Search(req)
+		res, err := i.searchIndexes(req)
 		if err != nil {
 			return count, err
 		}
@@ -1539,7 +1597,7 @@ func (i *Indexer) search(semanticConfig config.SemanticSearch, q *Query) (*Resul
 		addFacets(req, q.FacetSizes)
 	}
 
-	res, err := i.idx.Search(req)
+	res, err := i.searchIndexes(req)
 	if err != nil {
 		return nil, err
 	}
@@ -1689,8 +1747,10 @@ func (i *Indexer) getAddCountByDocID(id string) (uint, bool) {
 	q := bleve.NewDocIDQuery([]string{id})
 	req := bleve.NewSearchRequest(q)
 	req.Fields = []string{"add_count"}
+	i.indexesMu.RLock()
 	req.Size = len(i.indexers) + 1
 	res, err := i.idx.Search(req)
+	i.indexesMu.RUnlock()
 	if err != nil || len(res.Hits) < 1 {
 		return 0, false
 	}
@@ -1717,7 +1777,7 @@ func (i *Indexer) getByDocID(id string, include resultInclude) *document.Documen
 	req := bleve.NewSearchRequest(q)
 	req.Fields = allFields
 	req.Highlight = bleve.NewHighlight()
-	res, err := i.idx.Search(req)
+	res, err := i.searchIndexes(req)
 	if err != nil || len(res.Hits) < 1 {
 		return nil
 	}
@@ -1735,7 +1795,7 @@ func (i *Indexer) Iterate(fn func(*document.Document)) {
 		if len(sortKey) > 0 {
 			req.SetSearchAfter(sortKey)
 		}
-		res, err := i.idx.Search(req)
+		res, err := i.searchIndexes(req)
 		n := len(res.Hits)
 		if err != nil || n < 1 {
 			return

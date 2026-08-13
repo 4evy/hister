@@ -37,7 +37,7 @@ func (i *Indexer) GetLatestDocumentsFilteredByDate(limit int, latest string, use
 			req.SetSearchAfter(after)
 		}
 	}
-	res, err := i.idx.Search(req)
+	res, err := i.searchIndexes(req)
 	if err != nil || len(res.Hits) < 1 {
 		return nil
 	}
@@ -128,7 +128,7 @@ func (i *Indexer) GetHistoryTimeline(userID uint, filter string, loc *time.Locat
 	oldestRequest.Size = 1
 	oldestRequest.Fields = []string{"updated"}
 	oldestRequest.SortBy([]string{"updated", "_id"})
-	oldestResult, err := i.idx.Search(oldestRequest)
+	oldestResult, err := i.searchIndexes(oldestRequest)
 	if err != nil {
 		return nil, err
 	}
@@ -181,7 +181,7 @@ func (i *Indexer) populateTimelineFacet(q query.Query, result timelineFacetBucke
 	req := bleve.NewSearchRequest(q)
 	req.Size = 0
 	req.AddFacet("history_timeline", facet)
-	res, err := i.idx.Search(req)
+	res, err := i.searchIndexes(req)
 	if err != nil {
 		return err
 	}

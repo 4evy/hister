@@ -284,7 +284,7 @@ func (i *Indexer) pruneStaleLocalDocuments(dirs []*config.Directory, owners map[
 		if len(sortKey) > 0 {
 			req.SetSearchAfter(sortKey)
 		}
-		res, err := i.idx.Search(req)
+		res, err := i.searchIndexes(req)
 		if err != nil {
 			return checked, removed, skipped, fmt.Errorf("find indexed local documents: %w", err)
 		}

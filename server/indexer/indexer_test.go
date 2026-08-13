@@ -3,6 +3,7 @@ package indexer
 import (
 	"fmt"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -40,6 +41,73 @@ func TestIndexerInstancesAreIndependent(t *testing.T) {
 	}
 	if second.GetByURLAndUser(doc.URL, 0) != nil {
 		t.Fatal("second indexer contains a document from the first indexer")
+	}
+}
+
+func TestConcurrentLanguageIndexCreation(t *testing.T) {
+	idx := newTestIndexer(t, testutil.Config(t))
+	defer idx.Close()
+
+	languages := []string{"de", "en", "fr", "hu"}
+	const writeCount = 24
+	const readerCount = 4
+	start := make(chan struct{})
+	errs := make(chan error, writeCount+readerCount)
+	var wg sync.WaitGroup
+
+	for n := range writeCount {
+		wg.Go(func() {
+			<-start
+			language := languages[n%len(languages)]
+			err := idx.Add(&document.Document{
+				URL:       fmt.Sprintf("https://example.com/concurrent-language/%d", n),
+				Title:     "Concurrent language index",
+				Text:      "Document stored while language indexes are created",
+				Language:  language,
+				Processed: true,
+			})
+			if err != nil {
+				errs <- fmt.Errorf("add document %d: %w", n, err)
+			}
+		})
+	}
+	for range readerCount {
+		wg.Go(func() {
+			<-start
+			for range writeCount {
+				if _, _, err := idx.GetMetadata(); err != nil {
+					errs <- fmt.Errorf("read metadata: %w", err)
+					return
+				}
+				if _, err := idx.Search(&Query{MatchAll: true, Limit: 1}); err != nil {
+					errs <- fmt.Errorf("search indexes: %w", err)
+					return
+				}
+			}
+		})
+	}
+
+	close(start)
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		t.Error(err)
+	}
+	if t.Failed() {
+		return
+	}
+
+	indexes := idx.indexes()
+	if len(indexes) != len(languages)+1 {
+		t.Fatalf("index count = %d, want %d", len(indexes), len(languages)+1)
+	}
+	for _, language := range languages {
+		if _, exists := indexes[indexNameForLanguage(language)]; !exists {
+			t.Errorf("language index %q was not created", language)
+		}
+	}
+	if got := idx.Total(); got != writeCount {
+		t.Fatalf("document count = %d, want %d", got, writeCount)
 	}
 }
 
