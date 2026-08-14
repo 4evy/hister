@@ -321,6 +321,20 @@ chain handles text extraction.
 
 **Matches:** any page that contains the `application/ld+json` substring.
 
+### `reddit`
+
+Extracts one Reddit post together with every comment already present in the
+page. Indexed text and the preview preserve reply depth. Current Reddit pages
+are read through semantic custom elements and content slots. Legacy pages are
+read through Reddit thing identifiers, with schema.org discussion data as a
+fallback.
+
+The extractor does not request or expand hidden comments. Subreddit listings,
+profiles, search results, and every other Reddit page are excluded.
+
+**Matches:** Reddit post paths containing `/comments/{post_id}` and short post
+links on `redd.it`.
+
 ### `stackexchange`
 
 Extracts Stack Exchange network question pages, including Stack Overflow,

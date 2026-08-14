@@ -27,6 +27,7 @@ import (
 	"github.com/asciimoo/hister/server/extractor/extractors/mastodon"
 	"github.com/asciimoo/hister/server/extractor/extractors/notion"
 	"github.com/asciimoo/hister/server/extractor/extractors/org"
+	"github.com/asciimoo/hister/server/extractor/extractors/reddit"
 	"github.com/asciimoo/hister/server/extractor/extractors/stackexchange"
 	"github.com/asciimoo/hister/server/extractor/extractors/twitter"
 	"github.com/asciimoo/hister/server/extractor/extractors/wikipedia"
@@ -142,6 +143,7 @@ var extractors = []Extractor{
 	&org.OrgModeExtractor{},
 	&embeddedvideo.EmbeddedVideoExtractor{},
 	&jsonld.JSONLDExtractor{},
+	&reddit.RedditExtractor{},
 	&stackexchange.StackExchangeExtractor{},
 	&godoc.GoDocExtractor{},
 	&github.GitHubExtractor{},
