@@ -542,3 +542,41 @@ has a well-defined structure (code documentation, Q&amp;A threads, recipes, and
 so on), return a non-empty `Template` in `PreviewResponse` and build a
 dedicated Svelte template for it. A tailored layout is almost always more
 readable than the generic one.
+
+## Testing against live websites
+
+Live extractor cases are declared in
+[`server/extractor/live_cases.yaml`](https://github.com/asciimoo/hister/blob/main/server/extractor/live_cases.yaml).
+Each case identifies a public URL, crawler backend, extractor, and a set of
+stable content or metadata expectations. Prefer semantic invariants such as the
+page type, a durable title fragment, and minimum content length over exact page
+snapshots.
+
+Run every live case with:
+
+```bash
+./manage.sh run_extractor_tests
+```
+
+Pass a case name fragment to run a subset:
+
+```bash
+./manage.sh run_extractor_tests discourse
+```
+
+The runner fetches each page through the configured Hister crawler backend and
+respects its robots rules. It checks the selected extractor directly, checks the
+complete extractor chain unless `run_chain` is false, and checks previews when
+preview expectations are present. Identical fetches are reused within a test
+run.
+
+The live suite is selected through the `live` Go build tag and is not part of a
+normal `go test ./...` run. The manifest structure is still validated during
+normal tests, so invalid fields and unknown extractor names fail without making
+network requests.
+
+When a live case fails, the fetched HTML, extracted documents, preview, and a
+summary are saved under `/tmp/hister-live-extractors`. Set
+`HISTER_LIVE_ARTIFACT_DIR` to use another directory. These artifacts make it
+possible to distinguish a website structure change from a transient fetch
+failure.

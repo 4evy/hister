@@ -1,0 +1,99 @@
+version: 1
+
+cases:
+  - name: discourse_julia_topic_http
+    url: https://discourse.julialang.org/t/julia-discourse-advice/104150
+    backend: http
+    extractor: Discourse
+    timeout: 20
+    expect:
+      title_contains:
+        - Julia Discourse advice
+      text_contains:
+        - Julia Discourse advice
+        - Accepted Solution
+      min_text_length: 2000
+      metadata:
+        type: DiscourseTopic
+        topic_id: '104150'
+        category: New to Julia
+        accepted_answer: 3
+      metadata_minimums:
+        posts: 5
+        replies: 4
+      absent_metadata:
+        - jsonld
+      preview_contains:
+        - Original post
+        - accepted solution
+      preview_not_contains:
+        - <script
+      min_preview_length: 1000
+
+  - name: discourse_python_topic_chromedp
+    url: https://discuss.python.org/t/intro-best-place-to-start-contributing/77701
+    backend: chromedp
+    extractor: Discourse
+    timeout: 30
+    expect:
+      title_contains:
+        - Intro & best place to start contributing?
+      text_contains:
+        - cybersecurity
+      min_text_length: 500
+      metadata:
+        type: DiscourseTopic
+        topic_id: '77701'
+      metadata_minimums:
+        posts: 2
+      absent_metadata:
+        - jsonld
+
+  - name: discourse_category_rejected
+    url: https://discourse.julialang.org/c/usage/6
+    backend: http
+    extractor: Discourse
+    timeout: 20
+    match: false
+
+  - name: wikipedia_article_http
+    url: https://en.wikipedia.org/wiki/Web_scraping
+    backend: http
+    extractor: Wikipedia
+    timeout: 20
+    expect:
+      title_contains:
+        - Web scraping
+      text_contains:
+        - Web scraping
+      min_text_length: 1000
+      metadata:
+        type: Article
+      min_preview_length: 500
+      preview_not_contains:
+        - <script
+
+  - name: godoc_package_http
+    url: https://pkg.go.dev/net/http
+    backend: http
+    extractor: GoDoc
+    timeout: 20
+    extract_state: continue
+    run_chain: false
+    expect:
+      preview_contains:
+        - Package http
+      min_preview_length: 1000
+      preview_not_contains:
+        - <script
+
+  - name: jsonld_wikipedia_article_http
+    url: https://en.wikipedia.org/wiki/Web_scraping
+    backend: http
+    extractor: JSONLD
+    timeout: 20
+    extract_state: continue
+    run_chain: false
+    expect:
+      metadata:
+        type: Article

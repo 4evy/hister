@@ -27,6 +27,8 @@ install_js_deps      - Install or install frontend dependencies (required only f
 Tests
 -----
 run_unit_tests       - Run unit tests
+run_extractor_tests [filter]
+                     Run extractor tests against public websites
  
  Build
  -----
@@ -56,6 +58,12 @@ install_js_deps() {
 
 run_unit_tests() {
     go test ./...
+}
+
+run_extractor_tests() {
+    HISTER_LIVE_CASE="${HISTER_LIVE_CASE:-$1}" \
+    HISTER_LIVE_ARTIFACT_DIR="${HISTER_LIVE_ARTIFACT_DIR:-/tmp/hister-live-extractors}" \
+    go test -count=1 -tags=live -run '^TestLiveExtractors$' -v ./server/extractor
 }
 
 build() {
