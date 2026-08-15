@@ -71,3 +71,37 @@ func TestBasicPreviewEscapesMarkup(t *testing.T) {
 		t.Fatalf("preview content missing text:\n%s", resp.Content)
 	}
 }
+
+func TestDiscourseRunsBeforeJSONLD(t *testing.T) {
+	doc := &document.Document{
+		URL: "https://forum.example.com/t/topic/42",
+		HTML: `<html><head>
+			<meta name="generator" content="Discourse 2026.8.0">
+			<script type="application/ld+json">{
+				"@context": "https://schema.org",
+				"@type": "QAPage",
+				"name": "Topic"
+			}</script>
+		</head><body>
+			<div id="topic-title"><h1 data-topic-id="42"><a>Topic</a></h1></div>
+			<div class="post-stream">
+				<div class="topic-post" data-post-number="1">
+					<article data-post-id="100">
+						<div class="names"><span class="username"><a>author</a></span></div>
+						<div class="cooked"><p>Topic body.</p></div>
+					</article>
+				</div>
+			</div>
+		</body></html>`,
+	}
+
+	if err := Extract(doc); err != nil {
+		t.Fatalf("Extract failed: %v", err)
+	}
+	if got := doc.Metadata["type"]; got != "DiscourseTopic" {
+		t.Fatalf("metadata type = %#v, want DiscourseTopic", got)
+	}
+	if _, exists := doc.Metadata["jsonld"]; exists {
+		t.Fatal("JSON LD metadata was extracted before Discourse stopped the chain")
+	}
+}

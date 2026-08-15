@@ -18,6 +18,7 @@ import (
 
 	"github.com/asciimoo/hister/config"
 	"github.com/asciimoo/hister/server/document"
+	"github.com/asciimoo/hister/server/extractor/extractors/discourse"
 	"github.com/asciimoo/hister/server/extractor/extractors/embeddedvideo"
 	"github.com/asciimoo/hister/server/extractor/extractors/github"
 	"github.com/asciimoo/hister/server/extractor/extractors/godoc"
@@ -142,6 +143,7 @@ var extractors = []Extractor{
 	&markdown.MarkdownExtractor{},
 	&org.OrgModeExtractor{},
 	&embeddedvideo.EmbeddedVideoExtractor{},
+	&discourse.DiscourseExtractor{},
 	&jsonld.JSONLDExtractor{},
 	&reddit.RedditExtractor{},
 	&stackexchange.StackExchangeExtractor{},

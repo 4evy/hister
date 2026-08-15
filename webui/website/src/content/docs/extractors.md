@@ -335,6 +335,21 @@ profiles, search results, and every other Reddit page are excluded.
 **Matches:** Reddit post paths containing `/comments/{post_id}` and short post
 links on `redd.it`.
 
+### `discourse`
+
+Extracts one Discourse topic together with every regular post already present
+in the page. It combines rendered `article[data-post-id]` content with the
+embedded topic stream, which preserves post numbers, authors, timestamps,
+reply targets, likes, reactions, and accepted solutions. Schema.org `QAPage`
+and crawler markup provide stable fallbacks.
+
+The extractor performs no additional requests. Hidden posts and system action
+entries are excluded. Category lists, tag lists, profiles, search pages, and
+topic API formats are rejected.
+
+**Matches:** topic paths such as `/t/{slug}/{topic_id}` on pages carrying a
+Discourse generator, setup, or environment marker.
+
 ### `stackexchange`
 
 Extracts Stack Exchange network question pages, including Stack Overflow,
