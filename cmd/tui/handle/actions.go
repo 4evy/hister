@@ -106,7 +106,7 @@ func ExecuteAction(m *model.Model, action config.Action) tea.Cmd {
 
 func SwitchTab(m *model.Model, action config.Action) tea.Cmd {
 	prevTab := m.ActiveTab
-	if tab, ok := model.ActionToTab[action]; ok {
+	if tab, ok := model.TabForAction(action); ok {
 		m.ActiveTab = tab
 	}
 	if m.ActiveTab == prevTab {

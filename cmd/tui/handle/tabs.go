@@ -16,7 +16,7 @@ import (
 )
 
 func TabKeys(m *model.Model, msg tea.KeyMsg) tea.Cmd {
-	action := config.Action(m.Cfg.Hotkeys.TUI[msg.String()])
+	action := m.Keys.Action(msg)
 	// Suppress hotkey actions when a text input is focused.
 	if msg.Type == tea.KeyRunes && !msg.Alt {
 		inputFocused := false
@@ -50,7 +50,7 @@ var tabKeyHandlers = map[int]func(*model.Model, tea.KeyMsg) tea.Cmd{
 }
 
 func HistoryKeys(m *model.Model, msg tea.KeyMsg) tea.Cmd {
-	action := config.Action(m.Cfg.Hotkeys.TUI[msg.String()])
+	action := m.Keys.Action(msg)
 	switch action {
 	case config.ActionScrollUp:
 		model.ScrollIdx(&m.HistoryIdx, -1, 0, len(m.HistoryItems)-1)
@@ -86,7 +86,7 @@ func RulesKeys(m *model.Model, msg tea.KeyMsg) tea.Cmd {
 	}
 
 	// List navigation (RulesFormFocus == 4)
-	action := config.Action(m.Cfg.Hotkeys.TUI[msg.String()])
+	action := m.Keys.Action(msg)
 	switch action {
 	case config.ActionScrollUp:
 		if m.RulesIdx > 0 {
@@ -214,7 +214,7 @@ func RulesKeys(m *model.Model, msg tea.KeyMsg) tea.Cmd {
 }
 
 func rulesFormKeys(m *model.Model, msg tea.KeyMsg) tea.Cmd {
-	action := config.Action(m.Cfg.Hotkeys.TUI[msg.String()])
+	action := m.Keys.Action(msg)
 	switch action {
 	case config.ActionOpenResult:
 		var cmd tea.Cmd
@@ -318,7 +318,7 @@ func rulesFormKeys(m *model.Model, msg tea.KeyMsg) tea.Cmd {
 }
 
 func AddKeys(m *model.Model, msg tea.KeyMsg) tea.Cmd {
-	action := config.Action(m.Cfg.Hotkeys.TUI[msg.String()])
+	action := m.Keys.Action(msg)
 	switch action {
 	case config.ActionToggleFocus:
 		if msg.String() == "esc" {

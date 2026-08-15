@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/asciimoo/hister/client"
+	"github.com/asciimoo/hister/cmd/tui/component"
 	"github.com/asciimoo/hister/cmd/tui/theme"
 	"github.com/asciimoo/hister/config"
 	"github.com/asciimoo/hister/server/indexer"
@@ -37,6 +38,7 @@ type Model struct {
 	Cfg       *config.Config
 	Client    *client.Client
 	Results   *indexer.Results
+	Keys      component.KeyMap
 
 	// Dimensions and readiness
 	Width, Height int
@@ -180,6 +182,7 @@ func InitialModel(cfg *config.Config) *Model {
 		PrevState:          StateInput,
 		Cfg:                cfg,
 		Client:             client.New(cfg.BaseURL(""), client.WithAccessToken(cfg.App.AccessToken)),
+		Keys:               component.NewKeyMap(cfg.Hotkeys.TUI),
 		SelectedIdx:        -1,
 		DialogReturnTab:    -1,
 		Limit:              ResultsPageSize,

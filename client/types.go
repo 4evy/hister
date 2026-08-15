@@ -15,7 +15,20 @@ type historyRequest struct {
 }
 
 type RulesResponse struct {
-	Skip     []string          `json:"skip"`
-	Priority []string          `json:"priority"`
-	Aliases  map[string]string `json:"aliases"`
+	Skip       []string          `json:"skip"`
+	Priority   []string          `json:"priority"`
+	Versioning []string          `json:"versioning"`
+	Aliases    map[string]string `json:"aliases"`
+}
+
+// PreviewResponse is the readable document representation returned by the
+// preview API. Content is usually sanitized HTML, but extractor-specific
+// templates may return structured JSON instead.
+type PreviewResponse struct {
+	Title        string         `json:"title"`
+	Content      string         `json:"content"`
+	Template     string         `json:"template"`
+	Added        int64          `json:"added"`
+	VersionCount int            `json:"version_count"`
+	Meta         map[string]any `json:"meta"`
 }

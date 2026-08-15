@@ -7,6 +7,7 @@ package render
 import (
 	"strings"
 
+	"github.com/asciimoo/hister/cmd/tui/component"
 	"github.com/asciimoo/hister/cmd/tui/model"
 	"github.com/asciimoo/hister/cmd/tui/theme"
 	"github.com/asciimoo/hister/config"
@@ -78,9 +79,9 @@ func ThemePicker(m *model.Model) string {
 	lines = append(lines, renderSection(lightNames, m.LightThemeIdx, m.Cfg.TUI.LightTheme, lightFocused)...)
 
 	lines = append(lines, "")
-	nav := BestKey(m.Cfg.Hotkeys.TUI, config.ActionScrollDown)
-	mode := BestKey(m.Cfg.Hotkeys.TUI, config.ActionToggleTheme)
-	confirm := BestKey(m.Cfg.Hotkeys.TUI, config.ActionOpenResult)
+	nav := m.Keys.BestKey(config.ActionScrollDown)
+	mode := m.Keys.BestKey(config.ActionToggleTheme)
+	confirm := m.Keys.BestKey(config.ActionOpenResult)
 	themeHints := nav + " navigate  ⇥ section  " + mode + " mode  " + confirm + " confirm  ⎋ cancel"
 	lines = append(lines, m.Styles.Hint.Render(themeHints))
 	return m.Styles.ThemePicker.Render(strings.Join(lines, "\n"))
@@ -89,7 +90,8 @@ func ThemePicker(m *model.Model) string {
 // ContextMenu renders a small context menu box.
 func ContextMenu(m *model.Model) string {
 	var lines []string
-	for i, opt := range model.MenuOptionLabels {
+	for i, option := range model.MenuOptions {
+		opt := option.Label
 		if i == m.MenuSelIdx {
 			lines = append(lines, m.Styles.ThemePickerSelected.Render("▸ "+opt))
 		} else {
@@ -133,7 +135,7 @@ func Settings(m *model.Model) string {
 
 	maxKeyW := 0
 	for _, it := range items {
-		fk := FormatKey(it.Key)
+		fk := component.FormatKey(it.Key)
 		if len([]rune(fk)) > maxKeyW {
 			maxKeyW = len([]rune(fk))
 		}
@@ -146,7 +148,7 @@ func Settings(m *model.Model) string {
 		if i == m.SettingsIdx && m.SettingsEditMode {
 			lines = append(lines, m.Styles.ThemePickerSelected.Render("  Press a key...  →  "+string(it.Action)))
 		} else {
-			fk := FormatKey(it.Key)
+			fk := component.FormatKey(it.Key)
 			padded := fk + strings.Repeat(" ", maxKeyW-len([]rune(fk)))
 			row := "  " + padded + "  →  " + string(it.Action)
 			if i == m.SettingsIdx {
@@ -164,8 +166,8 @@ func Settings(m *model.Model) string {
 	if m.SettingsEditMode {
 		lines = append(lines, m.Styles.Hint.Render("press any key to bind  esc cancel"))
 	} else {
-		sNav := BestKey(m.Cfg.Hotkeys.TUI, config.ActionScrollDown)
-		sEdit := BestKey(m.Cfg.Hotkeys.TUI, config.ActionOpenResult)
+		sNav := m.Keys.BestKey(config.ActionScrollDown)
+		sEdit := m.Keys.BestKey(config.ActionOpenResult)
 		lines = append(lines, m.Styles.Hint.Render(sNav+" navigate  "+sEdit+" edit  ⎋ close"))
 	}
 	return m.Styles.Help.Render(strings.Join(lines, "\n"))

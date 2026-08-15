@@ -205,10 +205,14 @@ const (
 	ActionScrollUp       Action = "scroll_up"
 	ActionScrollDown     Action = "scroll_down"
 	ActionOpenResult     Action = "open_result"
+	ActionCopyResult     Action = "copy_result"
+	ActionTogglePreview  Action = "toggle_preview"
+	ActionEditLabel      Action = "edit_label"
 	ActionDeleteResult   Action = "delete_result"
 	ActionToggleTheme    Action = "toggle_theme"
 	ActionToggleSettings Action = "toggle_settings"
 	ActionToggleSort     Action = "toggle_sort"
+	ActionToggleSemantic Action = "toggle_semantic"
 	ActionTabSearch      Action = "tab_search"
 	ActionTabHistory     Action = "tab_history"
 	ActionTabRules       Action = "tab_rules"
@@ -223,10 +227,14 @@ var ValidTUIActions = map[Action]bool{
 	ActionScrollUp:       true,
 	ActionScrollDown:     true,
 	ActionOpenResult:     true,
+	ActionCopyResult:     true,
+	ActionTogglePreview:  true,
+	ActionEditLabel:      true,
 	ActionDeleteResult:   true,
 	ActionToggleTheme:    true,
 	ActionToggleSettings: true,
 	ActionToggleSort:     true,
+	ActionToggleSemantic: true,
 	ActionTabSearch:      true,
 	ActionTabHistory:     true,
 	ActionTabRules:       true,
@@ -243,10 +251,14 @@ var DefaultTUIHotkeys = map[string]string{
 	"down":   "scroll_down",
 	"j":      "scroll_down",
 	"enter":  "open_result",
+	"y":      "copy_result",
+	"v":      "toggle_preview",
+	"l":      "edit_label",
 	"ctrl+d": "delete_result",
 	"ctrl+t": "toggle_theme",
 	"ctrl+s": "toggle_settings",
 	"ctrl+o": "toggle_sort",
+	"ctrl+e": "toggle_semantic",
 	"alt+1":  "tab_search",
 	"alt+2":  "tab_history",
 	"alt+3":  "tab_rules",
@@ -776,7 +788,25 @@ func (c *Config) LoadTUIConfig() {
 	} else {
 		c.Hotkeys.TUI = copyMap(DefaultTUIHotkeys)
 	}
+	if c.Hotkeys.TUI == nil {
+		c.Hotkeys.TUI = make(map[string]string)
+	}
+	mergeDefaultTUIHotkeys(c.Hotkeys.TUI)
 	log.Debug().Str("file", tuiPath).Msg("Loaded TUI config")
+}
+
+func mergeDefaultTUIHotkeys(hotkeys map[string]string) {
+	boundActions := make(map[string]bool, len(hotkeys))
+	for _, action := range hotkeys {
+		boundActions[action] = true
+	}
+	for key, action := range DefaultTUIHotkeys {
+		if _, keyTaken := hotkeys[key]; keyTaken || boundActions[action] {
+			continue
+		}
+		hotkeys[key] = action
+		boundActions[action] = true
+	}
 }
 
 func (c *Config) SecretKey() []byte {
