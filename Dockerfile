@@ -1,68 +1,82 @@
 # syntax=docker/dockerfile:1
 
-# Stage 1: Build frontend
-FROM node:22-alpine AS frontend
+# Build the frontend with only the workspaces required by the embedded app.
+FROM node:22-alpine3.24@sha256:c610fcdfb1d5b4740dd70c284ed3cb16bb857e0f7166196e36a5501df7a3aa32 AS frontend
 
 WORKDIR /app
 
-# Copy workspace package files first for layer caching
 COPY package.json package-lock.json ./
 COPY webui/app/package.json webui/app/
 COPY webui/components/package.json webui/components/
-COPY webui/website/package.json webui/website/
 
-RUN npm ci --workspaces
+RUN --mount=type=cache,id=hister-npm,target=/root/.npm,sharing=locked \
+    npm ci \
+      --workspace=@hister/app \
+      --workspace=@hister/components
 
-COPY webui/ webui/
+COPY webui/app/ webui/app/
+COPY webui/components/ webui/components/
 
-RUN npm run build -w @hister/app
+RUN npm run build --workspace=@hister/app
 
-# Stage 2: Build Go binary
-FROM golang:1.26-alpine AS builder
+# Build a static Go binary. Cache downloads and compiled packages separately so
+# source changes do not force the toolchain to start cold.
+FROM golang:1.26-alpine3.24@sha256:70b46548e42db77e0966aaf3619fd068734dc6c77584d526b91126504fd95816 AS builder
 
 RUN apk add --no-cache gcc musl-dev
 
 WORKDIR /app
 
 COPY go.mod go.sum ./
-RUN go mod download
+RUN --mount=type=cache,id=hister-go-mod,target=/go/pkg/mod,sharing=locked \
+    go mod download
 
 COPY . .
-COPY --from=frontend /app/webui/app/build/ server/static/app/
+COPY --link --from=frontend /app/webui/app/build/ server/static/app/
 
-RUN set -eux; \
+RUN --mount=type=cache,id=hister-go-mod,target=/go/pkg/mod,sharing=locked \
+    --mount=type=cache,id=hister-go-build,target=/root/.cache/go-build,sharing=locked \
+    set -eux; \
     LISTEN_ADDRESS="0.0.0.0:4433"; \
     BASE_URL="http://localhost:4433"; \
     CGO_ENABLED=1 go build \
+    -trimpath \
     -tags netgo,osusergo \
     -ldflags "\
       -linkmode external -extldflags '-static' -s -w \
       -X 'github.com/asciimoo/hister/config.DefaultServerAddress=$LISTEN_ADDRESS' \
       -X 'github.com/asciimoo/hister/config.DefaultServerBaseURL=$BASE_URL'" \
-    -o hister .
+    -o /out/hister .
 
-# Stage 3: Download the latest yt-dlp release binary
-FROM alpine:3.21 AS ytdlp
+# Fetch a versioned, architecture-specific yt-dlp binary and verify it against
+# the checksums published with that release.
+FROM alpine:3.24@sha256:28bd5fe8b56d1bd048e5babf5b10710ebe0bae67db86916198a6eec434943f8b AS ytdlp
 
 ARG TARGETARCH=amd64
+ARG YT_DLP_VERSION=2026.07.04
 
 RUN set -eux; \
-    apk add --no-cache ca-certificates wget; \
     case "$TARGETARCH" in \
-      amd64) asset="yt-dlp_musllinux" ;; \
-      arm64) asset="yt-dlp_musllinux_aarch64" ;; \
+      amd64) \
+        asset="yt-dlp_musllinux"; \
+        checksum="f7439ec2e3ffe69e06ac233f83f0d9687b89105939129bddcbf74e5de0f2b40e" \
+        ;; \
+      arm64) \
+        asset="yt-dlp_musllinux_aarch64"; \
+        checksum="9a6a4de88f35dc68c1763945fbb417e092ebd9afc5d66052ac31b68d405a12a7" \
+        ;; \
       *) echo "unsupported TARGETARCH for yt-dlp: $TARGETARCH" >&2; exit 1 ;; \
     esac; \
-    wget -O /tmp/yt-dlp "https://github.com/yt-dlp/yt-dlp/releases/latest/download/${asset}"; \
-    wget -O /tmp/SHA2-256SUMS "https://github.com/yt-dlp/yt-dlp/releases/latest/download/SHA2-256SUMS"; \
-    grep "  ${asset}$" /tmp/SHA2-256SUMS | sed "s/  ${asset}$/  \\/tmp\\/yt-dlp/" | sha256sum -c -; \
     mkdir -p /usr/local/bin; \
-    mv /tmp/yt-dlp /usr/local/bin/yt-dlp; \
+    wget -qO /usr/local/bin/yt-dlp \
+      "https://github.com/yt-dlp/yt-dlp/releases/download/${YT_DLP_VERSION}/${asset}"; \
+    echo "${checksum}  /usr/local/bin/yt-dlp" > /tmp/checksums; \
+    sha256sum -c /tmp/checksums; \
     chmod 0755 /usr/local/bin/yt-dlp
 
-# Release stage (nonroot)
-# latest & vx.x.x
-FROM alpine:3.21 AS release
+# Put shared runtime content in one stage so release, root, and debug variants
+# reuse the same immutable layers in the registry and on container hosts.
+FROM alpine:3.24@sha256:28bd5fe8b56d1bd048e5babf5b10710ebe0bae67db86916198a6eec434943f8b AS runtime
 
 LABEL org.opencontainers.image.title="Hister" \
       org.opencontainers.image.description="Self-hosted browser history search engine" \
@@ -71,63 +85,33 @@ LABEL org.opencontainers.image.title="Hister" \
 
 WORKDIR /hister
 
-RUN adduser -D -u 65532 hister && mkdir -p /hister/data && chown -R 65532:65532 /hister
-COPY --from=ytdlp /usr/local/bin/yt-dlp /usr/local/bin/yt-dlp
-COPY --chown=65532:65532 --from=builder /app/hister .
+RUN adduser -D -u 65532 hister \
+    && mkdir -p /hister/data \
+    && chown 65532:65532 /hister/data
+
+COPY --link --from=ytdlp /usr/local/bin/yt-dlp /usr/local/bin/yt-dlp
+COPY --link --from=builder /out/hister /hister/hister
+
+ENV HISTER_DATA_DIR=/hister/data \
+    HISTER_CONFIG=/hister/data/config.yml
+
+EXPOSE 4433
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+    CMD ["wget", "-qO", "/dev/null", "http://localhost:4433/"]
+
+ENTRYPOINT ["/hister/hister"]
+CMD ["listen"]
+
+# latest and vx.x.x
+FROM runtime AS release
 USER 65532:65532
 
-ENV HISTER_DATA_DIR=/hister/data
-ENV HISTER_CONFIG=/hister/data/config.yml
-
-EXPOSE 4433
-
-HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-    CMD wget -qO /dev/null http://localhost:4433/ || exit 1
-
-ENTRYPOINT ["/hister/hister"]
-CMD ["listen"]
-
-# Release stage (root)
-# latest-root & vx.x.x-root
-FROM alpine:3.21 AS root
-WORKDIR /hister
-
-RUN mkdir -p /hister/data
-COPY --from=ytdlp /usr/local/bin/yt-dlp /usr/local/bin/yt-dlp
-COPY --from=builder /app/hister .
-
+# latest-root and vx.x.x-root
+FROM runtime AS root
 USER root
 
-ENV HISTER_DATA_DIR=/hister/data
-ENV HISTER_CONFIG=/hister/data/config.yml
-
-EXPOSE 4433
-
-HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-    CMD wget -qO /dev/null http://localhost:4433/ || exit 1
-
-ENTRYPOINT ["/hister/hister"]
-CMD ["listen"]
-
-# Release stage (debug)
-# latest-debug & vx.x.x-debug
-FROM alpine:3.21 AS debug
-WORKDIR /hister
-
-RUN apk add --no-cache curl bash && mkdir -p /hister/data
-COPY --from=ytdlp /usr/local/bin/yt-dlp /usr/local/bin/yt-dlp
-
-COPY --from=builder /app/hister .
-
+# latest-debug and vx.x.x-debug
+FROM runtime AS debug
+RUN apk add --no-cache bash curl
 USER root
-
-ENV HISTER_DATA_DIR=/hister/data
-ENV HISTER_CONFIG=/hister/data/config.yml
-
-EXPOSE 4433
-
-HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-    CMD wget -qO /dev/null http://localhost:4433/ || exit 1
-
-ENTRYPOINT ["/hister/hister"]
-CMD ["listen"]
