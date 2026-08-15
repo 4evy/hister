@@ -517,3 +517,21 @@ func TestWebSocketURLHonorsBasePath(t *testing.T) {
 		})
 	}
 }
+
+func TestMergeDefaultTUIHotkeysPreservesCustomBindings(t *testing.T) {
+	hotkeys := map[string]string{
+		"x": string(ActionCopyResult),
+		"y": string(ActionOpenResult),
+	}
+	mergeDefaultTUIHotkeys(hotkeys)
+
+	if got := hotkeys["x"]; got != string(ActionCopyResult) {
+		t.Fatalf("custom copy binding = %q", got)
+	}
+	if got := hotkeys["y"]; got != string(ActionOpenResult) {
+		t.Fatalf("occupied default key was overwritten with %q", got)
+	}
+	if got := hotkeys["ctrl+e"]; got != string(ActionToggleSemantic) {
+		t.Fatalf("new semantic binding = %q, want %q", got, ActionToggleSemantic)
+	}
+}
