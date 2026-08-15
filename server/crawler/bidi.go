@@ -90,20 +90,11 @@ func newBidiFetcher(cfg *config.CrawlerConfig) (*bidiFetcher, error) {
 	}
 
 	var captureDelay time.Duration
-	if cd, ok := cfg.BackendOptions["capture_delay"]; ok {
-		switch v := cd.(type) {
-		case float64:
-			captureDelay = time.Duration(v * float64(time.Second))
-		case int:
-			captureDelay = time.Duration(v) * time.Second
-		case string:
-			d, err := time.ParseDuration(v)
-			if err != nil {
-				return nil, fmt.Errorf("bidi backend: invalid capture_delay %q: %w", v, err)
-			}
-			captureDelay = d
-		default:
-			return nil, fmt.Errorf("bidi backend: capture_delay must be a number (seconds)")
+	if value, ok := cfg.BackendOptions["capture_delay"]; ok {
+		captureDelay, err = parseCaptureDelay(value)
+		if err != nil {
+			_ = conn.Close()
+			return nil, fmt.Errorf("bidi backend: %w", err)
 		}
 		if captureDelay > 0 {
 			log.Debug().Dur("capture_delay", captureDelay).Msg("bidi: capture delay configured")

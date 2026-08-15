@@ -15,15 +15,19 @@ import (
 )
 
 type chromedpFetcher struct {
-	allocCtx    context.Context
-	allocCancel context.CancelFunc
-	cookies     []config.CrawlerCookie
-	headers     map[string]string
-	timeout     time.Duration
+	allocCtx     context.Context
+	allocCancel  context.CancelFunc
+	cookies      []config.CrawlerCookie
+	headers      map[string]string
+	timeout      time.Duration
+	captureDelay time.Duration
 }
 
 func newChromedpFetcher(cfg *config.CrawlerConfig) (*chromedpFetcher, error) {
-	knownOptions := map[string]struct{}{"exec_path": {}}
+	knownOptions := map[string]struct{}{
+		"exec_path":     {},
+		"capture_delay": {},
+	}
 	for k := range cfg.BackendOptions {
 		if _, ok := knownOptions[k]; !ok {
 			return nil, fmt.Errorf("chromedp backend: unknown option %q", k)
@@ -58,13 +62,22 @@ func newChromedpFetcher(cfg *config.CrawlerConfig) (*chromedpFetcher, error) {
 	if timeout == 0 {
 		timeout = defaultTimeout
 	}
+	var captureDelay time.Duration
+	if value, ok := cfg.BackendOptions["capture_delay"]; ok {
+		captureDelay, err = parseCaptureDelay(value)
+		if err != nil {
+			allocCancel()
+			return nil, fmt.Errorf("chromedp backend: %w", err)
+		}
+	}
 
 	return &chromedpFetcher{
-		allocCtx:    allocCtx,
-		allocCancel: allocCancel,
-		cookies:     cfg.Cookies,
-		headers:     cfg.Headers,
-		timeout:     timeout,
+		allocCtx:     allocCtx,
+		allocCancel:  allocCancel,
+		cookies:      cfg.Cookies,
+		headers:      cfg.Headers,
+		timeout:      timeout,
+		captureDelay: captureDelay,
 	}, nil
 }
 
@@ -113,6 +126,12 @@ func (f *chromedpFetcher) fetchPage(ctx context.Context, rawURL string) (string,
 		actions,
 		chromedp.Navigate(rawURL),
 		chromedp.WaitReady("body", chromedp.ByQuery),
+	)
+	if f.captureDelay > 0 {
+		actions = append(actions, chromedp.Sleep(f.captureDelay))
+	}
+	actions = append(
+		actions,
 		chromedp.Location(&finalURL),
 		chromedp.OuterHTML("html", &htmlContent, chromedp.ByQuery),
 		chromedp.Evaluate(

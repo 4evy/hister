@@ -91,6 +91,28 @@ func crawlerBackendName(cfg *config.CrawlerConfig) string {
 	return cfg.Backend
 }
 
+func parseCaptureDelay(value any) (time.Duration, error) {
+	var delay time.Duration
+	switch typed := value.(type) {
+	case float64:
+		delay = time.Duration(typed * float64(time.Second))
+	case int:
+		delay = time.Duration(typed) * time.Second
+	case string:
+		parsed, err := time.ParseDuration(typed)
+		if err != nil {
+			return 0, fmt.Errorf("invalid capture_delay %q: %w", typed, err)
+		}
+		delay = parsed
+	default:
+		return 0, fmt.Errorf("capture_delay must be a number in seconds or a duration string")
+	}
+	if delay < 0 {
+		return 0, fmt.Errorf("capture_delay cannot be negative")
+	}
+	return delay, nil
+}
+
 func applyOptions(opts ...Option) options {
 	var o options
 	for _, opt := range opts {
