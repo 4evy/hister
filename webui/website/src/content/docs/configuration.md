@@ -105,6 +105,12 @@ description: 'Explore every configuration section, option, default value, enviro
       defaultValue: 'false',
       description: 'Disables the preview panel and prevents HTML storage. See the Disable Previews section below.',
     },
+    {
+      name: 'profiler',
+      type: 'bool',
+      defaultValue: 'false',
+      description: 'Serves the Go runtime profiling endpoints under /debug/pprof, behind the same authentication as the rest of the API.',
+    },
   ];
 
   const serverOptions = [

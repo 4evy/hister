@@ -70,7 +70,7 @@ func registerEndpoints(cfg *config.Config, idx *indexer.Indexer) http.Handler {
 		}
 		mux.HandleFunc(e.Pattern(), createHandler(cfg, idx, h))
 	}
-	if cfg.App.LogLevel == "debug" {
+	if cfg.App.Profiler {
 		registerDebugEndpoints(mux, cfg, idx)
 	}
 	// SPA catch-all: serve index.html for any path not matched above

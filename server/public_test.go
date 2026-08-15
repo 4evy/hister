@@ -31,15 +31,15 @@ func newServerTestIndexer(t *testing.T, cfg *config.Config) *indexer.Indexer {
 }
 
 func newTokenTestServer(t *testing.T, public bool) (*config.Config, http.Handler) {
-	return newTokenTestServerWithLogLevel(t, public, "info")
+	return newTokenTestServerWithProfiler(t, public, false)
 }
 
-func newTokenTestServerWithLogLevel(t *testing.T, public bool, logLevel string) (*config.Config, http.Handler) {
+func newTokenTestServerWithProfiler(t *testing.T, public, profiler bool) (*config.Config, http.Handler) {
 	t.Helper()
 	cfg := testutil.Config(t)
 	cfg.App.AccessToken = "secret"
 	cfg.App.Public = public
-	cfg.App.LogLevel = logLevel
+	cfg.App.Profiler = profiler
 	cfg.Server.Address = "127.0.0.1:4433"
 	if err := cfg.UpdateBaseURL("http://127.0.0.1:4433"); err != nil {
 		t.Fatal(err)
