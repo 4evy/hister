@@ -126,6 +126,7 @@ func findTweetSelections(doc *goquery.Document) *goquery.Selection {
 		`[itemtype$="/SocialMediaPosting"]`,
 		`article[data-tweet-id]`,
 		`article[data-testid="tweet"]`,
+		`article[role="article"]`,
 		`[data-testid="tweet"]`,
 	}, ", "))
 }
@@ -365,17 +366,43 @@ func tweetAuthor(post *goquery.Selection) (string, string) {
 		return name == "" || handle == ""
 	})
 
-	if handle == "" {
+	if name == "" || handle == "" {
 		post.Find("a[href]").EachWithBreak(func(_ int, s *goquery.Selection) bool {
 			text := strings.TrimSpace(s.Text())
-			if !strings.HasPrefix(text, "@") {
+			profileHandle, ok := twitterProfileHandle(s.AttrOr("href", ""))
+			if !ok || text == "" {
 				return true
 			}
-			handle = strings.TrimPrefix(text, "@")
-			return false
+			if strings.HasPrefix(text, "@") {
+				if handle == "" {
+					handle = strings.TrimPrefix(text, "@")
+				}
+			} else if name == "" && (handle == "" || strings.EqualFold(handle, profileHandle)) {
+				name = text
+			}
+			if handle == "" {
+				handle = profileHandle
+			}
+			return name == "" || handle == ""
 		})
 	}
 	return cleanAuthor(name, handle)
+}
+
+func twitterProfileHandle(raw string) (string, bool) {
+	u, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil {
+		return "", false
+	}
+	if u.IsAbs() && !isTwitterHost(u.Hostname()) {
+		return "", false
+	}
+	parts := strings.Split(strings.Trim(u.EscapedPath(), "/"), "/")
+	if len(parts) != 1 {
+		return "", false
+	}
+	handle, err := url.PathUnescape(parts[0])
+	return handle, err == nil && validHandle(handle)
 }
 
 func cleanAuthor(name, handle string) (string, string) {

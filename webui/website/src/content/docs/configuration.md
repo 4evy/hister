@@ -361,6 +361,12 @@ description: 'Explore every configuration section, option, default value, enviro
       defaultValue: '(none)',
       description: 'Path to the Chrome or Chromium binary.',
     },
+    {
+      name: 'capture_delay',
+      type: 'float',
+      defaultValue: '0',
+      description: 'Seconds to wait after page load before capturing HTML for pages that rely on JavaScript rendering.',
+    },
   ];
 
   const bidiOptions = [
@@ -1108,6 +1114,7 @@ crawler:
   backend: 'chromedp'
   backend_options:
     exec_path: '/usr/bin/chromium'
+    capture_delay: 1.5
   timeout: 15
 ```
 

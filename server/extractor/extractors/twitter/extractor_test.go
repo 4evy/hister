@@ -267,6 +267,33 @@ func TestExtractRenderedTweet(t *testing.T) {
 	}
 }
 
+func TestExtractRenderedEmbedTweet(t *testing.T) {
+	d := &document.Document{
+		URL: "https://x.com/githubstatus/status/2026043597653438700",
+		HTML: `<article role="article">
+			<a href="https://twitter.com/githubstatus"><span>GitHub Status</span></a>
+			<a href="https://twitter.com/githubstatus"><span>@githubstatus</span></a>
+			<div data-testid="tweetText">We are investigating reports of degraded performance.</div>
+			<a href="https://x.com/githubstatus/status/2026043597653438700"><time datetime="2026-02-23T21:16:50.000Z">Feb 23, 2026</time></a>
+		</article>`,
+	}
+
+	state, err := (&TwitterExtractor{}).Extract(d)
+	if err != nil {
+		t.Fatalf("Extract returned an error: %v", err)
+	}
+	if state != types.ExtractorStop || len(d.ExtraDocuments) != 1 {
+		t.Fatalf("Extract returned state %v and %d documents", state, len(d.ExtraDocuments))
+	}
+	tweet := d.ExtraDocuments[0]
+	if got, want := tweet.Title, "Twitter tweet: GitHub Status (@githubstatus)"; got != want {
+		t.Fatalf("tweet title = %q, want %q", got, want)
+	}
+	if got, want := tweet.Text, "We are investigating reports of degraded performance."; got != want {
+		t.Fatalf("tweet text = %q, want %q", got, want)
+	}
+}
+
 func TestRenderedTweetBodyOverridesSemanticShortLinks(t *testing.T) {
 	d := &document.Document{
 		URL: "https://x.com/Searx_engine",

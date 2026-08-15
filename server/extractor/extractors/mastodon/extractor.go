@@ -66,7 +66,7 @@ func (e *MastodonExtractor) Extract(d *document.Document) (types.ExtractorState,
 	if err != nil {
 		return types.ExtractorContinue, nil
 	}
-	statuses := doc.Find(".status")
+	statuses := doc.Find(".status, .detailed-status")
 	if statuses.Length() == 0 {
 		return types.ExtractorStop, nil
 	}
@@ -79,7 +79,7 @@ func (e *MastodonExtractor) Extract(d *document.Document) (types.ExtractorState,
 	statuses.Each(func(_ int, s *goquery.Selection) {
 		c := s.Find(".status__content")
 		urlutil.RewriteURLs(c, pu)
-		u, exists := s.Find(".status__relative-time").Attr("href")
+		u, exists := s.Find(".status__relative-time, .detailed-status__datetime").First().Attr("href")
 		if !exists {
 			log.Debug().Msg("Failed to find URL for toot")
 			return

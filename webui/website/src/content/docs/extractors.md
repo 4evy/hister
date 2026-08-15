@@ -573,7 +573,8 @@ run.
 The live suite is selected through the `live` Go build tag and is not part of a
 normal `go test ./...` run. The manifest structure is still validated during
 normal tests, so invalid fields and unknown extractor names fail without making
-network requests.
+network requests. Validation also requires at least one positive live case for
+every registered extractor.
 
 When a live case fails, the fetched HTML, extracted documents, preview, and a
 summary are saved under `/tmp/hister-live-extractors`. Set

@@ -23,6 +23,9 @@ type liveManifest struct {
 type liveCase struct {
 	Name           string         `json:"name"                      yaml:"name"`
 	URL            string         `json:"url"                       yaml:"url"`
+	DocumentURL    string         `json:"document_url,omitempty"    yaml:"document_url,omitempty"`
+	Fetch          *bool          `json:"fetch,omitempty"           yaml:"fetch,omitempty"`
+	RequiresBinary string         `json:"requires_binary,omitempty" yaml:"requires_binary,omitempty"`
 	Backend        string         `json:"backend"                   yaml:"backend"`
 	BackendOptions map[string]any `json:"backend_options,omitempty" yaml:"backend_options,omitempty"`
 	Extractor      string         `json:"extractor"                 yaml:"extractor"`
@@ -34,18 +37,23 @@ type liveCase struct {
 }
 
 type liveExpect struct {
-	FinalURLContains   string             `json:"final_url_contains,omitempty" yaml:"final_url_contains,omitempty"`
-	TitleContains      []string           `json:"title_contains,omitempty"     yaml:"title_contains,omitempty"`
-	TextContains       []string           `json:"text_contains,omitempty"      yaml:"text_contains,omitempty"`
-	TextNotContains    []string           `json:"text_not_contains,omitempty"  yaml:"text_not_contains,omitempty"`
-	MinTextLength      int                `json:"min_text_length,omitempty"     yaml:"min_text_length,omitempty"`
-	Metadata           map[string]any     `json:"metadata,omitempty"           yaml:"metadata,omitempty"`
-	MetadataMinimums   map[string]float64 `json:"metadata_minimums,omitempty"  yaml:"metadata_minimums,omitempty"`
-	AbsentMetadata     []string           `json:"absent_metadata,omitempty"    yaml:"absent_metadata,omitempty"`
-	PreviewState       string             `json:"preview_state,omitempty"      yaml:"preview_state,omitempty"`
-	PreviewContains    []string           `json:"preview_contains,omitempty"   yaml:"preview_contains,omitempty"`
-	PreviewNotContains []string           `json:"preview_not_contains,omitempty" yaml:"preview_not_contains,omitempty"`
-	MinPreviewLength   int                `json:"min_preview_length,omitempty"  yaml:"min_preview_length,omitempty"`
+	FinalURLContains   string              `json:"final_url_contains,omitempty" yaml:"final_url_contains,omitempty"`
+	TitleContains      []string            `json:"title_contains,omitempty"     yaml:"title_contains,omitempty"`
+	TextContains       []string            `json:"text_contains,omitempty"      yaml:"text_contains,omitempty"`
+	TextNotContains    []string            `json:"text_not_contains,omitempty"  yaml:"text_not_contains,omitempty"`
+	MinTextLength      int                 `json:"min_text_length,omitempty"     yaml:"min_text_length,omitempty"`
+	Metadata           map[string]any      `json:"metadata,omitempty"           yaml:"metadata,omitempty"`
+	MetadataContains   map[string][]string `json:"metadata_contains,omitempty"  yaml:"metadata_contains,omitempty"`
+	MetadataMinimums   map[string]float64  `json:"metadata_minimums,omitempty"  yaml:"metadata_minimums,omitempty"`
+	AbsentMetadata     []string            `json:"absent_metadata,omitempty"    yaml:"absent_metadata,omitempty"`
+	SkipIndexing       *bool               `json:"skip_indexing,omitempty"       yaml:"skip_indexing,omitempty"`
+	MinExtraDocuments  int                 `json:"min_extra_documents,omitempty" yaml:"min_extra_documents,omitempty"`
+	ExtraTitleContains []string            `json:"extra_title_contains,omitempty" yaml:"extra_title_contains,omitempty"`
+	ExtraTextContains  []string            `json:"extra_text_contains,omitempty" yaml:"extra_text_contains,omitempty"`
+	PreviewState       string              `json:"preview_state,omitempty"      yaml:"preview_state,omitempty"`
+	PreviewContains    []string            `json:"preview_contains,omitempty"   yaml:"preview_contains,omitempty"`
+	PreviewNotContains []string            `json:"preview_not_contains,omitempty" yaml:"preview_not_contains,omitempty"`
+	MinPreviewLength   int                 `json:"min_preview_length,omitempty"  yaml:"min_preview_length,omitempty"`
 }
 
 func TestLiveExtractorManifest(t *testing.T) {
@@ -80,6 +88,7 @@ func validateLiveManifest(manifest *liveManifest) error {
 		return fmt.Errorf("live extractor manifest has no cases")
 	}
 	seen := make(map[string]struct{}, len(manifest.Cases))
+	covered := make(map[string]struct{}, len(extractors))
 	for index, testCase := range manifest.Cases {
 		prefix := fmt.Sprintf("live extractor case %d", index+1)
 		if testCase.Name == "" {
@@ -94,6 +103,12 @@ func validateLiveManifest(manifest *liveManifest) error {
 			(parsedURL.Scheme != "http" && parsedURL.Scheme != "https") {
 			return fmt.Errorf("live extractor case %q has invalid URL %q", testCase.Name, testCase.URL)
 		}
+		if testCase.DocumentURL != "" {
+			documentURL, err := url.Parse(testCase.DocumentURL)
+			if err != nil || documentURL.Scheme == "" {
+				return fmt.Errorf("live extractor case %q has invalid document URL %q", testCase.Name, testCase.DocumentURL)
+			}
+		}
 		switch testCase.Backend {
 		case "", "http", "chromedp", "bidi":
 		default:
@@ -102,12 +117,24 @@ func validateLiveManifest(manifest *liveManifest) error {
 		if liveExtractorByName(testCase.Extractor) == nil {
 			return fmt.Errorf("live extractor case %q names unknown extractor %q", testCase.Name, testCase.Extractor)
 		}
+		if liveBool(testCase.Match, true) {
+			covered[strings.ToLower(testCase.Extractor)] = struct{}{}
+		}
 		if _, err := parseLiveState(testCase.ExtractState, types.ExtractorStop); err != nil {
 			return fmt.Errorf("live extractor case %q: %w", testCase.Name, err)
 		}
 		if _, err := parseLiveState(testCase.Expect.PreviewState, types.ExtractorStop); err != nil {
 			return fmt.Errorf("live extractor case %q: %w", testCase.Name, err)
 		}
+	}
+	var missing []string
+	for _, candidate := range extractors {
+		if _, ok := covered[strings.ToLower(candidate.Name())]; !ok {
+			missing = append(missing, candidate.Name())
+		}
+	}
+	if len(missing) > 0 {
+		return fmt.Errorf("live extractor manifest has no positive case for: %s", strings.Join(missing, ", "))
 	}
 	return nil
 }

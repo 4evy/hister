@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"reflect"
 	"strings"
@@ -56,6 +57,11 @@ func runLiveExtractorCase(
 	pageCache map[string]*document.Document,
 ) {
 	t.Helper()
+	if testCase.RequiresBinary != "" {
+		if _, err := exec.LookPath(testCase.RequiresBinary); err != nil {
+			t.Skipf("required binary %q is not available", testCase.RequiresBinary)
+		}
+	}
 	var fetched, direct, chain *document.Document
 	var preview string
 	var matching []string
@@ -65,19 +71,29 @@ func runLiveExtractorCase(
 		}
 	}()
 
-	fetched = fetchLiveDocument(t, testCase, robots, pageCache)
+	if liveBool(testCase.Fetch, true) {
+		fetched = fetchLiveDocument(t, testCase, robots, pageCache)
+	} else {
+		fetched = &document.Document{URL: testCase.URL}
+		t.Log("crawler fetch disabled; extractor performs the live request")
+	}
 	if testCase.Expect.FinalURLContains != "" &&
 		!strings.Contains(fetched.URL, testCase.Expect.FinalURLContains) {
 		t.Errorf("fetch phase: final URL %q does not contain %q", fetched.URL, testCase.Expect.FinalURLContains)
 	}
+	source := fetched
+	if testCase.DocumentURL != "" {
+		source = cloneLiveDocument(fetched)
+		source.URL = testCase.DocumentURL
+	}
 
-	for _, info := range ListMatching(fetched) {
+	for _, info := range ListMatching(source) {
 		matching = append(matching, info.Name)
 	}
 	t.Logf("matching extractors: %s", strings.Join(matching, ", "))
 
 	candidate := liveExtractorByName(testCase.Extractor)
-	matched := candidate.Match(fetched)
+	matched := candidate.Match(source)
 	wantMatch := liveBool(testCase.Match, true)
 	if matched != wantMatch {
 		t.Fatalf("match phase: %s.Match() = %v, want %v", candidate.Name(), matched, wantMatch)
@@ -86,7 +102,7 @@ func runLiveExtractorCase(
 		return
 	}
 
-	direct = cloneLiveDocument(fetched)
+	direct = cloneLiveDocument(source)
 	state, extractErr := candidate.Extract(direct)
 	wantState, _ := parseLiveState(testCase.ExtractState, types.ExtractorStop)
 	if extractErr != nil {
@@ -98,7 +114,7 @@ func runLiveExtractorCase(
 	assertLiveDocument(t, "direct extraction", direct, testCase.Expect)
 
 	if liveBool(testCase.RunChain, true) {
-		chain = cloneLiveDocument(fetched)
+		chain = cloneLiveDocument(source)
 		if err := Extract(chain); err != nil {
 			t.Errorf("chain extraction phase: %v", err)
 		} else {
@@ -107,7 +123,7 @@ func runLiveExtractorCase(
 	}
 
 	if livePreviewExpected(testCase.Expect) {
-		response, state, previewErr := candidate.Preview(cloneLiveDocument(fetched))
+		response, state, previewErr := candidate.Preview(cloneLiveDocument(source))
 		preview = response.Content
 		wantPreviewState, _ := parseLiveState(testCase.Expect.PreviewState, types.ExtractorStop)
 		if previewErr != nil {
@@ -211,6 +227,14 @@ func assertLiveDocument(t *testing.T, phase string, doc *document.Document, expe
 			t.Errorf("%s: metadata %q = %#v, want %#v", phase, key, got, want)
 		}
 	}
+	for key, wanted := range expected.MetadataContains {
+		got, exists := doc.Metadata[key]
+		if !exists {
+			t.Errorf("%s: metadata %q is absent", phase, key)
+			continue
+		}
+		assertContainsAll(t, phase+" metadata "+key, fmt.Sprint(got), wanted)
+	}
 	for key, minimum := range expected.MetadataMinimums {
 		got, exists := liveNumber(doc.Metadata[key])
 		if !exists {
@@ -226,6 +250,26 @@ func assertLiveDocument(t *testing.T, phase string, doc *document.Document, expe
 			t.Errorf("%s: metadata %q should be absent", phase, key)
 		}
 	}
+	if expected.SkipIndexing != nil && doc.SkipIndexing != *expected.SkipIndexing {
+		t.Errorf("%s: SkipIndexing = %v, want %v", phase, doc.SkipIndexing, *expected.SkipIndexing)
+	}
+	if len(doc.ExtraDocuments) < expected.MinExtraDocuments {
+		t.Errorf(
+			"%s: extra document count = %d, want at least %d",
+			phase,
+			len(doc.ExtraDocuments),
+			expected.MinExtraDocuments,
+		)
+	}
+	var extraTitles, extraText strings.Builder
+	for _, extra := range doc.ExtraDocuments {
+		extraTitles.WriteString(extra.Title)
+		extraTitles.WriteByte('\n')
+		extraText.WriteString(extra.Text)
+		extraText.WriteByte('\n')
+	}
+	assertContainsAll(t, phase+" extra document titles", extraTitles.String(), expected.ExtraTitleContains)
+	assertContainsAll(t, phase+" extra document text", extraText.String(), expected.ExtraTextContains)
 }
 
 func livePreviewExpected(expected liveExpect) bool {

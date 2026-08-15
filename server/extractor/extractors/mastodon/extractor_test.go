@@ -83,6 +83,38 @@ func TestExtractUsesOriginalRemoteStatusURL(t *testing.T) {
 	}
 }
 
+func TestExtractRenderedDetailedStatus(t *testing.T) {
+	d := &document.Document{
+		URL: "https://mastodon.social/@Mastodon/114818205314251502",
+		HTML: `<meta content='{"repository":"mastodon/mastodon"}'>
+		<div class="detailed-status">
+			<span class="display-name">Mastodon @Mastodon@mastodon.social</span>
+			<div class="status__content"><p>Mastodon 4.4 is now available.</p></div>
+			<a class="detailed-status__datetime" href="/@Mastodon/114818205314251502">
+				<time datetime="2025-07-08T14:59:35.443Z">Jul 8, 2025</time>
+			</a>
+		</div>`,
+	}
+
+	state, err := (&MastodonExtractor{}).Extract(d)
+	if err != nil {
+		t.Fatalf("Extract returned an error: %v", err)
+	}
+	if state != types.ExtractorStop {
+		t.Fatalf("Extract state = %v, want %v", state, types.ExtractorStop)
+	}
+	if len(d.ExtraDocuments) != 1 {
+		t.Fatalf("ExtraDocuments length = %d, want 1", len(d.ExtraDocuments))
+	}
+	toot := d.ExtraDocuments[0]
+	if got, want := toot.URL, d.URL; got != want {
+		t.Fatalf("toot URL = %q, want %q", got, want)
+	}
+	if got, want := toot.Text, "Mastodon 4.4 is now available."; got != want {
+		t.Fatalf("toot text = %q, want %q", got, want)
+	}
+}
+
 func TestExtractSkipsDocumentWhenNoTootsFound(t *testing.T) {
 	d := &document.Document{
 		URL:  "https://chaos.social/public/local",
