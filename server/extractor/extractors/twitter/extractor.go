@@ -358,8 +358,10 @@ func tweetAuthor(post *goquery.Selection) (string, string) {
 	userName := post.Find(`[data-testid="User-Name"]`).First()
 	userName.Find("a").EachWithBreak(func(_ int, s *goquery.Selection) bool {
 		text := strings.TrimSpace(s.Text())
-		if strings.HasPrefix(text, "@") && handle == "" {
-			handle = strings.TrimPrefix(text, "@")
+		if textHandle, ok := strings.CutPrefix(text, "@"); ok {
+			if handle == "" {
+				handle = textHandle
+			}
 		} else if text != "" && name == "" {
 			name = text
 		}
@@ -373,9 +375,9 @@ func tweetAuthor(post *goquery.Selection) (string, string) {
 			if !ok || text == "" {
 				return true
 			}
-			if strings.HasPrefix(text, "@") {
+			if textHandle, isHandle := strings.CutPrefix(text, "@"); isHandle {
 				if handle == "" {
-					handle = strings.TrimPrefix(text, "@")
+					handle = textHandle
 				}
 			} else if name == "" && (handle == "" || strings.EqualFold(handle, profileHandle)) {
 				name = text

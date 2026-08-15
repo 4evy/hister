@@ -33,7 +33,7 @@ type liveCase struct {
 	Match          *bool          `json:"match,omitempty"           yaml:"match,omitempty"`
 	ExtractState   string         `json:"extract_state,omitempty"   yaml:"extract_state,omitempty"`
 	RunChain       *bool          `json:"run_chain,omitempty"       yaml:"run_chain,omitempty"`
-	Expect         liveExpect     `json:"expect,omitempty"          yaml:"expect,omitempty"`
+	Expect         liveExpect     `json:"expect,omitzero"           yaml:"expect,omitempty"`
 }
 
 type liveExpect struct {
