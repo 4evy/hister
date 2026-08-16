@@ -7,7 +7,6 @@ package render
 import (
 	"fmt"
 	"net/url"
-	"runtime"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -16,7 +15,6 @@ import (
 	"github.com/mattn/go-runewidth"
 
 	"github.com/asciimoo/hister/cmd/tui/theme"
-	"github.com/asciimoo/hister/config"
 )
 
 // pads s with spaces on the right to reach exactly width display columns
@@ -185,40 +183,4 @@ func sliceAnsiFrom(s string, skipCols int) string {
 		return lastSeq + remainder
 	}
 	return remainder
-}
-
-// returns the shortest key bound to the given action, formatted for display.
-func BestKey(hotkeys map[string]string, action config.Action) string {
-	best := ""
-	for k, v := range hotkeys {
-		if v == string(action) && (best == "" || len(k) < len(best)) {
-			best = k
-		}
-	}
-	return FormatKey(best)
-}
-
-func FormatKey(k string) string {
-	switch k {
-	case "up":
-		return "↑"
-	case "down":
-		return "↓"
-	case "enter":
-		return "↵"
-	case "esc":
-		return "⎋"
-	case "tab":
-		return "⇥"
-	case "":
-		return ""
-	}
-	if runtime.GOOS == "darwin" {
-		k = strings.ReplaceAll(k, "ctrl+", "⌃")
-		k = strings.ReplaceAll(k, "alt+", "⌥")
-	} else {
-		k = strings.ReplaceAll(k, "ctrl+", "^")
-		k = strings.ReplaceAll(k, "alt+", "Alt+")
-	}
-	return k
 }

@@ -16,7 +16,7 @@ import (
 )
 
 func InputKeys(m *model.Model, msg tea.KeyMsg) tea.Cmd {
-	action := config.Action(m.Cfg.Hotkeys.TUI[msg.String()])
+	action := m.Keys.Action(msg)
 	if msg.Type == tea.KeyRunes && !msg.Alt {
 		action = ""
 	}
@@ -65,7 +65,7 @@ func InputKeys(m *model.Model, msg tea.KeyMsg) tea.Cmd {
 }
 
 func ResultsKeys(m *model.Model, msg tea.KeyMsg) tea.Cmd {
-	action := config.Action(m.Cfg.Hotkeys.TUI[msg.String()])
+	action := m.Keys.Action(msg)
 
 	if cmd, handled := DispatchCommonAction(m, action); handled {
 		return cmd

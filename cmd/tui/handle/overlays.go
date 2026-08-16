@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/asciimoo/hister/cmd/tui/component"
 	"github.com/asciimoo/hister/cmd/tui/model"
 	"github.com/asciimoo/hister/cmd/tui/render"
 	"github.com/asciimoo/hister/cmd/tui/theme"
@@ -21,7 +22,7 @@ import (
 
 func DialogKeys(m *model.Model, msg tea.KeyMsg) tea.Cmd {
 	var cmd tea.Cmd
-	action := config.Action(m.Cfg.Hotkeys.TUI[msg.String()])
+	action := m.Keys.Action(msg)
 	key := msg.String()
 	switch {
 	case key == "left" || key == "h" || key == "shift+tab":
@@ -67,7 +68,7 @@ func previewTheme(m *model.Model) {
 
 func ThemePickerKeys(m *model.Model, msg tea.KeyMsg) tea.Cmd {
 	darkNames, lightNames := theme.ClassifyThemes()
-	action := config.Action(m.Cfg.Hotkeys.TUI[msg.String()])
+	action := m.Keys.Action(msg)
 	key := msg.String()
 	switch action {
 	case config.ActionScrollUp:
@@ -143,7 +144,7 @@ func SettingsKeys(m *model.Model, msg tea.KeyMsg) tea.Cmd {
 		return settingsEditKey(m, msg)
 	}
 	totalItems := len(m.Cfg.Hotkeys.TUI)
-	action := config.Action(m.Cfg.Hotkeys.TUI[msg.String()])
+	action := m.Keys.Action(msg)
 	key := msg.String()
 	switch action {
 	case config.ActionScrollUp:
@@ -181,12 +182,13 @@ func settingsEditKey(m *model.Model, msg tea.KeyMsg) tea.Cmd {
 			}
 			if defaultKey != "" && defaultKey != oldKey {
 				if existingAction, exists := m.Cfg.Hotkeys.TUI[defaultKey]; exists && existingAction != string(action) {
-					m.SettingsEditErr = fmt.Sprintf("default %s conflicts with %s", render.FormatKey(defaultKey), existingAction)
+					m.SettingsEditErr = fmt.Sprintf("default %s conflicts with %s", component.FormatKey(defaultKey), existingAction)
 					m.SettingsEditMode = false
 					return tea.Tick(2*time.Second, func(_ time.Time) tea.Msg { return model.SettingsErrClearMsg{} })
 				}
 				delete(m.Cfg.Hotkeys.TUI, oldKey)
 				m.Cfg.Hotkeys.TUI[defaultKey] = string(action)
+				m.Keys.Rebuild(m.Cfg.Hotkeys.TUI)
 			}
 		}
 		m.SettingsEditMode = false
@@ -205,12 +207,13 @@ func settingsEditKey(m *model.Model, msg tea.KeyMsg) tea.Cmd {
 	action := items[m.SettingsIdx].Action
 
 	if existingAction, exists := m.Cfg.Hotkeys.TUI[newKey]; exists && existingAction != string(action) {
-		m.SettingsEditErr = fmt.Sprintf("%s already bound to %s", render.FormatKey(newKey), existingAction)
+		m.SettingsEditErr = fmt.Sprintf("%s already bound to %s", component.FormatKey(newKey), existingAction)
 		return tea.Tick(2*time.Second, func(_ time.Time) tea.Msg { return model.SettingsErrClearMsg{} })
 	}
 
 	delete(m.Cfg.Hotkeys.TUI, oldKey)
 	m.Cfg.Hotkeys.TUI[newKey] = string(action)
+	m.Keys.Rebuild(m.Cfg.Hotkeys.TUI)
 	m.SettingsEditMode = false
 	if err := m.Cfg.SaveTUIConfig(); err != nil {
 		log.Warn().Err(err).Msg("failed to save TUI config")
@@ -219,13 +222,13 @@ func settingsEditKey(m *model.Model, msg tea.KeyMsg) tea.Cmd {
 }
 
 func ContextMenuKeys(m *model.Model, msg tea.KeyMsg) tea.Cmd {
-	action := config.Action(m.Cfg.Hotkeys.TUI[msg.String()])
+	action := m.Keys.Action(msg)
 	key := msg.String()
 	switch action {
 	case config.ActionScrollUp:
-		model.ScrollIdx(&m.MenuSelIdx, -1, 0, model.MenuOptionCount-1)
+		model.ScrollIdx(&m.MenuSelIdx, -1, 0, len(model.MenuOptions)-1)
 	case config.ActionScrollDown:
-		model.ScrollIdx(&m.MenuSelIdx, 1, 0, model.MenuOptionCount-1)
+		model.ScrollIdx(&m.MenuSelIdx, 1, 0, len(model.MenuOptions)-1)
 	case config.ActionOpenResult:
 		return executeContextMenuAction(m)
 	case config.ActionToggleFocus:
@@ -268,7 +271,7 @@ func executeContextMenuAction(m *model.Model) tea.Cmd {
 }
 
 func PrioritizeInputKeys(m *model.Model, msg tea.KeyMsg) tea.Cmd {
-	action := config.Action(m.Cfg.Hotkeys.TUI[msg.String()])
+	action := m.Keys.Action(msg)
 	key := msg.String()
 	switch {
 	case key == "left" || key == "shift+tab":

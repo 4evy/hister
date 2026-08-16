@@ -256,11 +256,10 @@ func (h *Handler) viewportClick(m *model.Model, msg tea.MouseMsg) tea.Cmd {
 
 func (h *Handler) tabBar(m *model.Model, msg tea.MouseMsg) tea.Cmd {
 	x := model.TabBarLeftPad
-	tabActions := []config.Action{config.ActionTabSearch, config.ActionTabHistory, config.ActionTabRules, config.ActionTabAdd}
-	for i, name := range model.TabNames {
-		labelW := len(name) + model.TabLabelPad
+	for _, tab := range model.Tabs {
+		labelW := len(tab.Name) + model.TabLabelPad
 		if msg.X >= x && msg.X < x+labelW {
-			return h.SwitchTab(m, tabActions[i])
+			return h.SwitchTab(m, tab.Action)
 		}
 		x += labelW + model.TabGap
 	}

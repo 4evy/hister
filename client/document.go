@@ -259,6 +259,47 @@ func (c *Client) DeleteDocuments(query string) (err error) {
 	return checkStatus(resp)
 }
 
+// UpdateLabel sets or clears the user-defined label for a stored document.
+func (c *Client) UpdateLabel(urlStr, label string) (err error) {
+	data, err := json.Marshal(map[string]string{"url": urlStr, "label": label})
+	if err != nil {
+		return err
+	}
+	req, err := c.newRequest("POST", "/api/label", bytes.NewReader(data))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer closeBody(resp, &err)
+	return checkStatus(resp)
+}
+
+// FetchPreview retrieves the server-rendered readable representation of a
+// stored document.
+func (c *Client) FetchPreview(urlStr string) (_ *PreviewResponse, err error) {
+	req, err := c.newRequest("GET", "/api/preview?url="+url.QueryEscape(urlStr), nil)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer closeBody(resp, &err)
+	if err = checkStatus(resp); err != nil {
+		return nil, err
+	}
+	var preview PreviewResponse
+	if err = json.NewDecoder(resp.Body).Decode(&preview); err != nil {
+		return nil, err
+	}
+	return &preview, nil
+}
+
 // CleanupResult holds local file reconciliation and orphaned data cleanup counts.
 type CleanupResult struct {
 	LocalDocumentsChecked int `json:"localDocumentsChecked"`

@@ -10,6 +10,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/asciimoo/hister/cmd/tui/component"
 	"github.com/asciimoo/hister/cmd/tui/model"
 	"github.com/asciimoo/hister/config"
 
@@ -107,11 +108,11 @@ func MainView(m *model.Model) string {
 
 func Header(m *model.Model) string {
 	var tabs []string
-	for i, name := range model.TabNames {
-		if i == m.ActiveTab {
-			tabs = append(tabs, m.Styles.TabActive.Render("["+name+"]"))
+	for _, tab := range model.Tabs {
+		if tab.ID == m.ActiveTab {
+			tabs = append(tabs, m.Styles.TabActive.Render("["+tab.Name+"]"))
 		} else {
-			tabs = append(tabs, m.Styles.TabInactive.Render(" "+name+" "))
+			tabs = append(tabs, m.Styles.TabInactive.Render(" "+tab.Name+" "))
 		}
 	}
 	tabBar := " " + strings.Join(tabs, " ")
@@ -155,7 +156,7 @@ type hintEntry struct {
 
 func hintEntries(m *model.Model) []hintEntry {
 	bestKey := func(action config.Action) string {
-		return BestKey(m.Cfg.Hotkeys.TUI, action)
+		return m.Keys.BestKey(action)
 	}
 	switch m.ActiveTab {
 	case model.TabHistory:
@@ -227,7 +228,7 @@ func Hints(m *model.Model) string {
 	for _, e := range entries {
 		k := e.key
 		if k == "" {
-			k = BestKey(m.Cfg.Hotkeys.TUI, e.act)
+			k = m.Keys.BestKey(e.act)
 		}
 		if k == "" {
 			continue
@@ -417,7 +418,7 @@ func GenerateHelpText(m *model.Model) string {
 		slices.Sort(keys)
 		var formatted []string
 		for _, k := range keys {
-			formatted = append(formatted, FormatKey(k))
+			formatted = append(formatted, component.FormatKey(k))
 		}
 		keyPart := m.Styles.HintKey.Render(strings.Join(formatted, ", "))
 		lblPart := m.Styles.HelpAction.Render(label)
@@ -484,7 +485,7 @@ func ComputeHintRegions(m *model.Model) []model.HintRegion {
 	for _, e := range entries {
 		k := e.key
 		if k == "" {
-			k = BestKey(m.Cfg.Hotkeys.TUI, e.act)
+			k = m.Keys.BestKey(e.act)
 		}
 		if k == "" {
 			continue

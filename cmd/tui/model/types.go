@@ -87,14 +87,27 @@ const (
 	RulesFieldList     = 4
 )
 
-var ActionToTab = map[config.Action]int{
-	config.ActionTabSearch:  TabSearch,
-	config.ActionTabHistory: TabHistory,
-	config.ActionTabRules:   TabRules,
-	config.ActionTabAdd:     TabAdd,
+type TabDefinition struct {
+	ID     int
+	Name   string
+	Action config.Action
 }
 
-var TabNames = []string{"Search", "History", "Rules", "Add"}
+var Tabs = []TabDefinition{
+	{ID: TabSearch, Name: "Search", Action: config.ActionTabSearch},
+	{ID: TabHistory, Name: "History", Action: config.ActionTabHistory},
+	{ID: TabRules, Name: "Rules", Action: config.ActionTabRules},
+	{ID: TabAdd, Name: "Add", Action: config.ActionTabAdd},
+}
+
+func TabForAction(action config.Action) (int, bool) {
+	for _, tab := range Tabs {
+		if tab.Action == action {
+			return tab.ID, true
+		}
+	}
+	return 0, false
+}
 
 // Layout constants shared across packages (mouse handlers, render, model init).
 const (
@@ -124,13 +137,21 @@ func RowVPEnd(height int) int { return height - 3 }
 const FixedLayoutRows = 6
 
 const (
-	MenuOpen        = 0
-	MenuDelete      = 1
-	MenuPrioritize  = 2
-	MenuOptionCount = 3
+	MenuOpen int = iota
+	MenuDelete
+	MenuPrioritize
 )
 
-var MenuOptionLabels = []string{"Open", "Delete", "Prioritize"}
+type MenuOptionDefinition struct {
+	ID    int
+	Label string
+}
+
+var MenuOptions = []MenuOptionDefinition{
+	{ID: MenuOpen, Label: "Open"},
+	{ID: MenuDelete, Label: "Delete"},
+	{ID: MenuPrioritize, Label: "Prioritize"},
+}
 
 // Dialog/overlay layout: border(1) + padding(1) + content rows
 const (

@@ -90,7 +90,7 @@ func (h *Handler) overlayContextMenu(m *model.Model, msg tea.MouseMsg, oy int) t
 	relY := msg.Y - oy
 	optStartY := model.OverlayBorderRows + model.OverlayPaddingRows
 	optIdx := relY - optStartY
-	if optIdx >= 0 && optIdx < model.MenuOptionCount {
+	if optIdx >= 0 && optIdx < len(model.MenuOptions) {
 		m.MenuSelIdx = optIdx
 		return h.ExecuteContextMenuAction(m)
 	}

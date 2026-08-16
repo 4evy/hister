@@ -53,7 +53,7 @@ func Update(m *model.Model, msg tea.Msg) tea.Cmd {
 		return nil
 
 	case tea.KeyMsg:
-		if config.Action(m.Cfg.Hotkeys.TUI[msg.String()]) == config.ActionQuit {
+		if m.Keys.Action(msg) == config.ActionQuit {
 			return tea.Quit
 		}
 		switch m.State {
