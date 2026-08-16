@@ -2,6 +2,7 @@
 .git
 .github
 .gitignore
+.jj
 .golangci.toml
 .goreleaser.yml
 manage.sh
@@ -12,6 +13,9 @@ manage.sh
 .idea/
 *.swp
 *.bak
+*.log
+.env
+.env.*
 
 # Go Build Artifacts
 hister
@@ -19,6 +23,7 @@ hister.exe
 pkg/
 bin/
 vendor/
+coverage/
 
 # Local Data & Configs
 *.db
@@ -36,10 +41,15 @@ README.md
 LICENSE
 Dockerfile*
 compose.yml
+docker-bake.hcl
 
 # Build Artifacts
 webui/app/build/
 webui/website/build/
+webui/**/.svelte-kit/
+webui/**/dist/
+webui/ext/
+webui/website/
 
 # Browser Extension & Nix
 ext/
