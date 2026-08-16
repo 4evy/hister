@@ -2,11 +2,12 @@ package client
 
 import (
 	"encoding/json"
+	"net/http"
 	"strings"
 )
 
 func (c *Client) FetchHistory() (_ []HistoryItem, err error) {
-	req, err := c.newRequest("GET", "/api/history", nil)
+	req, err := c.newRequest(http.MethodGet, "/api/history?opened=true", nil)
 	if err != nil {
 		return nil, err
 	}
@@ -18,9 +19,11 @@ func (c *Client) FetchHistory() (_ []HistoryItem, err error) {
 	if err := checkStatus(resp); err != nil {
 		return nil, err
 	}
-	var items []HistoryItem
-	err = json.NewDecoder(resp.Body).Decode(&items)
-	return items, err
+	var response struct {
+		Documents []HistoryItem `json:"documents"`
+	}
+	err = json.NewDecoder(resp.Body).Decode(&response)
+	return response.Documents, err
 }
 
 func (c *Client) PostHistory(query, urlStr, title string) (err error) {
