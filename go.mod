@@ -22,7 +22,7 @@ require (
 	github.com/mattn/go-runewidth v0.0.27
 	github.com/mattn/go-sqlite3 v1.14.49
 	github.com/microcosm-cc/bluemonday v1.0.27
-	github.com/mmonterroca/docxgo/v2 v2.12.0
+	github.com/mmonterroca/docxgo/v2 v2.13.0
 	github.com/muesli/termenv v0.16.0
 	github.com/niklasfasching/go-org v1.9.1
 	github.com/pkg/browser v0.0.0-20240102092130-5ac0b6a4141c
@@ -31,8 +31,8 @@ require (
 	github.com/spf13/cobra v1.10.2
 	github.com/spf13/viper v1.21.0
 	github.com/temoto/robotstxt v1.1.2
-	golang.org/x/crypto v0.54.0
-	golang.org/x/net v0.57.0
+	golang.org/x/crypto v0.55.0
+	golang.org/x/net v0.58.0
 	gopkg.in/yaml.v3 v3.0.1
 	gorm.io/driver/postgres v1.6.2
 	gorm.io/driver/sqlite v1.6.0
@@ -126,6 +126,6 @@ require (
 	golang.org/x/exp v0.0.0-20260611194520-c48552f49976 // indirect
 	golang.org/x/sync v0.22.0 // indirect
 	golang.org/x/sys v0.47.0 // indirect
-	golang.org/x/text v0.40.0 // indirect
+	golang.org/x/text v0.41.0 // indirect
 	google.golang.org/protobuf v1.36.11 // indirect
 )
