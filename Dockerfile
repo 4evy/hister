@@ -21,7 +21,7 @@ RUN npm run build --workspace=@hister/app
 
 # Build a static Go binary. Cache downloads and compiled packages separately so
 # source changes do not force the toolchain to start cold.
-FROM golang:1.26-alpine3.24@sha256:70b46548e42db77e0966aaf3619fd068734dc6c77584d526b91126504fd95816 AS builder
+FROM golang:1.26-alpine3.24@sha256:3889b425f035be855a72fb4755265311293b6d414521f0a519d819df32222d83 AS builder
 
 RUN apk add --no-cache gcc musl-dev
 
