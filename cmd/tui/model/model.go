@@ -458,8 +458,9 @@ func (m *Model) PostHistoryCmd(u string) tea.Cmd {
 func (m *Model) SaveRulesCmd() tea.Cmd {
 	skip := strings.Join(m.RulesData.Skip, "\n")
 	priority := strings.Join(m.RulesData.Priority, "\n")
+	versioning := strings.Join(m.RulesData.Versioning, "\n")
 	return func() tea.Msg {
-		return RulesSavedMsg{Err: m.Client.SaveRules(skip, priority)}
+		return RulesSavedMsg{Err: m.Client.SaveRules(skip, priority, versioning)}
 	}
 }
 
@@ -489,6 +490,24 @@ func (m *Model) AddPageCmd(u, title, text string) tea.Cmd {
 func (m *Model) AddAliasCmd(keyword, value string) tea.Cmd {
 	return func() tea.Msg {
 		return RulesSavedMsg{Err: m.Client.AddAlias(keyword, value)}
+	}
+}
+
+// PrioritizeRuleCmd reads the latest rules before appending a priority rule.
+// Result context menus are usable without visiting the Rules tab first, so
+// saving the model's possibly-empty cache here could erase server-side rules.
+func (m *Model) PrioritizeRuleCmd(pattern string) tea.Cmd {
+	return func() tea.Msg {
+		rules, err := m.Client.FetchRules()
+		if err != nil {
+			return RulesSavedMsg{Err: err}
+		}
+		rules.Priority = append(rules.Priority, pattern)
+		return RulesSavedMsg{Err: m.Client.SaveRules(
+			strings.Join(rules.Skip, "\n"),
+			strings.Join(rules.Priority, "\n"),
+			strings.Join(rules.Versioning, "\n"),
+		)}
 	}
 }
 

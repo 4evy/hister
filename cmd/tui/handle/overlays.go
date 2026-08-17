@@ -295,8 +295,7 @@ func PrioritizeInputKeys(m *model.Model, msg tea.KeyMsg) tea.Cmd {
 		m.PrioritizeInput.Blur()
 		m.State = m.PrevState
 		if pattern != "" {
-			m.RulesData.Priority = append(m.RulesData.Priority, pattern)
-			return m.SaveRulesCmd()
+			return m.PrioritizeRuleCmd(pattern)
 		}
 		return nil
 	}
