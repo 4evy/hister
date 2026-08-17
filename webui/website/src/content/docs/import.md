@@ -21,6 +21,7 @@ The `hister import` command collects related import tools under one command. Eve
 | `hister import linkding INSTANCE_URL`       | A Linkding instance through its HTTP API   | `linkding`    |
 | `hister import linkwarden INSTANCE_URL`     | A Linkwarden instance through its HTTP API | `linkwarden`  |
 | `hister import karakeep INSTANCE_URL`       | A Karakeep instance through its HTTP API   | `karakeep`    |
+| `hister import readeck INSTANCE_URL`        | A Readeck instance through its HTTP API    | `readeck`     |
 | `hister import shaarli INSTANCE_URL`        | A Shaarli instance through its HTTP API    | `shaarli`     |
 | `hister import wallabag INSTANCE_URL`       | A wallabag instance through its HTTP API   | `wallabag`    |
 
@@ -245,6 +246,42 @@ Text and asset bookmarks without a source URL are skipped because every Hister d
 
 Consult the [Karakeep API documentation](https://docs.karakeep.app/api) when troubleshooting API access.
 
+## Importing from Readeck
+
+Create an API token in the Readeck profile settings, then store it in the environment before running the import:
+
+```bash
+export HISTER_IMPORT_READECK_TOKEN='your-readeck-token'
+hister import readeck https://readeck.example.com
+```
+
+You can use `--api-token` as a temporary override. The Readeck API token is separate from the global `--token` flag used for the destination Hister server. Prefer the environment variable so the source token does not appear in shell history or process listings.
+
+### Incremental Readeck Imports
+
+Every imported Readeck document receives `source: readeck` metadata. Hister searches for `metadata.source:readeck` and reads the newest imported document timestamp before calling Readeck. If a previous import exists, Hister requests sync events from that timestamp. Otherwise, it requests every current bookmark.
+
+Repeated update events are combined before content is requested. Deletion events are ignored because an import does not remove existing Hister documents.
+
+### Readeck Data Mapping
+
+| Readeck value                                               | Hister value            |
+| ----------------------------------------------------------- | ----------------------- |
+| URL                                                         | Normalized document URL |
+| Title                                                       | Title                   |
+| Description, authors, and stored or downloaded page content | Searchable text         |
+| Creation date                                               | Added timestamp         |
+| Update date                                                 | Updated timestamp       |
+| Stored site icon                                            | Document favicon        |
+| Labels, authors, type, status, reading progress, and ID     | Document metadata       |
+| Site, publication, image, thumbnail, and resource URLs      | Document metadata       |
+
+Hister requests bookmark metadata and stored article HTML through the Readeck sync API. Readeck returns article bodies as HTML fragments, so Hister wraps each fragment as a complete HTML document before extraction and storage. If stored HTML is absent or cannot be extracted, Hister downloads the original URL with the selected crawler backend.
+
+Article images keep absolute Readeck resource URLs. Searchable text and HTML remain stored in Hister, but those images require the Readeck instance to remain available. Sync requests and Hister batch submissions use the selected `--batch-size`.
+
+Consult the API reference on the `/api` route of your Readeck instance or the [Readeck documentation](https://readeck.org/en/docs/) when troubleshooting API access.
+
 ## Importing from Shaarli
 
 Copy the API secret from the Shaarli administration page, then store it in the environment before running the import:
@@ -311,7 +348,7 @@ Consult the [wallabag OAuth documentation](https://doc.wallabag.org/developer/ap
 
 ## Service Import Options
 
-The following options apply to Linkding, Linkwarden, Karakeep, Shaarli, and wallabag imports:
+The following options apply to Linkding, Linkwarden, Karakeep, Readeck, Shaarli, and wallabag imports:
 
 Service imports preserve favicon data supplied by the source. When it is absent, Hister tries the favicon URL discovered while extracting the linked page, or the conventional `/favicon.ico` URL when no page icon is available. A favicon download failure does not stop the import.
 

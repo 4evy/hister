@@ -128,40 +128,15 @@ func newServiceAPIClientWithAuthorization(
 }
 
 func (c *serviceAPIClient) getJSON(ctx context.Context, endpoint string, query url.Values, target any) error {
-	requestURL, err := url.Parse(c.baseURL + endpoint)
+	resp, err := c.doRequest(ctx, http.MethodGet, endpoint, query, "application/json", "", nil)
 	if err != nil {
-		return fmt.Errorf("build %s request URL: %w", c.name, err)
-	}
-	requestURL.RawQuery = query.Encode()
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, requestURL.String(), nil)
-	if err != nil {
-		return fmt.Errorf("create %s request: %w", c.name, err)
-	}
-	req.Header.Set("Accept", "application/json")
-	req.Header.Set("Authorization", c.authorizationScheme+" "+c.tokenProvider())
-	req.Header.Set("User-Agent", UserAgent)
-
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return fmt.Errorf("request %s data: %w", c.name, err)
+		return err
 	}
 	defer func() {
 		if closeErr := resp.Body.Close(); closeErr != nil {
 			log.Debug().Err(closeErr).Msg("Failed to close service import response body")
 		}
 	}()
-
-	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
-		body, _ := io.ReadAll(io.LimitReader(resp.Body, maxServiceImportErrorBodySize))
-		detail := strings.TrimSpace(string(body))
-		if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
-			return fmt.Errorf("%s authentication failed with status %d; check %s", c.name, resp.StatusCode, c.tokenHint)
-		}
-		if detail != "" {
-			return fmt.Errorf("%s returned status %d: %s", c.name, resp.StatusCode, detail)
-		}
-		return fmt.Errorf("%s returned status %d", c.name, resp.StatusCode)
-	}
 
 	body, err := io.ReadAll(io.LimitReader(resp.Body, maxServiceImportResponseSize+1))
 	if err != nil {
@@ -174,6 +149,59 @@ func (c *serviceAPIClient) getJSON(ctx context.Context, endpoint string, query u
 		return fmt.Errorf("decode %s response: %w", c.name, err)
 	}
 	return nil
+}
+
+func (c *serviceAPIClient) doRequest(
+	ctx context.Context,
+	method string,
+	endpoint string,
+	query url.Values,
+	accept string,
+	contentType string,
+	body io.Reader,
+) (*http.Response, error) {
+	requestURL, err := url.Parse(c.baseURL + endpoint)
+	if err != nil {
+		return nil, fmt.Errorf("build %s request URL: %w", c.name, err)
+	}
+	if query != nil {
+		requestURL.RawQuery = query.Encode()
+	}
+	req, err := http.NewRequestWithContext(ctx, method, requestURL.String(), body)
+	if err != nil {
+		return nil, fmt.Errorf("create %s request: %w", c.name, err)
+	}
+	if accept != "" {
+		req.Header.Set("Accept", accept)
+	}
+	if contentType != "" {
+		req.Header.Set("Content-Type", contentType)
+	}
+	req.Header.Set("Authorization", c.authorizationScheme+" "+c.tokenProvider())
+	req.Header.Set("User-Agent", UserAgent)
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("request %s data: %w", c.name, err)
+	}
+
+	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+		defer func() {
+			if closeErr := resp.Body.Close(); closeErr != nil {
+				log.Debug().Err(closeErr).Msg("Failed to close service import error response body")
+			}
+		}()
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, maxServiceImportErrorBodySize))
+		detail := strings.TrimSpace(string(body))
+		if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
+			return nil, fmt.Errorf("%s authentication failed with status %d; check %s", c.name, resp.StatusCode, c.tokenHint)
+		}
+		if detail != "" {
+			return nil, fmt.Errorf("%s returned status %d: %s", c.name, resp.StatusCode, detail)
+		}
+		return nil, fmt.Errorf("%s returned status %d", c.name, resp.StatusCode)
+	}
+	return resp, nil
 }
 
 type serviceContentFetcher interface {
