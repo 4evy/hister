@@ -18,6 +18,7 @@ import (
 
 	"github.com/asciimoo/hister/config"
 	"github.com/asciimoo/hister/server/document"
+	"github.com/asciimoo/hister/server/extractor/extractors/bluesky"
 	"github.com/asciimoo/hister/server/extractor/extractors/discourse"
 	"github.com/asciimoo/hister/server/extractor/extractors/embeddedvideo"
 	"github.com/asciimoo/hister/server/extractor/extractors/github"
@@ -152,6 +153,7 @@ var extractors = []Extractor{
 	&lobsters.LobstersExtractor{},
 	&wikipedia.WikipediaExtractor{},
 	&mastodon.MastodonExtractor{},
+	&bluesky.BlueskyExtractor{},
 	&twitter.TwitterExtractor{},
 	&notion.NotionExtractor{},
 	&ytdlp.YtdlpExtractor{},

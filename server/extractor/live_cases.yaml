@@ -228,6 +228,32 @@ cases:
       extra_text_contains:
         - Mastodon 4.4
 
+  - name: bluesky_post_thread_http
+    url: https://bsky.app/profile/bsky.app/post/3mtcnex43tk24
+    backend: http
+    extractor: Bluesky
+    timeout: 20
+    expect:
+      skip_indexing: true
+      min_extra_documents: 2
+      extra_title_contains:
+        - Bluesky post
+      extra_text_contains:
+        - service problems
+
+  - name: bluesky_custom_feed_chromedp
+    url: https://bsky.app/profile/emily.space/feed/astro
+    backend: chromedp
+    backend_options:
+      capture_delay: 8
+    extractor: Bluesky
+    timeout: 35
+    expect:
+      skip_indexing: true
+      min_extra_documents: 5
+      extra_title_contains:
+        - Bluesky post
+
   - name: twitter_github_status_chromedp
     url: https://platform.twitter.com/embed/Tweet.html?id=2026043597653438700
     document_url: https://x.com/githubstatus/status/2026043597653438700

@@ -427,6 +427,28 @@ pass.
 
 **Matches:** any Mastodon instance page containing the Mastodon source marker.
 
+### `bluesky`
+
+Handles Bluesky profiles, custom feeds, and post threads by splitting every
+available post into a separate document. Each document receives its canonical
+`bsky.app` URL, author, handle, publication time, and a
+`type: bluesky_post` metadata marker. The source page itself is not indexed.
+
+The extractor prefers schema.org `DiscussionForumPosting` and `Comment` data
+published by Bluesky. This supports profile and individual post pages even
+without browser rendering. It also reads rendered feed and thread cards through
+semantic test identifiers, roles, post links, and content attributes. Generated
+CSS class names are not used. Rich rendered content is preferred when both
+representations describe the same post, while canonical URL deduplication keeps
+one document per post.
+
+Custom feeds require the `chromedp` or `bidi` crawler backend because their post
+lists are rendered in the browser. Profile and individual post pages also work
+with the `http` backend through their JSON LD data.
+
+**Matches:** profile, feed, and post pages on `bsky.app`, `www.bsky.app`, and
+`embed.bsky.app`.
+
 ### `twitter`
 
 Handles Twitter and X feeds, profiles, and tweet pages by splitting every
