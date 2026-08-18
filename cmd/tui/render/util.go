@@ -9,11 +9,11 @@ import (
 	"net/url"
 	"strings"
 	"time"
-	"unicode/utf8"
 
 	"github.com/charmbracelet/lipgloss"
-	"github.com/mattn/go-runewidth"
+	"github.com/charmbracelet/x/ansi"
 
+	"github.com/asciimoo/hister/cmd/tui/component"
 	"github.com/asciimoo/hister/cmd/tui/theme"
 )
 
@@ -47,16 +47,13 @@ func relativeTime(unixTs int64) string {
 	}
 }
 
-// truncates s to maxW runes, appending "…" if it was cut
+// truncates s to maxW terminal cells without splitting ANSI sequences or
+// grapheme clusters, appending "…" if it was cut.
 func truncateLine(s string, maxW int) string {
-	if maxW <= 1 {
+	if maxW <= 0 {
 		return ""
 	}
-	r := []rune(s)
-	if len(r) <= maxW {
-		return s
-	}
-	return string(r[:maxW-1]) + "…"
+	return ansi.Truncate(s, maxW, "…")
 }
 
 // renders a URL as "host · /path" where the path is dimmed
@@ -105,7 +102,7 @@ func isLocalHost(host string) bool {
 // renders a subtle full-width rule.
 func sectionDivider(st theme.Styles, width int) string {
 	label := " results "
-	ruleW := max(0, width-len([]rune(label))-2)
+	ruleW := max(0, width-lipgloss.Width(label)-2)
 	return st.Section.Render("  " + label + strings.Repeat("─", ruleW))
 }
 
@@ -114,39 +111,8 @@ func truncateAnsi(s string, maxCols int) string {
 	if maxCols <= 0 {
 		return ""
 	}
-	var sb strings.Builder
-	col := 0
-	i := 0
-	for i < len(s) && col < maxCols {
-		if s[i] == '\x1b' && i+1 < len(s) && s[i+1] == '[' {
-			j := i + 2
-			for j < len(s) && s[j] >= 0x30 && s[j] <= 0x3F {
-				j++
-			}
-			for j < len(s) && s[j] >= 0x20 && s[j] <= 0x2F {
-				j++
-			}
-			if j < len(s) {
-				j++
-			}
-			sb.WriteString(s[i:j])
-			i = j
-			continue
-		}
-		r, size := utf8.DecodeRuneInString(s[i:])
-		w := runewidth.RuneWidth(r)
-		if col+w > maxCols {
-			break
-		}
-		sb.WriteRune(r)
-		col += w
-		i += size
-	}
-	for col < maxCols {
-		sb.WriteByte(' ')
-		col++
-	}
-	return sb.String()
+	truncated := ansi.Truncate(s, maxCols, "")
+	return truncated + strings.Repeat(" ", max(0, maxCols-ansi.StringWidth(truncated)))
 }
 
 // returns everything after the first skipCols visible columns of s.
@@ -154,33 +120,25 @@ func sliceAnsiFrom(s string, skipCols int) string {
 	if skipCols <= 0 {
 		return s
 	}
-	col := 0
-	i := 0
-	var lastSeq string
-	for i < len(s) && col < skipCols {
-		if s[i] == '\x1b' && i+1 < len(s) && s[i+1] == '[' {
-			j := i + 2
-			for j < len(s) && s[j] >= 0x30 && s[j] <= 0x3F {
-				j++
-			}
-			for j < len(s) && s[j] >= 0x20 && s[j] <= 0x2F {
-				j++
-			}
-			if j < len(s) {
-				j++
-			}
-			lastSeq = s[i:j]
-			i = j
-			continue
+	return ansi.Cut(s, skipCols, ansi.StringWidth(s))
+}
+
+// sanitizeTerminalText removes styling and terminal control sequences from
+// untrusted document metadata/content before it enters the renderer. Tabs are
+// expanded so they cannot move the cursor outside the layout's cell model.
+func sanitizeTerminalText(s string) string {
+	s = strings.ReplaceAll(ansi.Strip(s), "\t", "    ")
+	return strings.Map(func(r rune) rune {
+		if r == '\n' {
+			return r
 		}
-		r, size := utf8.DecodeRuneInString(s[i:])
-		w := runewidth.RuneWidth(r)
-		col += w
-		i += size
-	}
-	remainder := s[i:]
-	if lastSeq != "" && remainder != "" {
-		return lastSeq + remainder
-	}
-	return remainder
+		if r < 0x20 || (r >= 0x7f && r <= 0x9f) {
+			return -1
+		}
+		return r
+	}, s)
+}
+
+func FormatKey(k string) string {
+	return component.FormatKey(k)
 }
