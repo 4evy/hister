@@ -24,8 +24,12 @@ func (c *Client) FetchRules() (_ *RulesResponse, err error) {
 	return &data, err
 }
 
-func (c *Client) SaveRules(skip, priority, versioning string) (err error) {
-	formData := url.Values{"skip": {skip}, "priority": {priority}, "versioning": {versioning}}
+func (c *Client) SaveRules(skip, priority string, versioning ...string) (err error) {
+	versioningRules := ""
+	if len(versioning) > 0 {
+		versioningRules = versioning[0]
+	}
+	formData := url.Values{"skip": {skip}, "priority": {priority}, "versioning": {versioningRules}}
 	req, err := c.newRequest("POST", "/api/rules", strings.NewReader(formData.Encode()))
 	if err != nil {
 		return err
