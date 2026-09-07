@@ -41,7 +41,11 @@ func HasPathPrefix(filePath, dirPath string) bool {
 	if filePath == dirPath {
 		return true
 	}
-	return strings.HasPrefix(filePath, dirPath+string(filepath.Separator))
+	separator := string(filepath.Separator)
+	if !strings.HasSuffix(dirPath, separator) {
+		dirPath += separator
+	}
+	return strings.HasPrefix(filePath, dirPath)
 }
 
 // PathToFileURL converts an absolute filesystem path into a file:// URL.

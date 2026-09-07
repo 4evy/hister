@@ -8,6 +8,54 @@ import (
 	"github.com/asciimoo/hister/server/testutil"
 )
 
+func TestHasPathPrefix(t *testing.T) {
+	root := filepath.VolumeName(t.TempDir()) + string(filepath.Separator)
+	dir := filepath.Join(root, "docs")
+	tests := []struct {
+		name     string
+		filePath string
+		dirPath  string
+		want     bool
+	}{
+		{name: "same directory", filePath: dir, dirPath: dir, want: true},
+		{name: "child", filePath: filepath.Join(dir, "note.txt"), dirPath: dir, want: true},
+		{name: "nested child", filePath: filepath.Join(dir, "notes", "note.txt"), dirPath: dir, want: true},
+		{name: "sibling prefix", filePath: filepath.Join(root, "docs-other", "note.txt"), dirPath: dir},
+		{name: "parent", filePath: root, dirPath: dir},
+		{name: "root", filePath: root, dirPath: root, want: true},
+		{name: "root child", filePath: filepath.Join(root, "note.txt"), dirPath: root, want: true},
+		{name: "root descendant", filePath: filepath.Join(dir, "note.txt"), dirPath: root, want: true},
+		{name: "relative path outside root", filePath: filepath.Join("docs", "note.txt"), dirPath: root},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := HasPathPrefix(tt.filePath, tt.dirPath); got != tt.want {
+				t.Fatalf("HasPathPrefix(%q, %q) = %t, want %t", tt.filePath, tt.dirPath, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestFindMatchingDirAtFilesystemRoot(t *testing.T) {
+	root := filepath.VolumeName(t.TempDir()) + string(filepath.Separator)
+	dir := &config.Directory{
+		Path:      root,
+		Label:     "notes",
+		Filetypes: []string{"txt", "md", "docx", "pdf", "htm", "html"},
+	}
+	for _, ext := range dir.Filetypes {
+		t.Run(ext, func(t *testing.T) {
+			path := filepath.Join(root, "docs", "note."+ext)
+			if got := FindMatchingDir([]*config.Directory{dir}, path); got != dir {
+				t.Fatalf("FindMatchingDir(%q) = %v, want root directory config", path, got)
+			}
+			if !DirectoryMatchesPath(dir, path) {
+				t.Fatalf("DirectoryMatchesPath(%q) = false, want true", path)
+			}
+		})
+	}
+}
+
 func TestDirectoryMatchesPath(t *testing.T) {
 	root := t.TempDir()
 	dir := &config.Directory{
