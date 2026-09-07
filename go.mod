@@ -13,17 +13,17 @@ require (
 	github.com/blevesearch/bleve/v2 v2.6.1
 	github.com/bodgit/sevenzip v1.6.5
 	github.com/charmbracelet/colorprofile v0.4.3
-	github.com/charmbracelet/ultraviolet v0.0.0-20260812204455-68fa937c71be
+	github.com/charmbracelet/ultraviolet v0.0.0-20260906173415-0277a179edd9
 	github.com/charmbracelet/x/ansi v0.11.8
 	github.com/chromedp/cdproto v0.0.0-20260804232424-e85f50dbfd32
 	github.com/chromedp/chromedp v0.16.0
 	github.com/fsnotify/fsnotify v1.10.1
 	github.com/go-viper/mapstructure/v2 v2.5.0
-	github.com/gomarkdown/markdown v0.0.0-20260824154242-13c5cf49db8d
+	github.com/gomarkdown/markdown v0.0.0-20260907091611-16791ada75cf
 	github.com/gorilla/sessions v1.4.0
 	github.com/gorilla/websocket v1.5.3
 	github.com/jackc/pgx/v5 v5.10.0
-	github.com/mattn/go-sqlite3 v1.14.50
+	github.com/mattn/go-sqlite3 v1.14.52
 	github.com/microcosm-cc/bluemonday v1.0.27
 	github.com/mmonterroca/docxgo/v2 v2.14.0
 	github.com/niklasfasching/go-org v1.9.1
@@ -43,9 +43,9 @@ require (
 )
 
 require (
-	github.com/RoaringBitmap/roaring/v2 v2.26.0 // indirect
+	github.com/RoaringBitmap/roaring/v2 v2.27.0 // indirect
 	github.com/andybalholm/brotli v1.2.3 // indirect
-	github.com/andybalholm/cascadia v1.3.4 // indirect
+	github.com/andybalholm/cascadia v1.3.5 // indirect
 	github.com/atotto/clipboard v0.1.4 // indirect
 	github.com/aymerick/douceur v0.2.0 // indirect
 	github.com/bits-and-blooms/bitset v1.25.0 // indirect
@@ -95,11 +95,11 @@ require (
 	github.com/jinzhu/inflection v1.0.0 // indirect
 	github.com/jinzhu/now v1.1.5 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect
-	github.com/klauspost/compress v1.19.2 // indirect
+	github.com/klauspost/compress v1.20.0 // indirect
 	github.com/lucasb-eyer/go-colorful v1.4.1 // indirect
 	github.com/mattn/go-colorable v0.1.15 // indirect
 	github.com/mattn/go-isatty v0.0.24 // indirect
-	github.com/mattn/go-runewidth v0.0.28 // indirect
+	github.com/mattn/go-runewidth v0.0.29 // indirect
 	github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd // indirect
 	github.com/modern-go/reflect2 v1.0.2 // indirect
 	github.com/mschoch/smat v0.2.0 // indirect
