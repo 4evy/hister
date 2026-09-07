@@ -38,6 +38,16 @@ type serviceAPIClient struct {
 	httpClient          *http.Client
 }
 
+type serviceAPIError struct {
+	StatusCode int
+	Header     http.Header
+	message    string
+}
+
+func (e *serviceAPIError) Error() string {
+	return e.message
+}
+
 func newServiceAPIClient(
 	name string,
 	instanceURL string,
@@ -193,13 +203,15 @@ func (c *serviceAPIClient) doRequest(
 		}()
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, maxServiceImportErrorBodySize))
 		detail := strings.TrimSpace(string(body))
+		apiErr := &serviceAPIError{StatusCode: resp.StatusCode, Header: resp.Header.Clone()}
 		if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
-			return nil, fmt.Errorf("%s authentication failed with status %d; check %s", c.name, resp.StatusCode, c.tokenHint)
+			apiErr.message = fmt.Sprintf("%s authentication failed with status %d; check %s", c.name, resp.StatusCode, c.tokenHint)
+		} else if detail != "" {
+			apiErr.message = fmt.Sprintf("%s returned status %d: %s", c.name, resp.StatusCode, detail)
+		} else {
+			apiErr.message = fmt.Sprintf("%s returned status %d", c.name, resp.StatusCode)
 		}
-		if detail != "" {
-			return nil, fmt.Errorf("%s returned status %d: %s", c.name, resp.StatusCode, detail)
-		}
-		return nil, fmt.Errorf("%s returned status %d", c.name, resp.StatusCode)
+		return nil, apiErr
 	}
 	return resp, nil
 }

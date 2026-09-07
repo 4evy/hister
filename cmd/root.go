@@ -311,6 +311,7 @@ func init() {
 	importCmd.AddCommand(importLinkdingCmd)
 	importCmd.AddCommand(importLinkwardenCmd)
 	importCmd.AddCommand(importKarakeepCmd)
+	importCmd.AddCommand(importRaindropCmd)
 	importCmd.AddCommand(importReadeckCmd)
 	importCmd.AddCommand(importShaarliCmd)
 	importCmd.AddCommand(importWallabagCmd)
@@ -334,6 +335,11 @@ func init() {
 	}
 
 	addDocumentImportFlags(importFileCmd)
+	addCommonImportFlags(importRaindropCmd)
+	addCrawlerBackendFlags(importRaindropCmd)
+	importRaindropCmd.Flags().String("api-token", "", "Raindrop API token (default: "+raindropTokenEnv+")")
+	importRaindropCmd.Flags().String("input", "", "Read a Raindrop CSV export instead of the API (- for stdin)")
+	importRaindropCmd.MarkFlagsMutuallyExclusive("input", "api-token")
 	addServiceImportFlags(importLinkdingCmd, "Linkding", linkdingTokenEnv)
 	addServiceImportFlags(importLinkwardenCmd, "Linkwarden", linkwardenTokenEnv)
 	addServiceImportFlags(importKarakeepCmd, "Karakeep", karakeepTokenEnv)

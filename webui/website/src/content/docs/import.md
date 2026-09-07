@@ -21,6 +21,8 @@ The `hister import` command collects related import tools under one command. Eve
 | `hister import linkding INSTANCE_URL`       | A Linkding instance through its HTTP API   | `linkding`                |
 | `hister import linkwarden INSTANCE_URL`     | A Linkwarden instance through its HTTP API | `linkwarden`              |
 | `hister import karakeep INSTANCE_URL`       | A Karakeep instance through its HTTP API   | `karakeep`                |
+| `hister import raindrop`                    | Raindrop.io through its HTTP API           | `raindrop`                |
+| `hister import raindrop --input INPUT.csv`  | A Raindrop.io CSV export                   | `raindrop`                |
 | `hister import readeck INSTANCE_URL`        | A Readeck instance through its HTTP API    | `readeck`                 |
 | `hister import shaarli INSTANCE_URL`        | A Shaarli instance through its HTTP API    | `shaarli`                 |
 | `hister import wallabag INSTANCE_URL`       | A wallabag instance through its HTTP API   | `wallabag`                |
@@ -389,9 +391,66 @@ Hister extracts the article HTML already stored by wallabag and preserves it for
 
 Consult the [wallabag OAuth documentation](https://doc.wallabag.org/developer/api/oauth/) and [wallabag API methods](https://doc.wallabag.org/developer/api/methods/) when troubleshooting API access.
 
+## Importing from Raindrop.io
+
+Create an application in [Raindrop's integration settings](https://app.raindrop.io/settings/integrations), open its settings, and copy its **Test token**. Raindrop supports this token for accessing your own account without implementing an OAuth flow. See the [Raindrop authentication documentation](https://developer.raindrop.io/v1/authentication/token).
+
+```bash
+export HISTER_IMPORT_RAINDROP_TOKEN='your-raindrop-token'
+hister import raindrop
+```
+
+You can also supply the Raindrop token through `--api-token`. The global `--token` flag authenticates with the destination Hister server.
+
+Hister requests all bookmarks outside Trash through Raindrop's API. It preserves saved titles, creation and update dates, notes, highlights and their annotations, tags, favorites, and collection paths. The API does not include full page HTML in bookmark responses, so Hister downloads linked pages using the configured crawler backend. If a page cannot be downloaded, its bookmark details are still imported and the failure is counted in the summary. Rate limit responses are retried up to three times using Raindrop's retry or reset headers.
+
+### Repeated API Imports
+
+Every imported document receives the `raindrop` label and `source: raindrop` metadata. API imports also receive `raindrop_import: api` metadata. Each API import reads all bookmarks and applies the requested date filters. Repeat the command to refresh bookmark details and page content or retry a failed import.
+
+Use `--skip-existing` to keep every document whose normalized URL is already in Hister and avoid downloading its content again:
+
+```bash
+hister import raindrop --skip-existing
+```
+
+This also skips changed bookmarks that already exist. Deleted or trashed Raindrop bookmarks are not removed from Hister.
+
+### Preserved Metadata
+
+API imports retain `raindrop_id`, `raindrop_collection_id`, `raindrop_folder`, `raindrop_type`, `raindrop_favorite`, `raindrop_broken`, `raindrop_cover`, and `raindrop_tags`. The excerpt is stored as `description`; notes and highlights are stored as `raindrop_note` and `raindrop_highlights`. Structured highlight details, including their IDs, annotations, colors, and creation dates, are preserved in `raindrop_highlight_details`. Notes, excerpts, and highlights are also searchable alongside downloaded page content.
+
+### CSV Exports
+
+Export your bookmarks as CSV using [Raindrop's export or backup controls](https://help.raindrop.io/export/), then import the downloaded file:
+
+```bash
+hister import raindrop --input Raindrop.io-Export.csv
+```
+
+Use `-` to read the CSV from stdin:
+
+```bash
+cat Raindrop.io-Export.csv | hister import raindrop --input -
+```
+
+CSV imports use the same content downloads and metadata fields as API imports. The optional CSV fields `id` and `favorite` are preserved as strings, while API imports use a numeric ID and a boolean favorite status. CSV exports supply a creation date but no update date, so both dates in Hister use the creation date.
+
+The CSV requires a header row with a `url` column containing HTTP or HTTPS URLs. Other columns are optional and may appear in any order. This also accepts a simple CSV containing only a `url` column. The `created` column accepts an ISO 8601 timestamp, a `YYYY-MM-DD` date, or a Unix timestamp in seconds. Missing dates use the import time. Quoted commas, quotes, and multiline notes are supported.
+
+Rows without a URL are skipped. Invalid URLs, invalid dates, and rows with an incorrect number of fields are reported and skipped. Invalid CSV quoting stops the import after submitting previously prepared bookmarks.
+
+To resume an interrupted import without downloading pages already in Hister:
+
+```bash
+hister import raindrop --input Raindrop.io-Export.csv --skip-existing
+```
+
+CSV imports need no Raindrop API credential. The `--input` option cannot be combined with `--api-token`. Raindrop API and CSV imports support the [service import options](#service-import-options) below, including `--label`, date filters, and output formats. Individual failures result in exit status 2; source API failures, unreadable files, and invalid CSV headers or quoting result in exit status 1.
+
 ## Service Import Options
 
-The following options apply to Linkding, Linkwarden, Karakeep, Readeck, Shaarli, and wallabag imports:
+The following options apply to Linkding, Linkwarden, Karakeep, Raindrop, Readeck, Shaarli, and wallabag imports. Raindrop CSV input does not use `--api-token`.
 
 Service imports preserve favicon data supplied by the source. When it is absent, Hister tries the favicon URL discovered while extracting the linked page, or the conventional `/favicon.ico` URL when no page icon is available. A favicon download failure does not stop the import.
 

@@ -288,6 +288,12 @@ func (o documentLabelOverride) resolve(existing, fallback string) string {
 }
 
 func addDocumentImportFlags(cmd *cobra.Command) {
+	addCommonImportFlags(cmd)
+	cmd.Flags().String("source", defaultRemoteFileSource(), "Stable source name used in remote file document URLs")
+	cmd.Flags().Bool("allow-sensitive", false, "Skip sensitive content checks, allowing matching documents to be indexed")
+}
+
+func addCommonImportFlags(cmd *cobra.Command) {
 	addOutputFormatFlag(cmd)
 	cmd.Flags().String("start-date", "", "only import documents added on or after this date (YYYY-MM-DD)")
 	cmd.Flags().String("end-date", "", "only import documents added on or before this date (YYYY-MM-DD)")
@@ -295,8 +301,6 @@ func addDocumentImportFlags(cmd *cobra.Command) {
 	cmd.Flags().Bool("skip-existing", false, "Do not overwrite documents that are already in the index")
 	cmd.Flags().Bool("global", false, "Make imported documents available for all users (only for admins in multiuser mode)")
 	cmd.Flags().Uint("user-id", 0, "Import documents under the given user ID (only for admins in multiuser mode)")
-	cmd.Flags().String("source", defaultRemoteFileSource(), "Stable source name used in remote file document URLs")
-	cmd.Flags().Bool("allow-sensitive", false, "Skip sensitive content checks, allowing matching documents to be indexed")
 }
 
 func finishImport(cmd *cobra.Command, stats serviceImportStats, runErr error) error {
