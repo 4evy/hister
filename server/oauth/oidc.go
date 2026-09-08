@@ -110,6 +110,7 @@ func (o *OIDCOAuth) GetRedirectURL(req *RedirectURIRequest) string {
 	params.Add("response_type", responseTypeCode.String())
 	params.Add("redirect_uri", req.redirectURI)
 	params.Add("state", req.state)
+	req.addPKCE(*params)
 
 	scopeName, defaultScopes := o.GetScope()
 	addScopes(*params, scopeName, defaultScopes, req.scopes)
@@ -126,6 +127,7 @@ func (o *OIDCOAuth) GetToken(ctx context.Context, req *TokenRequest) (*http.Resp
 	params.Set("redirect_uri", req.redirectURI)
 	params.Set("client_id", req.clientID)
 	params.Set("client_secret", req.clientSecret)
+	req.addPKCE(*params)
 
 	tokenReq, err := http.NewRequestWithContext(ctx, http.MethodPost, o.TokenURL, strings.NewReader(params.Encode()))
 	if err != nil {

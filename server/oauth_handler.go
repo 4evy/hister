@@ -18,6 +18,8 @@ import (
 
 const (
 	oauthStateKey       = "oauth_state"
+	oauthProviderKey    = "oauth_provider"
+	oauthVerifierKey    = "oauth_code_verifier"
 	oauthRequestTimeout = 10 * time.Second
 )
 
@@ -30,7 +32,7 @@ func generateOAuthState() (string, error) {
 }
 
 // serveOAuthRedirect starts the OAuth flow for a given provider.
-// It stores a random state token in the session and redirects the user to the provider.
+// It stores the state, provider, and PKCE verifier in the server side session.
 func serveOAuthRedirect(c *webContext) {
 	if !c.Config.App.UserHandling {
 		http.Error(c.Response, "user handling is disabled", http.StatusForbidden)
@@ -61,18 +63,28 @@ func serveOAuthRedirect(c *webContext) {
 		serve500(c)
 		return
 	}
+	var verifier string
+	if !entry.DisablePKCE {
+		verifier, err = oauth.NewCodeVerifier()
+		if err != nil {
+			serve500(c)
+			return
+		}
+	}
 	session, err := sessionStore.Get(c.Request, storeName)
 	if err != nil {
 		serve500(c)
 		return
 	}
 	session.Values[oauthStateKey] = state
+	session.Values[oauthProviderKey] = providerName
+	session.Values[oauthVerifierKey] = verifier
 	if err := session.Save(c.Request, c.Response); err != nil {
 		serve500(c)
 		return
 	}
 	callbackURL := c.Config.BaseURL("/api/oauth/callback") + "?provider=" + providerName
-	redirectURL := provider.GetRedirectURL(oauth.NewRedirectURIRequest(entry.ClientID, callbackURL, state, entry.Scopes))
+	redirectURL := provider.GetRedirectURL(oauth.NewRedirectURIRequest(entry.ClientID, callbackURL, state, entry.Scopes).WithPKCE(verifier))
 	http.Redirect(c.Response, c.Request, redirectURL, http.StatusFound)
 }
 
@@ -102,7 +114,27 @@ func serveOAuthCallback(c *webContext) {
 		http.Error(c.Response, "invalid oauth state", http.StatusBadRequest)
 		return
 	}
+	if session.Values[oauthProviderKey] != providerName {
+		http.Error(c.Response, "invalid oauth provider", http.StatusBadRequest)
+		return
+	}
+	verifier, hasVerifier := session.Values[oauthVerifierKey].(string)
 	delete(session.Values, oauthStateKey)
+	delete(session.Values, oauthProviderKey)
+	delete(session.Values, oauthVerifierKey)
+	// Consume the flow before contacting the provider, including on errors.
+	if err := session.Save(c.Request, c.Response); err != nil {
+		serve500(c)
+		return
+	}
+	if !hasVerifier || (verifier == "" && !entry.DisablePKCE) {
+		http.Error(c.Response, "invalid oauth verifier; restart login", http.StatusBadRequest)
+		return
+	}
+	if c.Request.URL.Query().Get("error") != "" || code == "" {
+		http.Error(c.Response, "oauth authorization failed; restart login", http.StatusBadRequest)
+		return
+	}
 	provider, ok := oauth.NewProvider(providerName, entry.AuthURL, entry.TokenURL, entry.UserInfoURL)
 	if !ok {
 		serve500(c)
@@ -120,7 +152,7 @@ func serveOAuthCallback(c *webContext) {
 	callbackURL := c.Config.BaseURL("/api/oauth/callback") + "?provider=" + providerName
 	tokenResp, err := provider.GetToken(ctx, oauth.NewTokenRequest(
 		entry.ClientID, entry.ClientSecret, code, callbackURL,
-	))
+	).WithPKCE(verifier))
 	if err != nil {
 		log.Error().Err(err).Str("provider", providerName).Msg("oauth: failed to exchange token")
 		serve500(c)

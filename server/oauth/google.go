@@ -36,6 +36,7 @@ func (g GoogleOAuth) GetRedirectURL(req *RedirectURIRequest) string {
 	params.Add("response_type", responseTypeCode.String())
 	params.Add("redirect_uri", req.redirectURI)
 	params.Add("state", req.state)
+	req.addPKCE(*params)
 	scopeName, defaultScopes := g.GetScope()
 	addScopes(*params, scopeName, defaultScopes, req.scopes)
 
@@ -51,6 +52,7 @@ func (g GoogleOAuth) GetToken(ctx context.Context, req *TokenRequest) (*http.Res
 	params.Add("redirect_uri", req.redirectURI)
 	params.Add("client_id", req.clientID)
 	params.Add("client_secret", req.clientSecret)
+	req.addPKCE(*params)
 
 	tokenReq, err := http.NewRequestWithContext(ctx, http.MethodPost, g.TokenURL, strings.NewReader(params.Encode()))
 	if err != nil {

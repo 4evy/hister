@@ -223,6 +223,7 @@ Every user account has a personal access token used for API authentication. Toke
 - Browser cookies contain only random session identifiers. Session data and identifier hashes are stored in the configured SQL database. Logout revokes the database record immediately.
 - Personal access tokens bypass session cookies and can be used in scripts. Keep them secret and regenerate them if compromised.
 - OAuth state tokens are single use random values stored in the server side session. They prevent cross site request forgery during the OAuth redirect flow.
+- OAuth logins use S256 PKCE by default. A private verifier binds the authorization request to its token exchange and is stored with the state and provider in the server side session. See [PKCE and compatibility](/docs/configuration#pkce-and-compatibility) for older provider settings and upgrade behavior.
 - OAuth accounts are created without a password. An administrator can assign one with `hister update-user USERNAME --password`. If you need to disable an OAuth user's access, use `hister delete-user` or remove the provider from the configuration.
 - Enable `server.oauth_only: true` to enforce OAuth login and prevent password authentication. Personal access tokens remain valid for API and CLI access. In multiple user mode, `app.access_token` must contain a user's personal token.
 - User handling is intended for a trusted group of users on a shared instance (family, team). For public-facing deployments, place Hister behind a reverse proxy with HTTPS and only index content that may be shown publicly.

@@ -63,10 +63,11 @@ type (
 
 	// RedirectURIRequest contains parameters for building an OAuth redirect URI.
 	RedirectURIRequest struct {
-		clientID    string
-		redirectURI string
-		state       string
-		scopes      []string
+		clientID      string
+		redirectURI   string
+		state         string
+		scopes        []string
+		codeChallenge string
 	}
 
 	// TokenRequest contains parameters for exchanging an authorization code for a token.
@@ -75,6 +76,7 @@ type (
 		clientSecret string
 		code         string
 		redirectURI  string
+		codeVerifier string
 	}
 
 	// UserInfoResponse contains user information retrieved from an OAuth provider.

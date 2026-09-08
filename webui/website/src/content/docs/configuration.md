@@ -322,6 +322,13 @@ description: 'Explore every configuration section, option, default value, enviro
       requirement: 'Optional',
       description: 'Additional OAuth scopes to request. Provider defaults are always included.',
     },
+    {
+      name: 'disable_pkce',
+      type: 'bool',
+      defaultValue: 'false',
+      requirement: 'Optional',
+      description: 'Disables S256 PKCE for this provider. Use only for older providers that reject PKCE parameters.',
+    },
   ];
 
   const crawlerOptions = [
@@ -966,12 +973,34 @@ server:
       userinfo_url: 'https://accounts.example.com/oauth/userinfo'
 ```
 
+### PKCE and Compatibility
+
+Hister uses PKCE with the S256 challenge method for GitHub, Google, and OIDC logins by default. Each login generates a fresh private verifier stored in the server side session. The authorization request includes its SHA256 challenge, and the token exchange sends the original verifier. This supports providers such as Kanidm with PKCE enforcement enabled, including when OIDC discovery does not advertise PKCE support.
+
+Existing client IDs, client secrets, scopes, callback URLs, and linked accounts continue to work. Client secrets are still required. No database migration or reindexing is needed, and existing authenticated sessions remain valid.
+
+For an older provider that rejects PKCE parameters, explicitly set `disable_pkce: true` on that provider:
+
+```yaml
+server:
+  oauth:
+    oidc:
+      client_id: 'hister'
+      client_secret: 'your-client-secret'
+      configuration_url: 'https://accounts.example.com/.well-known/openid-configuration'
+      disable_pkce: true
+```
+
+The equivalent environment variable is `HISTER__SERVER__OAUTH__OIDC__DISABLE_PKCE=true`. Disabling PKCE removes the protection it provides against authorization code interception. Hister does not automatically retry without PKCE after a provider error.
+
+Logins started before upgrading must be restarted because their sessions lack the verifier and provider binding. A callback consumes its matching login state before exchanging the code, so failed or denied logins must also be restarted. GitHub token exchanges now use a form POST to keep credentials and the verifier out of the URL; custom GitHub token endpoints or proxies must accept POST.
+
 ### How It Works
 
 1. The login page shows a **Sign in with &lt;Provider&gt;** button for each configured provider.
 2. Clicking the button redirects the user to the provider's authorization page.
 3. After the user grants access the provider redirects back to `/api/oauth/callback?provider=<name>`.
-4. Hister verifies the state token, exchanges the authorization code for a token, and fetches the user's identity from the provider.
+4. Hister verifies the state token and provider, exchanges the authorization code with the PKCE verifier for a token, and fetches the user's identity from the provider.
 5. If no local account is linked to that identity, one is created automatically. GitHub uses the login name, Google uses the account name with the full email address as a fallback, and OIDC uses `preferred_username` with the full email address as a fallback.
 6. The user is logged in and redirected to the home page.
 

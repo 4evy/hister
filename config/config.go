@@ -104,6 +104,7 @@ type OAuthEntry struct {
 	TokenURL         string   `yaml:"token_url"         mapstructure:"token_url"`
 	UserInfoURL      string   `yaml:"userinfo_url"      mapstructure:"userinfo_url"`
 	Scopes           []string `yaml:"scopes"            mapstructure:"scopes"`
+	DisablePKCE      bool     `yaml:"disable_pkce"      mapstructure:"disable_pkce"`
 }
 
 type Directory struct {

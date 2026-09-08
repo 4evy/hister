@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"strings"
 
 	servererrors "github.com/asciimoo/hister/server/errors"
 )
@@ -31,6 +32,7 @@ func (g GitHubOAuth) GetRedirectURL(req *RedirectURIRequest) string {
 	params.Add("response_type", responseTypeCode.String())
 	params.Add("redirect_uri", req.redirectURI)
 	params.Add("state", req.state)
+	req.addPKCE(*params)
 	scopeName, defaultScopes := g.GetScope()
 	addScopes(*params, scopeName, defaultScopes, req.scopes)
 
@@ -45,11 +47,13 @@ func (g GitHubOAuth) GetToken(ctx context.Context, req *TokenRequest) (*http.Res
 	params.Add("client_secret", req.clientSecret)
 	params.Add("code", req.code)
 	params.Add("redirect_uri", req.redirectURI)
+	req.addPKCE(*params)
 
-	tokenReq, err := http.NewRequestWithContext(ctx, http.MethodGet, g.TokenURL+"?"+params.Encode(), nil)
+	tokenReq, err := http.NewRequestWithContext(ctx, http.MethodPost, g.TokenURL, strings.NewReader(params.Encode()))
 	if err != nil {
 		return nil, errors.New("github: failed to create token request")
 	}
+	tokenReq.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 
 	resp, err := doRequest(g.Client, tokenReq)
 	if err != nil {
