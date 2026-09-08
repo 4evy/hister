@@ -833,9 +833,9 @@ Files are indexed recursively, with the following rules:
 
 Changes to indexed directories are picked up automatically by the file watcher, no server restart is needed. On server start, only files that have been modified since they were last indexed are re-processed. File results appear with the domain `local` and are served through the Hister web interface directly.
 
-Only when a configured directory is available to the command line client but not to the server, run `hister import file` with no path arguments. It applies these directory rules locally, extracts matching content, and creates remote file snapshots through the normal add API. The original bytes are not sent. This fallback does not enable tracking. These snapshots are not watched or removed automatically.
+When a configured directory is available to the command line client but not to the server, run `hister import file` with no path arguments. It applies these directory rules locally, extracts matching content, and creates remote file snapshots through the normal add API. The original bytes are not sent. Add `--watch` to keep importing new and changed snapshots until interrupted. Watch mode skips exports, archives, and saved HTML with source URL metadata. Remote snapshots are never removed automatically, even with `delete_on_remove: true`. See [Importing Documents](import) for details.
 
-When `delete_on_remove: true` is set on a directory, deleting or renaming a file on the filesystem also removes it from the index automatically. This is opt-in and disabled by default.
+For directories watched by the server, `delete_on_remove: true` makes deleting or renaming a file on the filesystem remove it from the index automatically. This is optional and disabled by default. It does not apply to remote snapshots imported by the client.
 
 No reindex is required when adding or removing files. Files are detected and indexed automatically. After making directory filters more restrictive, run `hister cleanup` to remove indexed local documents that no longer match the configuration. Cleanup compares indexed paths with the configuration and does not scan or read the filesystem.
 

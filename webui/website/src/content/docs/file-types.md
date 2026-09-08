@@ -57,6 +57,6 @@ The `hister import file` command accepts these file formats:
 | Saved HTML page     | `.html`, `.htm`            | Extracts the original page URL when present.                 |
 | Local file snapshot | Any supported local format | Extracts content locally and submits a remote file document. |
 
-When importing a directory, Hister reads matching files recursively. With no input path, it uses every configured watched directory and applies its filters. This creates remote file snapshots and is intended only for directories that the command line client can access but the server cannot. The snapshots are not watched for changes.
+When importing a directory, Hister reads matching files recursively. With no input path, it uses every configured watched directory and applies its filters. This creates remote file snapshots and is intended for directories that the command line client can access but the server cannot. Add `--watch` to keep importing new and changed snapshots while the command runs. Watch mode skips Hister exports, 7z archives, and HTML with source URL metadata. Source removals retain the indexed snapshots. See [Importing Documents](import) for watch mode details.
 
 Use `hister import file` to create snapshots of the PDF, DOCX, Markdown, Org mode, and plain text formats listed under local file indexing. Extraction occurs on the client, so this also works when the server cannot access the filesystem.

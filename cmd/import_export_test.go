@@ -432,7 +432,7 @@ func TestImportSubcommandFlagOwnership(t *testing.T) {
 	if importBrowserCmd.Flags().Lookup("min-visit") == nil {
 		t.Error("import browser is missing --min-visit")
 	}
-	for _, name := range []string{"source", "skip-existing", "global", "user-id", "allow-sensitive"} {
+	for _, name := range []string{"source", "skip-existing", "global", "user-id", "allow-sensitive", "watch"} {
 		if importFileCmd.Flags().Lookup(name) == nil {
 			t.Errorf("import file is missing --%s", name)
 		}

@@ -297,7 +297,8 @@ Several input formats are supported:
 When a directory is passed, Hister imports matching files recursively. With no input,
 it creates remote file snapshots from configured watched directories and applies their
 filters. Use this mode only when the command line client can read those directories but
-the server cannot. These snapshots do not track later file changes or removals.
+the server cannot. Add `--watch` to keep importing new and changed snapshots while
+the command is active. Source removals retain the indexed snapshots.
 
 ```bash
 # Import a single saved web page
@@ -318,6 +319,7 @@ Useful flags:
 - `--batch-size` controls how many documents are submitted in each bulk request.
   The default is `10` and the maximum is `100`.
 - `--source` sets the stable source namespace for remote file snapshot URLs.
+- `--watch` performs an initial scan and continues importing new and changed snapshots until interrupted. `--skip-existing` applies only to the initial scan. Watch mode skips exports, 7z archives, and saved HTML with source URLs, and cannot be combined with date filters.
 - `--allow-sensitive` skips sensitive content checks for imported snapshots.
 
 > **Note:** `hister import file` talks to a running Hister server, so make sure the server
@@ -329,9 +331,10 @@ Useful flags:
 ```bash
 hister import file
 hister import file --source work-laptop ~/notes ~/Documents/report.pdf
+hister import file --watch --source work-laptop ~/notes
 ```
 
-The command extracts the same PDF, DOCX, Markdown, Org mode, and plain text formats used by watched directories. It does not send the original bytes or synchronize later file changes and removals. Run the command again to replace a snapshot with the same source name and absolute path.
+The command extracts the same PDF, DOCX, Markdown, Org mode, and plain text formats used by watched directories. It does not send the original bytes. Run the command again to replace a snapshot with the same source name and absolute path, or use `--watch` to update snapshots while the command runs. Watch mode retries temporary server failures, prints a combined summary on exit, and scans all inputs again on restart. Source removals never delete remote snapshots, including when `delete_on_remove` is configured. See [Importing Documents](import) for details.
 
 ## TUI (Terminal UI)
 

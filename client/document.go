@@ -2,6 +2,7 @@ package client
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -167,6 +168,11 @@ func (c *Client) sendAddDocumentBatch(data []byte, documentCount int) (_ []AddDo
 }
 
 func (c *Client) AddDocumentJSON(doc *document.Document) (err error) {
+	return c.AddDocumentJSONContext(context.Background(), doc)
+}
+
+// AddDocumentJSONContext submits a prepared document until ctx is cancelled.
+func (c *Client) AddDocumentJSONContext(ctx context.Context, doc *document.Document) (err error) {
 	if c.allowSensitive {
 		doc.SkipSensitiveCheck = true
 	}
@@ -179,7 +185,7 @@ func (c *Client) AddDocumentJSON(doc *document.Document) (err error) {
 		return err
 	}
 	req.Header.Set("Content-Type", "application/json")
-	resp, err := c.httpClient.Do(req)
+	resp, err := c.httpClient.Do(req.WithContext(ctx))
 	if err != nil {
 		return err
 	}
@@ -203,15 +209,24 @@ func (c *Client) AddPage(u, title, text string) (err error) {
 }
 
 func (c *Client) DocumentExists(u string) (_ bool, err error) {
+	return c.DocumentExistsContext(context.Background(), u)
+}
+
+func (c *Client) DocumentExistsContext(ctx context.Context, u string) (_ bool, err error) {
 	req, err := c.newRequest("HEAD", "/api/document?url="+url.QueryEscape(u), nil)
 	if err != nil {
 		return false, err
 	}
-	resp, err := c.httpClient.Do(req)
+	resp, err := c.httpClient.Do(req.WithContext(ctx))
 	if err != nil {
 		return false, err
 	}
 	defer closeBody(resp, &err)
+	if resp.StatusCode != http.StatusNotFound {
+		if err := checkStatus(resp); err != nil {
+			return false, err
+		}
+	}
 	return resp.StatusCode == http.StatusOK, nil
 }
 

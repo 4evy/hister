@@ -173,15 +173,6 @@ func importRemoteFile(
 	skip bool,
 	labelOverride documentLabelOverride,
 ) (imported, skipped, errCount int) {
-	if info.Size() == 0 {
-		log.Warn().Str("file", input.Path).Msg("Empty file, skipping")
-		return 0, 0, 1
-	}
-	if maxFileSize > 0 && info.Size() > maxFileSize {
-		log.Warn().Int64("size", info.Size()).Int64("limit", maxFileSize).Str("file", input.Path).Msg("File exceeds configured size limit")
-		return 0, 0, 1
-	}
-
 	remoteURL, err := remoteFileURL(source, input.Path)
 	if err != nil {
 		log.Warn().Err(err).Str("file", input.Path).Msg("Failed to create remote file URL")
@@ -199,6 +190,29 @@ func importRemoteFile(
 		}
 	}
 
+	d, err := prepareRemoteFile(input, content, info, source, maxFileSize, labelOverride)
+	if err != nil {
+		log.Warn().Err(err).Str("file", input.Path).Msg("Failed to extract file content")
+		return 0, 0, 1
+	}
+	if err := c.AddDocumentJSON(d); err != nil {
+		log.Warn().Err(err).Str("file", input.Path).Str("url", remoteURL).Msg("Failed to import file snapshot")
+		return 0, 0, 1
+	}
+	return 1, 0, 0
+}
+
+func prepareRemoteFile(input importFileInput, content []byte, info os.FileInfo, source string, maxFileSize int64, labelOverride documentLabelOverride) (*document.Document, error) {
+	if info.Size() == 0 {
+		return nil, indexer.ErrEmptyFile
+	}
+	if maxFileSize > 0 && (info.Size() > maxFileSize || int64(len(content)) > maxFileSize) {
+		return nil, indexer.ErrFileTooLarge
+	}
+	remoteURL, err := remoteFileURL(source, input.Path)
+	if err != nil {
+		return nil, err
+	}
 	fallbackLabel := input.Label
 	if fallbackLabel == "" {
 		fallbackLabel = "import"
@@ -210,18 +224,12 @@ func importRemoteFile(
 		Label:   labelOverride.resolve("", fallbackLabel),
 	}
 	if err := indexer.PrepareFileContent(input.Path, d, content); err != nil {
-		log.Warn().Err(err).Str("file", input.Path).Msg("Failed to extract file content")
-		return 0, 0, 1
+		return nil, err
 	}
 	if d.Text == "" && d.HTML == "" {
-		log.Warn().Str("file", input.Path).Msg("File contains no indexable content")
-		return 0, 0, 1
+		return nil, fmt.Errorf("file contains no indexable content")
 	}
-	if err := c.AddDocumentJSON(d); err != nil {
-		log.Warn().Err(err).Str("file", input.Path).Str("url", remoteURL).Msg("Failed to import file snapshot")
-		return 0, 0, 1
-	}
-	return 1, 0, 0
+	return d, nil
 }
 
 func importRemoteFilePath(

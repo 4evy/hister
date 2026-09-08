@@ -335,6 +335,7 @@ func init() {
 	}
 
 	addDocumentImportFlags(importFileCmd)
+	importFileCmd.Flags().Bool("watch", false, "Keep importing created and changed file snapshots until interrupted")
 	addCommonImportFlags(importRaindropCmd)
 	addCrawlerBackendFlags(importRaindropCmd)
 	importRaindropCmd.Flags().String("api-token", "", "Raindrop API token (default: "+raindropTokenEnv+")")

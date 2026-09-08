@@ -69,13 +69,30 @@ You can also provide individual files or directories:
 hister import file ~/notes ~/Documents/report.pdf
 ```
 
-Snapshot extraction happens in the command line process. Only the extracted document fields are sent through `/api/add`. Hister does not send or retain the original file bytes, and it does not monitor snapshots for later changes. Running this command is therefore not a substitute for the automatic tracking provided by the server file watcher.
+Snapshot extraction happens in the command line process. Only the extracted document fields are sent through `/api/add`. Hister does not send or retain the original file bytes. By default, the command imports once and exits. Use `--watch` to keep updating snapshots while the command is active.
 
 Remote file documents use a `remote-file://SOURCE/absolute/path` identity. The default source is the client hostname. Set a stable name when hostnames may change or when several clients have the same paths:
 
 ```bash
 hister import file --source alice-laptop ~/notes
 ```
+
+To continuously import new and changed files from the client machine:
+
+```bash
+hister import file --watch --source alice-laptop ~/notes
+
+# Use the configured directory rules instead of explicit paths
+hister import file --watch --source alice-laptop
+```
+
+Watch mode performs an initial scan and continues until Ctrl+C or a termination signal. Explicit directories are watched recursively, including newly created directories. Explicit files are watched individually, including saves that replace the file. Directory filters, labels, size limits, destination ownership, and sensitive content checks apply throughout the session.
+
+Watch mode handles remote file snapshots only. It skips Hister JSON exports, 7z archives, and saved HTML pages with source URL metadata, including during the initial scan. Ordinary JSON and HTML without a source URL remain supported. Date filters cannot be combined with `--watch`.
+
+`--skip-existing` applies only to the initial scan. Later changes replace existing snapshots. Temporary server failures are retried while the command runs; files that fail extraction or validation are tried again when they change. Import activity is logged and the selected output format contains a combined summary on exit. Its error count reports files with unresolved import failures.
+
+Removing or renaming a source file does not delete its old snapshot, even when `delete_on_remove` is enabled. A renamed file discovered inside a watched directory is imported under its new path. Restarting the command scans all inputs again to pick up changes made while it was stopped. Pending retries are kept only in memory.
 
 The following options apply to file imports:
 
@@ -89,9 +106,10 @@ The following options apply to file imports:
 | `--global`                | Import for all users when authenticated as an administrator |
 | `--user-id ID`            | Import for one user when authenticated as an administrator  |
 | `--source NAME`           | Set the source namespace used in document URLs              |
+| `--watch`                 | Continue importing new and changed remote file snapshots    |
 | `--allow-sensitive`       | Skip sensitive content checks                               |
 
-Running the command again replaces documents with the same source and absolute path. File changes and removals are not synchronized automatically.
+Running the command again replaces documents with the same source and absolute path. `--watch` synchronizes file changes while active; source removals always retain the indexed snapshots.
 
 The destination account and the `--global` or `--user-id` flags determine ownership. The `user` value on a watched directory is not resolved by this client side import.
 

@@ -11,19 +11,20 @@ Hister keeps current searchable documents until you replace or delete them. It d
 
 ## Lifecycle at a Glance
 
-| Event                                                 | Result                                                                                                          |
-| ----------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
-| A new URL is submitted                                | Hister creates a searchable document for that URL and owner                                                     |
-| The same normalized URL is submitted again            | Hister replaces the current document content and increases its submission count                                 |
-| A versioning rule matches a changed page              | Hister also stores a difference record in the SQL database                                                      |
-| A watched file changes                                | Hister updates its searchable document                                                                          |
-| A watched file is removed                             | Hister keeps the document unless `delete_on_remove: true` is configured                                         |
-| A remote file snapshot is imported again              | Hister replaces the document with the same source and absolute path                                             |
-| `hister update` changes document attributes           | Hister updates matching current records and moves identity state when ownership changes                         |
-| The source of a remote file snapshot changes or moves | No change occurs until the client imports it again                                                              |
-| A source bookmark or browser history entry is removed | No change occurs in Hister                                                                                      |
-| A document is deleted in Hister                       | The current index record and associated current assets are removed                                              |
-| `hister cleanup` is run                               | Local documents that no longer match configured directories and unreferenced HTML and favicon files are removed |
+| Event                                                    | Result                                                                                                          |
+| -------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| A new URL is submitted                                   | Hister creates a searchable document for that URL and owner                                                     |
+| The same normalized URL is submitted again               | Hister replaces the current document content and increases its submission count                                 |
+| A versioning rule matches a changed page                 | Hister also stores a difference record in the SQL database                                                      |
+| A watched file changes                                   | Hister updates its searchable document                                                                          |
+| A watched file is removed                                | Hister keeps the document unless `delete_on_remove: true` is configured                                         |
+| A remote file snapshot is imported again                 | Hister replaces the document with the same source and absolute path                                             |
+| `hister update` changes document attributes              | Hister updates matching current records and moves identity state when ownership changes                         |
+| The source of a remote file snapshot changes             | An active `hister import file --watch` updates it; otherwise it changes on the next import                      |
+| The source of a remote file snapshot moves or is removed | The old snapshot remains; watch mode imports a new path if it is inside a watched directory                     |
+| A source bookmark or browser history entry is removed    | No change occurs in Hister                                                                                      |
+| A document is deleted in Hister                          | The current index record and associated current assets are removed                                              |
+| `hister cleanup` is run                                  | Local documents that no longer match configured directories and unreferenced HTML and favicon files are removed |
 
 ## Where Data Lives
 

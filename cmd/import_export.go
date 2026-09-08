@@ -11,8 +11,11 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"strings"
+	"syscall"
+	"time"
 
 	"github.com/asciimoo/hister/client"
 	"github.com/asciimoo/hister/server/document"
@@ -178,8 +181,14 @@ directories and watches them for later changes.
 With no input, this command creates remote file snapshots from the configured
 directories using their file type, pattern, exclusion, hidden path, and label
 rules. This mode is intended for directories that the command line client can
-access but the server cannot. Remote file snapshots are not watched for later
-changes.
+access but the server cannot.
+
+Use --watch to import remote file snapshots and keep updating created or changed
+files until interrupted. Exports, 7z archives, and HTML with source URL metadata
+are skipped in this mode. --skip-existing applies only to the initial scan.
+Removals are never synchronized, even with delete_on_remove configured.
+Restarting the command scans all inputs again. Temporary server failures are
+retried while the command remains active. A combined summary is printed on exit.
 
 Use --start-date and --end-date (format: YYYY-MM-DD) to only import
 documents whose "added" timestamp falls within the given date range.`,
@@ -187,6 +196,10 @@ documents whose "added" timestamp falls within the given date range.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		cmd.SilenceUsage = true
 		skip, _ := cmd.Flags().GetBool("skip-existing")
+		watch, _ := cmd.Flags().GetBool("watch")
+		if watch && (cmd.Flags().Changed("start-date") || cmd.Flags().Changed("end-date")) {
+			return fmt.Errorf("--watch cannot be combined with --start-date or --end-date")
+		}
 		global, _ := cmd.Flags().GetBool("global")
 		source, _ := cmd.Flags().GetString("source")
 		normalizedSource, err := normalizeRemoteFileSource(source)
@@ -213,14 +226,22 @@ documents whose "added" timestamp falls within the given date range.`,
 		skipped := 0
 		errCount := 0
 
-		inputFiles, err := expandImportInputs(args, cfg.Indexer.Directories)
-		if err != nil {
-			return err
-		}
-
 		maxFileSize := cfg.Indexer.MaxFileSize << 20
 		if maxFileSize <= 0 {
 			maxFileSize = 1 << 20
+		}
+		if watch {
+			ctx, stop := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
+			defer stop()
+			stats, err := watchImportFiles(ctx, c, args, cfg.Indexer.Directories, fileWatchOptions{
+				Source: normalizedSource, MaxFileSize: maxFileSize, SkipExisting: skip, Label: labelOverride,
+				RetryDelay: 5 * time.Second,
+			})
+			return finishImport(cmd, stats, err)
+		}
+		inputFiles, err := expandImportInputs(args, cfg.Indexer.Directories)
+		if err != nil {
+			return err
 		}
 		for _, input := range inputFiles {
 			var i, s, e int
@@ -345,29 +366,33 @@ func isHisterJSONExport(inputFile string) (bool, error) {
 	}
 	defer func() { _ = f.Close() }()
 
-	decoder := json.NewDecoder(f)
+	return isHisterJSONExportReader(f), nil
+}
+
+func isHisterJSONExportReader(reader io.Reader) bool {
+	decoder := json.NewDecoder(reader)
 	token, err := decoder.Token()
 	if err != nil {
-		return false, nil
+		return false
 	}
 	delim, ok := token.(json.Delim)
 	if !ok || delim != '[' {
-		return false, nil
+		return false
 	}
 	if !decoder.More() {
-		return true, nil
+		return true
 	}
 	var first map[string]json.RawMessage
 	if err := decoder.Decode(&first); err != nil {
-		return false, nil
+		return false
 	}
 	var documentURL string
 	if err := json.Unmarshal(first["url"], &documentURL); err != nil || documentURL == "" {
-		return false, nil
+		return false
 	}
 	_, hasType := first["type"]
 	_, hasProcessed := first["processed"]
-	return hasType && hasProcessed, nil
+	return hasType && hasProcessed
 }
 
 // importJSONFile imports documents from a JSON export file (optionally a
