@@ -7,8 +7,8 @@ Type=simple
 User=hister
 Group=hister
 StateDirectory=hister
-Environment=HISTER_DATA_DIR=/var/lib/hister
-EnvironmentFile=-/etc/hister/hister.env
+Environment=HISTER_DATA_DIR=%S/hister
+EnvironmentFile=-%E/hister/hister.env
 ExecStart=/usr/local/bin/hister listen
 Restart=on-failure
 
