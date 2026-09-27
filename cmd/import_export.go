@@ -147,8 +147,8 @@ func exportOutputPath(path string) string {
 
 var importCmd = &cobra.Command{
 	Use:   "import",
-	Short: "Import documents from files, browsers, or services",
-	Long: `Import documents from files, browser history, browser bookmarks, or external services.
+	Short: "Import documents from files, sitemaps, browsers, or services",
+	Long: `Import documents from files, sitemaps, browser history, browser bookmarks, or external services.
 
 Use one of the available subcommands to select the import source.
 

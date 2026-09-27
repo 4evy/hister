@@ -59,28 +59,10 @@ var indexCmd = &cobra.Command{
 		recursive, _ := cmd.Flags().GetBool("recursive")
 		jobID, _ := cmd.Flags().GetString("job-id")
 		label, _ := cmd.Flags().GetString("label")
-		noRobots, _ := cmd.Flags().GetBool("no-robots")
-		cfg.Crawler.UserAgent = UserAgent
-		applyCrawlerBackendFlags(cmd)
-		if ua, _ := cmd.Flags().GetString("user-agent"); ua != "" {
-			UserAgent = ua
-			cfg.Crawler.UserAgent = ua
-		}
-		if cmd.Flags().Changed("delay") {
-			d, _ := cmd.Flags().GetInt("delay")
-			cfg.Crawler.Delay = d
-		}
-		if cmd.Flags().Changed("timeout") {
-			t, _ := cmd.Flags().GetInt("timeout")
-			cfg.Crawler.Timeout = t
-		}
-
-		var robotsCache *crawler.RobotsCache
-		if !noRobots && !cfg.Crawler.NoRobots {
-			robotsCache, err = crawler.NewRobotsCacheWithProxy(cfg.Crawler.UserAgent, cfg.Crawler.Proxy)
-			if err != nil {
-				return fmt.Errorf("failed to configure robots.txt requests: %w", err)
-			}
+		applyIndexCrawlerFlags(cmd)
+		robotsCache, err := indexRobotsCache(cmd)
+		if err != nil {
+			return err
 		}
 
 		if input != "" {
@@ -88,19 +70,7 @@ var indexCmd = &cobra.Command{
 			if recursive {
 				validatorRules = crawlValidatorRules(cmd)
 			}
-			rulesJSON, err := crawler.MarshalValidatorRules(validatorRules)
-			if err != nil {
-				return fmt.Errorf("failed to serialize validator rules: %w", err)
-			}
-			jobID, err = model.CreateNamedCrawlJobWithURLs(
-				indexInputJobName(input), args[0], rulesJSON, label, args,
-			)
-			if err != nil {
-				return fmt.Errorf("failed to create URL input crawl job: %w", err)
-			}
-			cmd.PrintErrln("Starting crawl job:", jobID)
-			err = runPersistentIndexJob(cmd.Context(), jobID, args[0], validatorRules, label, robotsCache, force, clientOpts...)
-			return finishPersistentIndex(cmd, jobID, report, err)
+			return runURLInputJob(cmd, indexInputJobName(input), args, validatorRules, robotsCache, report)
 		}
 
 		if recursive {
@@ -412,10 +382,8 @@ func runPersistentIndexJob(
 }
 
 func init() {
-	addOutputFormatFlag(indexCmd)
-	indexCmd.Flags().String("failed-urls", "", "Write failed URLs to this file, one per line, replacing its contents")
+	addURLInputFlags(indexCmd)
 	indexCmd.Flags().String("label", "", "Label to attach to all indexed documents")
-	indexCmd.Flags().Bool("force", false, "Reindex URLs even if they are already in the index. Already indexed URLs are skipped otherwise")
 	indexCmd.Flags().Bool("ignore-rules", false, ignoreRulesFlagUsage)
 	indexCmd.Flags().BoolP("recursive", "r", false, "Recursively crawl linked pages")
 	indexCmd.Flags().Int("max-depth", 0, "Maximum crawl depth (0 = unlimited)")
@@ -424,20 +392,12 @@ func init() {
 	indexCmd.Flags().StringArray("exclude-domain", nil, "Domain to exclude during crawl (repeatable)")
 	indexCmd.Flags().StringArray("allowed-pattern", nil, "Regexp pattern URLs must match to be followed (repeatable; empty = all)")
 	indexCmd.Flags().StringArray("exclude-pattern", nil, "Regexp pattern; matching URLs are skipped (repeatable)")
-	indexCmd.Flags().Bool("global", false, "Make indexed documents available for all users (only for admins in multiuser mode)")
-	indexCmd.Flags().Uint("user-id", 0, "Index documents under the given user ID (only for admins in multiuser mode)")
 	indexCmd.Flags().String("input", "", "Read one URL per line from a file, or from standard input with -; creates a persistent crawl job and replaces positional URLs")
 	indexCmd.Flags().String("url-list", "", "Deprecated alias for --input")
 	if err := indexCmd.Flags().MarkDeprecated("url-list", "use --input instead"); err != nil {
 		panic(err)
 	}
 	indexCmd.Flags().String("job-id", "", "Persistent crawl job ID; use with --recursive to start a new job or alone to resume an existing one")
-	addCrawlerBackendFlags(indexCmd)
-	indexCmd.Flags().Bool("no-robots", false, "Disable robots.txt compliance during crawling")
-	indexCmd.Flags().Int("delay", 0, "Delay in seconds between requests (0 = no delay; overrides config)")
-	indexCmd.Flags().Int("timeout", 0, "Request timeout in seconds (0 = 5s default; overrides config)")
-	indexCmd.Flags().String("user-agent", "", "User-agent string for requests (overrides config)")
-	indexCmd.Flags().Bool("allow-sensitive", false, "Skip sensitive content checks, allowing matching documents to be indexed")
 }
 
 func indexURL(ctx context.Context, cr crawler.Crawler, u string, label string, clientOpts ...client.Option) error {

@@ -485,6 +485,7 @@ func TestSubmissionOverrideInheritedByImports(t *testing.T) {
 func TestImportCommandHierarchy(t *testing.T) {
 	tests := map[string]*cobra.Command{
 		"file":       importFileCmd,
+		"sitemap":    importSitemapCmd,
 		"browser":    importBrowserCmd,
 		"linkding":   importLinkdingCmd,
 		"linkwarden": importLinkwardenCmd,

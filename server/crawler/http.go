@@ -7,85 +7,30 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"net/http/cookiejar"
-	"net/url"
 	"strings"
-	"time"
 
 	"github.com/rs/zerolog/log"
 
 	"github.com/asciimoo/hister/config"
 )
 
-const defaultTimeout = 5 * time.Second
-
 type httpFetcher struct {
-	client    *http.Client
-	userAgent string
-	headers   map[string]string
+	client *HTTPClient
 }
 
 func newHTTPFetcher(cfg *config.CrawlerConfig) (*httpFetcher, error) {
 	for k := range cfg.BackendOptions {
 		return nil, fmt.Errorf("http backend: unknown option %q", k)
 	}
-	proxyURL, err := parseProxyURL(cfg.Proxy)
+	client, err := NewHTTPClient(cfg)
 	if err != nil {
 		return nil, err
 	}
-
-	jar, err := cookiejar.New(nil)
-	if err != nil {
-		return nil, err
-	}
-
-	for _, ck := range cfg.Cookies {
-		cookiePath := ck.Path
-		if cookiePath == "" {
-			cookiePath = "/"
-		}
-		u, err := url.Parse("https://" + ck.Domain)
-		if err != nil {
-			return nil, fmt.Errorf("invalid cookie domain %q: %w", ck.Domain, err)
-		}
-		jar.SetCookies(u, []*http.Cookie{{
-			Name:   ck.Name,
-			Value:  ck.Value,
-			Domain: ck.Domain,
-			Path:   cookiePath,
-		}})
-	}
-
-	timeout := time.Duration(cfg.Timeout) * time.Second
-	if timeout == 0 {
-		timeout = defaultTimeout
-	}
-
-	return &httpFetcher{
-		client: &http.Client{
-			Timeout:   timeout,
-			Jar:       jar,
-			Transport: transportWithProxy(proxyURL),
-		},
-		userAgent: cfg.UserAgent,
-		headers:   cfg.Headers,
-	}, nil
+	return &httpFetcher{client: client}, nil
 }
 
 func (f *httpFetcher) fetchPage(ctx context.Context, rawURL string) (string, string, []string, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
-	if err != nil {
-		return "", "", nil, err
-	}
-
-	if f.userAgent != "" {
-		req.Header.Set("User-Agent", f.userAgent)
-	}
-	for k, v := range f.headers {
-		req.Header.Set(k, v)
-	}
-
-	resp, err := f.client.Do(req)
+	resp, err := f.client.Get(ctx, rawURL)
 	if err != nil {
 		return "", "", nil, err
 	}

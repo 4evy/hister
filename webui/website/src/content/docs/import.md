@@ -2,7 +2,7 @@
 date: '2026-07-22T00:00:00+02:00'
 draft: false
 title: 'Importing Documents'
-description: 'Import files, browser history, bookmarks, archives, and supported reading services into Hister.'
+description: 'Import files, sitemaps, browser history, bookmarks, archives, and supported reading services into Hister.'
 ---
 
 The `hister import` command collects related import tools under one command. Every import sends documents to a running Hister server.
@@ -17,6 +17,7 @@ The `hister import` command collects related import tools under one command. Eve
 | Command                                     | Source                                      | Default label             |
 | ------------------------------------------- | ------------------------------------------- | ------------------------- |
 | `hister import file [INPUT...]`             | Exports, saved pages, and file snapshots    | `import` or watched label |
+| `hister import sitemap FILE_OR_URL`         | Pages listed in XML sitemaps                | `sitemap`                 |
 | `hister import browser [BROWSER] [DB_PATH]` | Browser history databases                   | `browser`                 |
 | `hister import browser history`             | Browser history with `--browser` and `--db` | `browser`                 |
 | `hister import browser bookmarks`           | Firefox, Chromium, and Ladybird bookmarks   | `bookmarks`               |
@@ -134,6 +135,52 @@ The following options apply to file imports:
 Running the command again replaces documents with the same source and absolute path. `--watch` synchronizes file changes while active; source removals always retain the indexed snapshots.
 
 The destination account and the `--global` or `--user-id` flags determine ownership. The `user` value on a watched directory is not resolved by this client side import.
+
+## Importing Sitemaps
+
+Use a sitemap to index a site's listed pages without following links on those pages:
+
+```bash
+hister import sitemap https://example.com/sitemap.xml
+hister import sitemap ./sitemap.xml
+hister import sitemap ./sitemap.xml.gz --label reference
+hister import sitemap - < sitemap.xml
+```
+
+The command accepts XML `urlset` files and `sitemapindex` files, including gzip compressed input. Index files are expanded by downloading their referenced sitemaps. Every `loc` must contain an absolute HTTP or HTTPS URL, including references inside a local index file. Duplicate page URLs and repeated sitemap references are processed once. Image and video extension URLs are not imported as pages.
+
+The importer reads the complete sitemap collection before creating a persistent crawl job in the local Hister database. Malformed XML, invalid URLs, or a failed sitemap download stop discovery without indexing a partial collection. Each XML file is limited to 50 MiB after decompression and 50,000 entries, following the [Sitemap protocol](https://www.sitemaps.org/protocol.html). An import can read up to 50,000 distinct sitemap files. Empty collections are reported as errors.
+
+Listed pages are fetched and submitted to the configured Hister server. Existing documents are skipped by default; use `--force` to replace them. Sitemap metadata such as `lastmod`, `priority`, and `changefreq` does not control page fetching or search ranking. Sitemap discovery itself does not save page content or eliminate the need to fetch each page.
+
+The following options apply to sitemap imports:
+
+| Flag                                                         | Purpose                                             |
+| ------------------------------------------------------------ | --------------------------------------------------- |
+| `--label LABEL`                                              | Replace the default `sitemap` label                 |
+| `--force`                                                    | Fetch and replace pages that are already indexed    |
+| `--backend http\|chromedp\|bidi`                             | Select the backend for fetching listed pages        |
+| `--backend-option KEY=VALUE`                                 | Configure the selected page backend                 |
+| `--proxy URL`, `--header KEY=VALUE`, `--cookie VALUE`        | Apply crawler proxy, header, and cookie settings    |
+| `--delay SECONDS`, `--timeout SECONDS`, `--user-agent VALUE` | Override crawler request settings                   |
+| `--no-robots`                                                | Disable robots checks for sitemaps and listed pages |
+| `--failed-urls FILE`                                         | Write failed page URLs to a file                    |
+| `--format text\|json\|jsonl\|csv`                            | Select the result summary format                    |
+| `--global`, `--user-id ID`                                   | Set destination ownership when authorized           |
+| `--ignore-rules`                                             | Bypass URL allow and skip rules for submitted pages |
+| `--allow-sensitive`                                          | Skip sensitive content checks                       |
+
+Sitemaps are always downloaded with HTTP, even when a browser backend fetches the listed pages. Crawler proxy, headers, cookies, user agent, timeout, and delay settings apply to sitemap requests too. Robots checks are enabled unless disabled in configuration or with `--no-robots`.
+
+Once discovery finishes, the command prints a job ID. Inspect and resume that job using the existing crawl commands:
+
+```bash
+hister crawl show JOB_ID
+hister crawl errors JOB_ID
+hister index --job-id JOB_ID
+```
+
+The stored job retains its page queue, label, and restriction to listed URLs. When resuming, supply any command line overrides for crawler settings, destination ownership, `--force`, `--ignore-rules`, or `--allow-sensitive` again. Interrupted sitemap discovery must be started again; only the page crawl is resumable.
 
 ## Importing Browser History
 

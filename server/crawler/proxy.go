@@ -9,6 +9,7 @@ import (
 	"strings"
 )
 
+// parseProxyURL validates the proxy formats supported by Hister.
 func parseProxyURL(raw string) (*url.URL, error) {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
@@ -39,6 +40,7 @@ func parseProxyURL(raw string) (*url.URL, error) {
 	return proxyURL, nil
 }
 
+// transportWithProxy clones the default transport, overriding the proxy when set.
 func transportWithProxy(proxyURL *url.URL) *http.Transport {
 	transport := http.DefaultTransport.(*http.Transport).Clone()
 	if proxyURL != nil {
