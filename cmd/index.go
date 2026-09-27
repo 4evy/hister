@@ -382,22 +382,26 @@ func runPersistentIndexJob(
 }
 
 func init() {
-	addURLInputFlags(indexCmd)
-	indexCmd.Flags().String("label", "", "Label to attach to all indexed documents")
-	indexCmd.Flags().Bool("ignore-rules", false, ignoreRulesFlagUsage)
-	indexCmd.Flags().BoolP("recursive", "r", false, "Recursively crawl linked pages")
-	indexCmd.Flags().Int("max-depth", 0, "Maximum crawl depth (0 = unlimited)")
-	indexCmd.Flags().Int("max-links", 0, "Maximum number of pages to visit (0 = unlimited)")
-	indexCmd.Flags().StringArray("allowed-domain", nil, "Domain to allow during crawl (repeatable; empty = all)")
-	indexCmd.Flags().StringArray("exclude-domain", nil, "Domain to exclude during crawl (repeatable)")
-	indexCmd.Flags().StringArray("allowed-pattern", nil, "Regexp pattern URLs must match to be followed (repeatable; empty = all)")
-	indexCmd.Flags().StringArray("exclude-pattern", nil, "Regexp pattern; matching URLs are skipped (repeatable)")
-	indexCmd.Flags().String("input", "", "Read one URL per line from a file, or from standard input with -; creates a persistent crawl job and replaces positional URLs")
-	indexCmd.Flags().String("url-list", "", "Deprecated alias for --input")
-	if err := indexCmd.Flags().MarkDeprecated("url-list", "use --input instead"); err != nil {
+	addIndexFlags(indexCmd)
+}
+
+func addIndexFlags(cmd *cobra.Command) {
+	addURLInputFlags(cmd)
+	cmd.Flags().String("label", "", "Label to attach to all indexed documents")
+	cmd.Flags().Bool("ignore-rules", false, ignoreRulesFlagUsage)
+	cmd.Flags().BoolP("recursive", "r", false, "Recursively crawl linked pages")
+	cmd.Flags().Int("max-depth", 0, "Maximum crawl depth (0 = unlimited)")
+	cmd.Flags().Int("max-links", 0, "Maximum number of pages to visit (0 = unlimited)")
+	cmd.Flags().StringArray("allowed-domain", nil, "Domain to allow during crawl (repeatable; empty = all)")
+	cmd.Flags().StringArray("exclude-domain", nil, "Domain to exclude during crawl (repeatable)")
+	cmd.Flags().StringArray("allowed-pattern", nil, "Regexp pattern URLs must match to be followed (repeatable; empty = all)")
+	cmd.Flags().StringArray("exclude-pattern", nil, "Regexp pattern; matching URLs are skipped (repeatable)")
+	cmd.Flags().String("input", "", "Read one URL per line from a file, or from standard input with -; creates a persistent crawl job and replaces positional URLs")
+	cmd.Flags().String("url-list", "", "Deprecated alias for --input")
+	if err := cmd.Flags().MarkDeprecated("url-list", "use --input instead"); err != nil {
 		panic(err)
 	}
-	indexCmd.Flags().String("job-id", "", "Persistent crawl job ID; use with --recursive to start a new job or alone to resume an existing one")
+	cmd.Flags().String("job-id", "", "Persistent crawl job ID; use with --recursive to start a new job or alone to resume an existing one")
 }
 
 func indexURL(ctx context.Context, cr crawler.Crawler, u string, label string, clientOpts ...client.Option) error {

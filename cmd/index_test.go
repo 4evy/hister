@@ -58,7 +58,6 @@ printf '%s\n' '{"title":"Video title","description":"Video description"}'
 				},
 			}
 			cmd := newIndexTestCommand()
-			cmd.Flags().Bool("recursive", false, "")
 			indexCmd.PreRun(cmd, nil)
 
 			d := &document.Document{
@@ -76,10 +75,8 @@ printf '%s\n' '{"title":"Video title","description":"Video description"}'
 }
 
 func newIndexTestCommand() *cobra.Command {
-	cmd := &cobra.Command{Use: "index [URL...]"}
-	cmd.Flags().String("job-id", "", "")
-	cmd.Flags().String("input", "", "")
-	cmd.Flags().String("url-list", "", "")
+	cmd := &cobra.Command{Use: indexCmd.Use, Args: validateIndexArgs, RunE: indexCmd.RunE}
+	addIndexFlags(cmd)
 	return cmd
 }
 
