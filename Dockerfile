@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1
 
 # Build the frontend with only the workspaces required by the embedded app.
-FROM node:26-alpine3.24@sha256:dbaa92e5758cbbcf85d65d5403fdb530fe3442cbe8c6dbfb7ef23365450d5070 AS frontend
+FROM node:26-alpine3.24@sha256:0b36e8c136b94cd4fcf02188228e76c31ad5872eef3fec8cbd2eee500cfd9e80 AS frontend
 
 WORKDIR /app
 
