@@ -76,9 +76,13 @@ func TestImportSitemapQueuesOnlyListedPages(t *testing.T) {
 			server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				switch r.URL.Path {
 				case "/sitemap.xml":
-					fmt.Fprintf(w, `<urlset><url><loc>%s/page</loc></url><url><loc>%s/page</loc></url><url><loc>%s/existing</loc></url><url><loc>%s/blocked</loc></url></urlset>`, server.URL, server.URL, server.URL, server.URL)
+					if _, err := fmt.Fprintf(w, `<urlset><url><loc>%s/page</loc></url><url><loc>%s/page</loc></url><url><loc>%s/existing</loc></url><url><loc>%s/blocked</loc></url></urlset>`, server.URL, server.URL, server.URL, server.URL); err != nil {
+						t.Error(err)
+					}
 				case "/robots.txt":
-					fmt.Fprint(w, "User-agent: *\nDisallow: /blocked\n")
+					if _, err := fmt.Fprint(w, "User-agent: *\nDisallow: /blocked\n"); err != nil {
+						t.Error(err)
+					}
 				case "/api/document":
 					if !strings.HasSuffix(r.URL.Query().Get("url"), "/existing") {
 						w.WriteHeader(http.StatusNotFound)
@@ -91,7 +95,9 @@ func TestImportSitemapQueuesOnlyListedPages(t *testing.T) {
 						t.Error("existing page fetched without --force")
 					}
 					w.Header().Set("Content-Type", "text/html")
-					fmt.Fprint(w, `<html><head><title>Sitemap page</title></head><body><p>Content of the listed page.</p><a href="/unlisted">Do not crawl this page</a></body></html>`)
+					if _, err := fmt.Fprint(w, `<html><head><title>Sitemap page</title></head><body><p>Content of the listed page.</p><a href="/unlisted">Do not crawl this page</a></body></html>`); err != nil {
+						t.Error(err)
+					}
 				case "/api/add":
 					var doc document.Document
 					if err := json.NewDecoder(r.Body).Decode(&doc); err != nil {

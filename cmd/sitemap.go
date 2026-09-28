@@ -4,7 +4,6 @@ package cmd
 
 import (
 	"fmt"
-	"io"
 	"net/url"
 	"os"
 	"path"
@@ -80,7 +79,7 @@ func readSitemapInput(cmd *cobra.Command, reader *sitemapReader, source string) 
 	if strings.HasPrefix(source, "http://") || strings.HasPrefix(source, "https://") {
 		return reader.Fetch(cmd.Context(), source)
 	}
-	var input io.Reader = cmd.InOrStdin()
+	input := cmd.InOrStdin()
 	if source != "-" {
 		file, openErr := os.Open(files.ExpandHome(source))
 		if openErr != nil {

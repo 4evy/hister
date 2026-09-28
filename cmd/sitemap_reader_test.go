@@ -128,13 +128,19 @@ func TestSitemapReaderExpandsIndexesAndDeduplicates(t *testing.T) {
 		}
 		switch req.URL.Path {
 		case "/index.xml":
-			fmt.Fprintf(w, `<sitemapindex><sitemap><loc>%s/one.xml.gz</loc></sitemap><sitemap><loc>%s/nested.xml</loc></sitemap><sitemap><loc>%s/one.xml.gz</loc></sitemap></sitemapindex>`, server.URL, server.URL, server.URL)
+			if _, err := fmt.Fprintf(w, `<sitemapindex><sitemap><loc>%s/one.xml.gz</loc></sitemap><sitemap><loc>%s/nested.xml</loc></sitemap><sitemap><loc>%s/one.xml.gz</loc></sitemap></sitemapindex>`, server.URL, server.URL, server.URL); err != nil {
+				t.Error(err)
+			}
 		case "/nested.xml":
-			fmt.Fprintf(w, `<sitemapindex><sitemap><loc>%s/index.xml</loc></sitemap><sitemap><loc>%s/two.xml</loc></sitemap></sitemapindex>`, server.URL, server.URL)
+			if _, err := fmt.Fprintf(w, `<sitemapindex><sitemap><loc>%s/index.xml</loc></sitemap><sitemap><loc>%s/two.xml</loc></sitemap></sitemapindex>`, server.URL, server.URL); err != nil {
+				t.Error(err)
+			}
 		case "/one.xml.gz":
 			_, _ = w.Write(gzipSitemap(t, `<urlset><url><loc>https://example.com/one</loc></url><url><loc>https://example.com/one#fragment</loc></url></urlset>`))
 		case "/two.xml":
-			fmt.Fprint(w, `<urlset><url><loc>https://example.com/one</loc></url><url><loc>https://example.com/two</loc></url></urlset>`)
+			if _, err := fmt.Fprint(w, `<urlset><url><loc>https://example.com/one</loc></url><url><loc>https://example.com/two</loc></url></urlset>`); err != nil {
+				t.Error(err)
+			}
 		default:
 			t.Errorf("unexpected fetch: %s", req.URL)
 		}
@@ -170,7 +176,9 @@ func TestSitemapReaderExpandsIndexesAndDeduplicates(t *testing.T) {
 func TestSitemapReaderErrors(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/robots.txt" {
-			fmt.Fprint(w, "User-agent: *\nDisallow: /blocked\n")
+			if _, err := fmt.Fprint(w, "User-agent: *\nDisallow: /blocked\n"); err != nil {
+				t.Error(err)
+			}
 			return
 		}
 		http.Error(w, "missing", http.StatusNotFound)

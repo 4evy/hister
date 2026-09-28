@@ -44,8 +44,7 @@ func TestIndexSubmissionFlags(t *testing.T) {
 			cfg.Crawler.Delay = 0
 			cfg.Crawler.Timeout = 2
 			var submitted []document.Document
-			var server *httptest.Server
-			server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				switch r.URL.Path {
 				case "/api/document", "/api/add":
 					if got := r.Header.Get("X-Hister-Target-User-ID"); got != tc.owner {
@@ -69,7 +68,9 @@ func TestIndexSubmissionFlags(t *testing.T) {
 					if tc.noRobots {
 						t.Error("--no-robots should bypass robots requests")
 					}
-					fmt.Fprint(w, "User-agent: *\nDisallow: /blocked\n")
+					if _, err := fmt.Fprint(w, "User-agent: *\nDisallow: /blocked\n"); err != nil {
+						t.Error(err)
+					}
 				case "/page", "/existing", "/blocked":
 					if r.URL.Path == "/existing" && !tc.force || r.URL.Path == "/blocked" && !tc.noRobots {
 						t.Errorf("fetched a page that should be skipped: %s", r.URL.Path)
@@ -82,7 +83,9 @@ func TestIndexSubmissionFlags(t *testing.T) {
 						t.Errorf("crawler cookie = %v, %v", cookie, err)
 					}
 					w.Header().Set("Content-Type", "text/html")
-					fmt.Fprint(w, `<html><head><title>Flag test</title></head><body><p>Page content.</p><a href="/unlisted">Unlisted page</a></body></html>`)
+					if _, err := fmt.Fprint(w, `<html><head><title>Flag test</title></head><body><p>Page content.</p><a href="/unlisted">Unlisted page</a></body></html>`); err != nil {
+						t.Error(err)
+					}
 				case "/missing", "/favicon.ico":
 					w.WriteHeader(http.StatusNotFound)
 				default:
