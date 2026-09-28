@@ -1,116 +1,524 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { fetchConfig } from '$lib/api';
+  import { base } from '$app/paths';
+  import { fetchConfig, type AppConfig } from '$lib/api';
+  import { hotkeyDescriptions } from '$lib/hotkeys';
+  import { Button } from '@hister/components/ui/button';
   import { Kbd } from '@hister/components/ui/kbd';
-  import { PageHeader } from '@hister/components';
+  import { ArrowRight, ArrowUpRight, Keyboard, Search } from '@lucide/svelte';
 
-  let canWrite = $state(true);
+  interface QueryExample {
+    query: string;
+    description: string;
+  }
 
-  onMount(async () => {
-    const cfg = await fetchConfig();
-    canWrite = cfg.canWrite;
+  let config = $state<AppConfig | null>(null);
+  let configError = $state(false);
+  const shortcuts = $derived(
+    Object.entries(config?.hotkeys ?? {}).filter(
+      ([, action]) =>
+        (config?.canWrite || action !== 'delete_result') &&
+        (!config?.disablePreviews || action !== 'view_result_popup'),
+    ),
+  );
+
+  onMount(() => {
+    fetchConfig()
+      .then((value) => (config = value))
+      .catch(() => (configError = true));
   });
+
+  const sections = [
+    { id: 'syntax', title: 'Search syntax' },
+    { id: 'shortcuts', title: 'Keyboard shortcuts' },
+    { id: 'fields', title: 'Field filters' },
+    { id: 'dates', title: 'Dates and sorting' },
+    { id: 'aliases', title: 'Search aliases' },
+    { id: 'troubleshooting', title: 'Troubleshooting' },
+  ];
+
+  const basicExamples: QueryExample[] = [
+    { query: 'golang template', description: 'Require both terms.' },
+    { query: '"free software"', description: 'Match an exact phrase using double quotes.' },
+    { query: 'secur*', description: 'Use * to match words such as "secure" or "security".' },
+    { query: 'golang -javascript', description: 'Exclude documents containing "javascript".' },
+    {
+      query: '(go|golang) template',
+      description: 'Match either "go" or "golang", and require "template".',
+    },
+    { query: '*', description: 'Show all documents available to you.' },
+  ];
+
+  const fieldExamples: QueryExample[] = [
+    { query: 'domain:github.com', description: 'Limit results to a domain.' },
+    { query: 'title:"getting started"', description: 'Match a phrase in document titles.' },
+    { query: 'text:encryption', description: 'Search only document content.' },
+    { query: 'url:*/docs/*', description: 'Match a pattern in page addresses.' },
+    {
+      query: 'type:file budget',
+      description: 'Search both local files and imported file snapshots.',
+    },
+    { query: 'language:en', description: 'Filter by detected language.' },
+    { query: 'label:research', description: 'Find documents with a matching label.' },
+    {
+      query: 'visits:5..9',
+      description: 'Match visit counts from 5 through 9. Use visits:10.. for 10 or more.',
+    },
+  ];
+
+  const dateExamples: QueryExample[] = [
+    { query: 'added:<7d', description: 'Documents first indexed within the last 7 days.' },
+    { query: 'updated:>90d', description: 'Documents not updated for more than 90 days.' },
+    {
+      query: 'updated:>=2026-04-01 updated:<2026-05-01',
+      description: 'Documents updated during April 2026.',
+    },
+  ];
+
+  const sortExamples: QueryExample[] = [
+    { query: 'golang sort:date', description: 'Most recently updated documents first.' },
+    { query: 'golang sort:-date', description: 'Least recently updated documents first.' },
+    { query: 'golang sort:visits', description: 'Most visited documents first.' },
+    { query: 'golang sort:domain', description: 'Order by domain from A to Z.' },
+  ];
+
+  const urlRegexp = 'url_re:^https://example\\.com/private/';
 </script>
 
 <svelte:head>
-  <title>Hister - Help</title>
+  <title>Hister · Help</title>
+  <meta
+    name="description"
+    content="Search syntax, field filters, date ranges, keyboard shortcuts, and troubleshooting for the Hister web interface."
+  />
 </svelte:head>
 
-<div class="flex-1 overflow-y-auto px-4 py-6 md:px-12 md:py-10">
-  <PageHeader color="hister-indigo" class="mx-auto mb-8 max-w-3xl">Help</PageHeader>
-  <div
-    class="prose prose-neutral dark:prose-invert prose-headings:font-outfit prose-headings:font-extrabold prose-h1:text-text-brand prose-h2:text-text-brand prose-h3:text-text-brand prose-p:font-inter prose-p:text-text-brand-secondary prose-li:font-inter prose-li:text-text-brand-secondary prose-a:text-hister-indigo prose-a:no-underline hover:prose-a:underline prose-strong:text-text-brand prose-hr:border-border-brand-muted mx-auto max-w-3xl"
+{#snippet docLink(path: string, label: string)}
+  <a
+    class="text-link"
+    href={`https://hister.org/docs/${path}`}
+    target="_blank"
+    rel="noopener noreferrer"
   >
-    <h2>Search Shortcuts</h2>
-    <p>
-      Press <Kbd>enter</Kbd> to open the first result. Alternatively press <Kbd>alt+enter</Kbd> to open
-      in new tab.
-    </p>
-    <p>
-      Navigate in results with <Kbd>alt+j</Kbd> and <Kbd>alt+k</Kbd>. <Kbd>Enter</Kbd>/<Kbd
-        >alt+enter</Kbd
-      > opens the selected result.
-    </p>
-    <p>Press <Kbd>alt+o</Kbd> to open the search query in the configured search engine.</p>
+    {label}<ArrowUpRight class="size-4 shrink-0" aria-hidden="true" />
+  </a>
+{/snippet}
 
-    <h2>Search Syntax</h2>
-    <p>Use <Kbd>quotes</Kbd> to match phrases.</p>
-    <p>Use <Kbd>*</Kbd> for wildcard matches.</p>
-    <p>Prefix words or phrases with <Kbd>-</Kbd> to exclude matching documents.</p>
-    <p>Use <code>url:</code> prefix to search only in the URL field.</p>
-    <p>
-      Use <code>url_re:</code> with a Go regular expression to match complete page addresses. Quotes
-      are optional unless the expression contains whitespace. For example,
-      <code>url_re:^https://example\.com/private/</code>.
-    </p>
-    <p>
-      Use <code>visits:</code> to filter by visit count, such as <code>visits:1</code>,
-      <code>visits:2..4</code>, or <code>visits:10..</code>.
-    </p>
-    <p>
-      Use <code>added:</code> and <code>updated:</code> to filter by relative time or an absolute
-      <code>YYYY-MM-DD</code> date, such as <code>updated:&gt;90d</code> or
-      <code>added:&gt;=2026-04-01</code>.
-    </p>
-    <p>
-      Use <code>sort:date</code>, <code>sort:visits</code>, <code>sort:domain</code>, or
-      <code>sort:relevance</code> to control result order.
-    </p>
-    <p>
-      Prefix the sort value with a minus sign to reverse its direction. For example,
-      <code>sort:-date</code> shows the oldest results first.
-    </p>
+{#snippet queryExamples(examples: QueryExample[], columns = false)}
+  <ul class="example-list {columns ? 'md:grid md:grid-cols-2 md:gap-x-8' : ''}">
+    {#each examples as example (example.query)}
+      <li>
+        <a class="example-link group" href={`${base}/?q=${encodeURIComponent(example.query)}`}>
+          <span class="min-w-0">
+            <code>{example.query}</code>
+            <span class="text-text-brand-secondary mt-1.5 block text-sm leading-relaxed"
+              >{example.description}</span
+            >
+          </span>
+          <ArrowRight
+            class="text-text-brand-muted group-hover:text-text-brand mt-1 size-4 shrink-0"
+            aria-hidden="true"
+          />
+        </a>
+      </li>
+    {/each}
+  </ul>
+{/snippet}
 
-    <h3>Examples</h3>
-    <p>
-      <code>"free software" url:*wikipedia.org*</code>: Search for the phrase "free software" only
-      in URLs containing wikipedia.org.
-    </p>
-    <p>
-      <code>golang template -url:*stackoverflow*</code>: Search sites containing both "golang" and
-      "template" but the website's URL should not contain "stackoverflow".
-    </p>
-    <p>
-      <code>project docs visits:5..9</code>: Search matching pages that have been visited between 5
-      and 9 times.
-    </p>
-    <p>
-      <code>updated:&gt;90d</code>: Search pages that have not been updated in more than 90 days.
-    </p>
-    <p>
-      <code>updated:&gt;=2026-04-01 updated:&lt;2026-05-01</code>: Search pages updated during April
-      2026. Absolute dates represent midnight UTC.
-    </p>
-    <p><code>golang sort:date</code>: Search for golang and show the newest results first.</p>
-    <p><code>golang sort:-date</code>: Search for golang and show the oldest results first.</p>
+<div class="help-page flex-1 overflow-y-auto px-4 py-6 md:px-10 md:py-12">
+  <div class="mx-auto max-w-6xl space-y-10 md:space-y-14">
+    <section
+      class="page-intro grid gap-8 p-6 md:p-10 lg:grid-cols-[1.4fr_1fr] lg:gap-12"
+      aria-labelledby="help-title"
+    >
+      <div>
+        <h1
+          id="help-title"
+          class="font-outfit text-4xl leading-tight font-bold tracking-tight sm:text-5xl"
+        >
+          Help
+        </h1>
+        <p class="text-text-brand-secondary mt-4 max-w-xl text-base leading-relaxed">
+          Search syntax, keyboard shortcuts, and common tasks in the web interface. Searches run
+          against documents indexed by this Hister server.
+        </p>
+        <div class="mt-6 flex flex-wrap items-center gap-4">
+          <Button
+            href={`${base}/`}
+            class="font-space shadow-brutal-sm gap-3 px-5 font-bold hover:no-underline"
+          >
+            <Search class="size-4" aria-hidden="true" />Search
+          </Button>
+          {@render docLink('query-language', 'Query language guide')}
+        </div>
+        <p class="text-text-brand-secondary mt-5 text-sm">
+          For setup and indexing instructions, see <a class="text-link" href={`${base}/about`}
+            >About Hister</a
+          >.
+        </p>
+      </div>
+      <nav
+        class="border-border-brand bg-card-surface self-center border p-5"
+        aria-label="On this page"
+      >
+        <p class="eyebrow mb-3">On this page</p>
+        <ul class="grid gap-x-5 gap-y-1 sm:grid-cols-2">
+          {#each sections as section (section.id)}
+            <li>
+              <a class="section-link" href={`#${section.id}`}
+                >{section.title}<ArrowRight class="size-3.5 shrink-0" aria-hidden="true" /></a
+              >
+            </li>
+          {/each}
+        </ul>
+      </nav>
+    </section>
 
-    <h2>Search Aliases</h2>
-    {#if canWrite}
-      <p>
-        Queries can become long and complex quickly. Aliases can be defined in the <a href="/rules"
-          >rules</a
-        > page to shorten common query parts.
+    <div class="grid items-start gap-8 lg:grid-cols-[1.3fr_1fr] lg:gap-12">
+      <section id="syntax" aria-labelledby="syntax-title">
+        <h2 id="syntax-title" class="section-title">Search syntax</h2>
+        <p class="section-intro">
+          Separate terms with spaces to require all of them. Select any query example on this page
+          to run it against your index.
+        </p>
+        {@render queryExamples(basicExamples)}
+        <div class="mt-4">
+          {@render docLink('query-language#combining-query-types', 'Combining queries')}
+        </div>
+      </section>
+
+      <section
+        id="shortcuts"
+        class="border-border-brand bg-card-surface border p-5 md:p-6"
+        aria-labelledby="shortcuts-title"
+      >
+        <h2 id="shortcuts-title" class="font-outfit flex items-center gap-3 text-2xl font-bold">
+          <Keyboard class="text-hister-indigo size-6 shrink-0" aria-hidden="true" />Keyboard
+          shortcuts
+        </h2>
+        <p class="section-intro">
+          These bindings apply on the search page and reflect this server's configuration.
+        </p>
+        {#if config}
+          {#if shortcuts.length > 0}
+            <dl class="mt-4">
+              {#each shortcuts as [key, action] (key)}
+                <div
+                  class="border-border-brand-muted flex items-center justify-between gap-4 border-b py-2.5 last:border-b-0"
+                >
+                  <dt class="text-text-brand-secondary text-sm">
+                    {hotkeyDescriptions[action] ?? action}
+                  </dt>
+                  <dd class="shrink-0">
+                    <Kbd class="font-fira text-text-brand m-0 h-auto border px-2 py-1 text-xs"
+                      >{key}</Kbd
+                    >
+                  </dd>
+                </div>
+              {/each}
+            </dl>
+          {:else}
+            <p class="text-text-brand-secondary mt-4 text-sm">
+              No keyboard shortcuts are configured.
+            </p>
+          {/if}
+        {:else}
+          <p class="text-text-brand-secondary mt-4 text-sm" role="status">
+            {configError
+              ? 'Could not load shortcuts. Open the search page menu to view its keyboard shortcuts.'
+              : 'Loading configured shortcuts...'}
+          </p>
+        {/if}
+        <p class="text-text-brand-secondary mt-4 text-xs leading-relaxed">
+          Open result uses the selected result, or the first result if none is selected. Open in
+          search engine sends your query to the configured external search engine.
+        </p>
+        <div class="mt-4">
+          {@render docLink('configuration#hotkeysweb-section', 'Configure shortcuts')}
+        </div>
+      </section>
+    </div>
+
+    <section id="fields" aria-labelledby="fields-title">
+      <h2 id="fields-title" class="section-title">Field filters</h2>
+      <p class="section-intro">
+        Use <code>field:value</code> to limit a search to a specific field. Combine filters with keywords
+        or with other filters.
       </p>
-    {/if}
+      {@render queryExamples(fieldExamples, true)}
+      <div class="mt-5 grid gap-5 md:grid-cols-2 md:gap-8">
+        <div class="reference-note">
+          <h3 class="font-outfit text-lg font-bold">Document types and exclusions</h3>
+          <p class="text-text-brand-secondary mt-2 text-sm leading-relaxed">
+            Use <code>type:web</code> for web pages, <code>type:local</code> for watched files, and
+            <code>type:remote</code> for imported file snapshots. <code>type:file</code> includes both
+            file types.
+          </p>
+          <p class="text-text-brand-secondary mt-3 text-sm leading-relaxed">
+            A leading minus sign excludes a filter. For example, <a
+              class="query-link"
+              href={`${base}/?q=${encodeURIComponent('golang -domain:stackoverflow.com')}`}
+              ><code>golang -domain:stackoverflow.com</code></a
+            > excludes results from that domain.
+          </p>
+        </div>
+        <div class="reference-note">
+          <h3 class="font-outfit text-lg font-bold">URL regular expressions</h3>
+          <p class="text-text-brand-secondary mt-2 text-sm leading-relaxed">
+            <code>url_re:</code> matches normalized URLs with a Go regular expression. Use quotes if
+            the expression contains spaces. Anchor with <code>^</code> to match the start of a URL.
+          </p>
+          <a class="query-link mt-3 block" href={`${base}/?q=${encodeURIComponent(urlRegexp)}`}
+            ><code>{urlRegexp}</code></a
+          >
+          <div class="mt-3">
+            {@render docLink('query-language#url-regular-expressions', 'Regular expression syntax')}
+          </div>
+        </div>
+      </div>
+    </section>
 
-    <h3>Examples</h3>
-    <p>
-      <code>go</code> alias for <code>(go|golang)</code> matches either "go" or "golang" if you type "go".
-    </p>
-    <p>
-      <code>!so</code> alias for <code>url:*stackoverflow.com*</code> matches only sites where the URL
-      contains "stackoverflow.com".
-    </p>
+    <section id="dates" aria-labelledby="dates-title">
+      <h2 id="dates-title" class="section-title">Dates and sorting</h2>
+      <div class="mt-5 grid gap-8 lg:grid-cols-2 lg:gap-12">
+        <div>
+          <h3 class="font-outfit text-xl font-bold">Filter by date</h3>
+          <p class="section-intro">
+            <code>added:</code> is the first indexing time. <code>updated:</code> is the last update
+            time. Relative values compare elapsed age: <code>&lt;7d</code> means newer than 7 days,
+            and <code>&gt;90d</code> means older than 90 days.
+          </p>
+          {@render queryExamples(dateExamples)}
+          <p class="text-text-brand-secondary mt-4 text-sm leading-relaxed">
+            Durations support seconds (<code>s</code>), minutes (<code>m</code>), hours (<code
+              >h</code
+            >), days (<code>d</code>), and weeks (<code>w</code>). Absolute dates use
+            <code>YYYY-MM-DD</code> at midnight UTC. Use the following day as an exclusive upper bound
+            to include an entire day.
+          </p>
+        </div>
+        <div>
+          <h3 class="font-outfit text-xl font-bold">Set result order</h3>
+          <p class="section-intro">
+            <code>sort:relevance</code> is the default. Use <code>sort:</code> to change the order
+            and prefix its value with <code>-</code> to reverse it.
+          </p>
+          {@render queryExamples(sortExamples)}
+          <div class="mt-4">
+            {@render docLink('query-language#sorting-results', 'Sorting reference')}
+          </div>
+        </div>
+      </div>
+    </section>
 
-    <hr />
+    <section
+      id="aliases"
+      class="alias-section grid gap-6 p-5 md:p-7 lg:grid-cols-[1fr_1.2fr] lg:gap-10"
+      aria-labelledby="aliases-title"
+    >
+      <div>
+        <h2 id="aliases-title" class="section-title">Search aliases</h2>
+        <p class="section-intro">
+          Aliases replace a keyword with a query expression before a search runs. Define an alias on
+          the Rules page before using it.
+        </p>
+        <div class="mt-5 flex flex-wrap gap-x-5 gap-y-3">
+          {#if config?.canWrite}
+            <a class="text-link" href={`${base}/rules`}
+              >Manage aliases<ArrowRight class="size-4" aria-hidden="true" /></a
+            >
+          {/if}
+          {@render docLink('rules#aliases', 'Alias reference')}
+        </div>
+      </div>
+      <div class="min-w-0">
+        <h3 class="eyebrow mb-3">Example definitions</h3>
+        <dl class="space-y-3">
+          <div class="border-border-brand flex flex-wrap items-center gap-3 border-b pb-3">
+            <dt><code>go</code></dt>
+            <dd class="flex min-w-0 items-center gap-3">
+              <ArrowRight
+                class="text-text-brand-muted size-4 shrink-0"
+                aria-label="expands to"
+              /><code>(go|golang)</code>
+            </dd>
+          </div>
+          <div class="border-border-brand flex flex-wrap items-center gap-3 border-b pb-3">
+            <dt><code>!so</code></dt>
+            <dd class="flex min-w-0 items-center gap-3">
+              <ArrowRight
+                class="text-text-brand-muted size-4 shrink-0"
+                aria-label="expands to"
+              /><code>domain:stackoverflow.com</code>
+            </dd>
+          </div>
+        </dl>
+        <p class="text-text-brand-secondary mt-4 text-sm leading-relaxed">
+          With the second alias defined, <code>!so golang</code> expands to
+          <code>domain:stackoverflow.com golang</code>.
+        </p>
+      </div>
+    </section>
 
-    <h2>Documentation</h2>
-    <p>
-      Full project documentation is available at <a
-        href="https://hister.org/docs"
-        target="_blank"
-        rel="noopener noreferrer">hister.org/docs</a
-      >.
-    </p>
+    <section id="troubleshooting" aria-labelledby="troubleshooting-title">
+      <h2 id="troubleshooting-title" class="section-title">Troubleshooting</h2>
+      <div class="mt-5 grid gap-4 md:grid-cols-3">
+        <div class="reference-note">
+          <h3 class="font-outfit text-lg font-bold">No results</h3>
+          <p class="text-text-brand-secondary mt-2 text-sm leading-relaxed">
+            Remove filters and try a single keyword. Search for <a
+              class="query-link"
+              href={`${base}/?q=*`}><code>*</code></a
+            > to check which documents are available. Hister searches its index, not the live web.
+          </p>
+          <div class="mt-4">
+            {@render docLink('query-language#troubleshooting-queries', 'Search troubleshooting')}
+          </div>
+        </div>
+        <div class="reference-note">
+          <h3 class="font-outfit text-lg font-bold">A page is missing</h3>
+          <p class="text-text-brand-secondary mt-2 text-sm leading-relaxed">
+            Check that the server is running and the extension uses the correct URL and token. Check
+            allow and skip rules. Browser history needs a separate import for pages you have not
+            revisited.
+          </p>
+          <div class="mt-4">
+            {@render docLink('browser-extension#troubleshooting', 'Extension troubleshooting')}
+          </div>
+        </div>
+        <div class="reference-note">
+          <h3 class="font-outfit text-lg font-bold">Unexpected matches</h3>
+          <p class="text-text-brand-secondary mt-2 text-sm leading-relaxed">
+            Check field names, closing quotes, and parentheses. Review aliases that may expand your
+            query. Use double quotes for a phrase and a domain filter to narrow the source.
+          </p>
+          <div class="mt-4">{@render docLink('troubleshooting', 'Troubleshooting guide')}</div>
+        </div>
+      </div>
+    </section>
+
+    <footer
+      class="border-border-brand flex flex-wrap items-center justify-between gap-4 border-t pt-6 pb-4"
+    >
+      <p class="text-text-brand-secondary text-sm">
+        For setup, imports, and server configuration, see the documentation.
+      </p>
+      {@render docLink('', 'All documentation')}
+    </footer>
   </div>
 </div>
+
+<style>
+  .help-page section[id] {
+    scroll-margin-top: 1.5rem;
+  }
+
+  .page-intro {
+    border: 2px solid var(--brutal-border);
+    background: var(--brutal-bg);
+    box-shadow: 6px 6px 0 color-mix(in srgb, var(--hister-indigo) 60%, var(--brutal-shadow));
+  }
+
+  .eyebrow {
+    font-family: var(--font-space);
+    font-size: 0.7rem;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+  }
+
+  .section-title {
+    font-family: var(--font-outfit);
+    font-size: clamp(1.6rem, 3vw, 2rem);
+    font-weight: 700;
+    line-height: 1.2;
+  }
+
+  .section-intro {
+    margin-top: 0.75rem;
+    color: var(--text-secondary-brand);
+    font-size: 0.875rem;
+    line-height: 1.7;
+  }
+
+  .text-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--text-primary-brand);
+    text-decoration: underline;
+    text-decoration-color: var(--border-brand);
+    text-underline-offset: 4px;
+  }
+
+  .text-link:hover {
+    text-decoration-color: var(--hister-indigo);
+  }
+
+  .section-link {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    padding: 0.5rem 0;
+    font-size: 0.8rem;
+    color: var(--text-primary-brand);
+  }
+
+  .example-list {
+    margin-top: 1.25rem;
+    border-top: 1px solid var(--border-brand);
+  }
+
+  .example-list li {
+    border-bottom: 1px solid var(--border-muted-brand);
+  }
+
+  .example-link {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 1rem;
+    height: 100%;
+    padding: 0.9rem 0.65rem;
+    color: var(--text-primary-brand);
+    text-decoration: none;
+  }
+
+  .example-link:hover {
+    background: var(--card-surface);
+  }
+
+  code {
+    font-family: var(--font-fira);
+    font-size: 0.8rem;
+    color: var(--text-primary-brand);
+    overflow-wrap: anywhere;
+  }
+
+  .example-link code {
+    background: transparent;
+    padding: 0;
+  }
+
+  .query-link {
+    text-decoration: underline;
+    text-decoration-color: var(--border-brand);
+    text-underline-offset: 4px;
+  }
+
+  .reference-note {
+    min-width: 0;
+    padding: 1.25rem;
+    border: 1px solid var(--border-brand);
+    background: var(--card-surface);
+  }
+
+  .alias-section {
+    border: 1px solid var(--border-brand);
+    border-left: 4px solid var(--hister-teal);
+    background: var(--card-surface);
+  }
+</style>
