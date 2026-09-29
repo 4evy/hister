@@ -1243,6 +1243,12 @@ func (i *Indexer) addDocument(ctx context.Context, d *document.Document, increme
 		if err := ctx.Err(); err != nil {
 			return err
 		}
+		// Extractor output can contain URLs from untrusted HTML. Validate each
+		// extra document before processing can read a local file.
+		if err := i.validateFileDocument(extra); err != nil {
+			log.Warn().Err(err).Str("url", extra.URL).Msg("failed to index extra document")
+			continue
+		}
 		if ignoreRules {
 			extra.SetIgnoreSkipRules(true)
 		}

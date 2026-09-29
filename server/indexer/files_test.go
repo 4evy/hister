@@ -75,6 +75,77 @@ func TestAddFunctionsValidateFileDocuments(t *testing.T) {
 	}
 }
 
+func TestExtractorExtraDocumentsCannotReadLocalFiles(t *testing.T) {
+	for _, mode := range []string{"single", "direct", "batch"} {
+		for _, nested := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/nested=%t", mode, nested), func(t *testing.T) {
+				idx := newTestIndexer(t, testutil.Config(t))
+				t.Cleanup(idx.Close)
+				path := filepath.Join(t.TempDir(), "secret.txt")
+				const secret = "extractorfileregressionsecret"
+				if err := os.WriteFile(path, []byte(secret), 0o600); err != nil {
+					t.Fatal(err)
+				}
+				fileURL := files.PathToFileURL(path)
+				const validURL = "https://example.com/@alice/123"
+				payload := &document.Document{
+					URL:    "https://example.com/",
+					UserID: 1,
+					HTML: fmt.Sprintf(`<span>"repository":"mastodon/mastodon"</span>
+<div class="status"><a class="status__relative-time" href="%s"></a><div class="status__content"></div></div>
+<div class="status"><a class="status__relative-time" href="%s"></a><div class="status__content">Public toot</div></div>`, fileURL, validURL),
+				}
+				root := payload
+				if nested {
+					root = &document.Document{
+						URL:            "https://example.com/root",
+						Text:           "Parent document",
+						UserID:         1,
+						ExtraDocuments: []*document.Document{payload},
+					}
+				}
+				// Manual indexing overrides URL rules, but must retain file validation.
+				root.SetIgnoreSkipRules(true)
+				var err error
+				switch mode {
+				case "single":
+					err = idx.Add(root)
+				case "direct":
+					err = idx.AddDocument(root)
+				case "batch":
+					batch := idx.NewMultiBatch()
+					err = batch.Add(root)
+					if err == nil {
+						err = batch.Save()
+					}
+				}
+				if err != nil {
+					t.Fatal(err)
+				}
+				if len(payload.ExtraDocuments) != 2 {
+					t.Fatalf("extracted %d documents, want 2", len(payload.ExtraDocuments))
+				}
+				if extra := payload.ExtraDocuments[0]; extra.Text != "" || extra.IsProcessed() {
+					t.Fatal("unsafe extra document was processed")
+				}
+				if idx.GetByURLAndUser(fileURL, 1) != nil {
+					t.Fatal("local file was indexed")
+				}
+				result, err := idx.Search(&Query{Text: secret, UserID: 1})
+				if err != nil {
+					t.Fatal(err)
+				}
+				if len(result.Documents) != 0 {
+					t.Fatal("local file content is searchable")
+				}
+				if doc := idx.GetByURLAndUser(validURL, 1); doc == nil || doc.Text != "Public toot" {
+					t.Fatal("valid sibling toot was not indexed")
+				}
+			})
+		}
+	}
+}
+
 func TestDirectoryUserResolution(t *testing.T) {
 	testutil.InitModel(t)
 
