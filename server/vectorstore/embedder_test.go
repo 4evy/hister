@@ -619,7 +619,7 @@ func TestEmbedQueryDeadlineWhileWaitingForQuerySlot(t *testing.T) {
 	e.queryTimeout = 40 * time.Millisecond
 	e.querySem <- struct{}{}
 	defer func() { <-e.querySem }()
-	_, err := e.EmbedQuery(nil, "query")
+	_, err := e.EmbedQuery(context.Background(), "query")
 	if !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatalf("error = %v, want deadline exceeded", err)
 	}
@@ -657,7 +657,7 @@ func TestEmbedQueryDeadlineCancelsRetry(t *testing.T) {
 		calls++
 		return &http.Response{StatusCode: 503, Body: http.NoBody, Header: make(http.Header), Request: r}, nil
 	})
-	_, err := e.EmbedQuery(nil, "query")
+	_, err := e.EmbedQuery(context.Background(), "query")
 	if !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatalf("error = %v", err)
 	}
