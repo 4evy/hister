@@ -32,6 +32,8 @@ type Embedder struct {
 	queryPrefix      string
 	documentPrefix   string
 	sem              chan struct{} // nil means unlimited concurrency
+	querySem         chan struct{} // queries do not queue with indexing
+	queryTimeout     time.Duration
 }
 
 // DocumentContext contains stable metadata used to contextualize document
@@ -60,6 +62,8 @@ type documentEmbeddingInput struct {
 const (
 	embeddingMaxAttempts      = 3
 	defaultEmbeddingTimeout   = 5 * time.Minute
+	defaultQueryTimeout       = 2 * time.Second
+	defaultQueryConcurrency   = 1
 	defaultEmbeddingBatchSize = 8
 	embeddingHeadroomDivisor  = 20 // Five percent
 )
@@ -84,9 +88,18 @@ func NewEmbedder(cfg *config.SemanticSearch) *Embedder {
 	if cfg.MaxEmbeddingConcurrency > 0 {
 		sem = make(chan struct{}, cfg.MaxEmbeddingConcurrency)
 	}
+	queryConcurrency := cfg.MaxQueryEmbeddingConcurrency
+	if queryConcurrency <= 0 {
+		queryConcurrency = defaultQueryConcurrency
+	}
+	querySem := make(chan struct{}, queryConcurrency)
 	timeout := time.Duration(cfg.EmbeddingTimeout) * time.Second
 	if timeout <= 0 {
 		timeout = defaultEmbeddingTimeout
+	}
+	queryTimeout := time.Duration(cfg.QueryEmbeddingTimeout) * time.Second
+	if queryTimeout <= 0 {
+		queryTimeout = defaultQueryTimeout
 	}
 	maxBatchSize := cfg.MaxEmbeddingBatchSize
 	if maxBatchSize <= 0 {
@@ -106,7 +119,9 @@ func NewEmbedder(cfg *config.SemanticSearch) *Embedder {
 		client: &http.Client{
 			Timeout: timeout,
 		},
-		sem: sem,
+		sem:          sem,
+		querySem:     querySem,
+		queryTimeout: queryTimeout,
 	}
 }
 
@@ -261,16 +276,17 @@ func (e *Embedder) doEmbeddingRequestOnce(ctx context.Context, input any) (_ *em
 }
 
 // doEmbeddingRequest sends an embedding request, retrying transient endpoint or
-// network failures while respecting the caller's context.
-func (e *Embedder) doEmbeddingRequest(ctx context.Context, input any) (*embeddingResponse, error) {
+// network failures while respecting the caller's context. sem bounds how many
+// requests of the same kind run at once; nil means unlimited.
+func (e *Embedder) doEmbeddingRequest(ctx context.Context, sem chan struct{}, input any) (*embeddingResponse, error) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
 
-	if e.sem != nil {
+	if sem != nil {
 		select {
-		case e.sem <- struct{}{}:
-			defer func() { <-e.sem }()
+		case sem <- struct{}{}:
+			defer func() { <-sem }()
 		case <-ctx.Done():
 			return nil, ctx.Err()
 		}
@@ -300,7 +316,11 @@ func (e *Embedder) doEmbeddingRequest(ctx context.Context, input any) (*embeddin
 
 // Embed converts a single text into a float32 vector.
 func (e *Embedder) Embed(ctx context.Context, text string) ([]float32, error) {
-	result, err := e.doEmbeddingRequest(ctx, text)
+	return e.embed(ctx, e.sem, text)
+}
+
+func (e *Embedder) embed(ctx context.Context, sem chan struct{}, text string) ([]float32, error) {
+	result, err := e.doEmbeddingRequest(ctx, sem, text)
 	if err != nil {
 		return nil, err
 	}
@@ -316,8 +336,18 @@ func (e *Embedder) Embed(ctx context.Context, text string) ([]float32, error) {
 // EmbedQuery embeds a search query, prepending the configured query prefix
 // (e.g. "search_query: ") when set. Many embedding models (BGE, E5, Nomic,
 // GTE) produce better recall when queries and documents use distinct prefixes.
+//
+// Queries use their own concurrency slots, separate from document indexing,
+// and a deadline covering query slot acquisition, HTTP requests, and retries.
+// The endpoint may still queue queries behind indexing requests. When the
+// deadline expires the caller can return its keyword results.
 func (e *Embedder) EmbedQuery(ctx context.Context, text string) ([]float32, error) {
-	return e.Embed(ctx, e.queryPrefix+text)
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	ctx, cancel := context.WithTimeout(ctx, e.queryTimeout)
+	defer cancel()
+	return e.embed(ctx, e.querySem, e.queryPrefix+text)
 }
 
 func embeddingVectors(result *embeddingResponse, dimensions int) ([][]float32, error) {
@@ -334,7 +364,7 @@ func embeddingVectors(result *embeddingResponse, dimensions int) ([][]float32, e
 // embedBatch converts one bounded batch, splitting it further when an endpoint
 // applies a context limit to the complete request.
 func (e *Embedder) embedBatch(ctx context.Context, texts []string) ([][]float32, error) {
-	result, err := e.doEmbeddingRequest(ctx, texts)
+	result, err := e.doEmbeddingRequest(ctx, e.sem, texts)
 	if err != nil {
 		if _, _, contextError := embeddingContextErrorDetails(err); contextError && len(texts) > 1 {
 			middle := len(texts) / 2

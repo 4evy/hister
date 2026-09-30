@@ -568,7 +568,19 @@ description: 'Explore every configuration section, option, default value, enviro
       name: 'max_embedding_concurrency',
       type: 'int',
       defaultValue: '2',
-      description: 'Maximum embedding workers and simultaneous endpoint requests. Increase this for fast remote endpoints. Values below one use the default of two.',
+      description: 'Maximum embedding workers and simultaneous indexing requests to the endpoint. Query requests have a separate limit. Values below one use the default of two.',
+    },
+    {
+      name: 'max_query_embedding_concurrency',
+      type: 'int',
+      defaultValue: '1',
+      description: 'Maximum simultaneous query embedding requests, independent of indexing. Values below one use the default of one. Total endpoint concurrency can reach the sum of both limits. Separate slots bypass the local indexing queue but do not reserve capacity or priority on the embedding server.',
+    },
+    {
+      name: 'query_embedding_timeout',
+      type: 'int',
+      defaultValue: '2',
+      description: 'Maximum seconds allowed for query slot acquisition, the embedding request, and retries combined. On timeout, the search returns its keyword results. This does not bound keyword retrieval or vector lookup. Increase it for slow hardware or model startup. Values below one use the default of two seconds; an earlier caller deadline or embedding_timeout still applies.',
     },
   ];
 </script>
@@ -750,6 +762,8 @@ The vector store backend is chosen automatically based on `server.database`:
 - **SQLite** (default) stores vectors in a separate `vectors.sqlite3` file in the same directory as the main database, using the [sqlite-vec](https://github.com/asg017/sqlite-vec) extension. No extra setup required.
 - **PostgreSQL** stores vectors in the same database as the main data using the [pgvector](https://github.com/pgvector/pgvector) extension. Hister uses an HNSW index with the `vector` type, which supports at most 2000 dimensions. Make sure `pgvector` is installed and enabled (`CREATE EXTENSION vector;`) before starting Hister.
 
+Use `HISTER__SEMANTIC_SEARCH__QUERY_EMBEDDING_TIMEOUT` and `HISTER__SEMANTIC_SEARCH__MAX_QUERY_EMBEDDING_CONCURRENCY` to override the query deadline and concurrency through environment variables. Changing these settings does not require reindexing.
+
 Set `semantic_search.dimensions` to the output size supported by your embedding endpoint. If the endpoint returns a different size, Hister rejects the embeddings. After changing dimensions with SQLite, restart Hister and run `hister reindex` to rebuild the vector table and regenerate embeddings. Existing vectors are preserved until reindexing begins, and startup logs report when the stored dimensions differ from the configuration.
 
 ### Example
@@ -770,6 +784,8 @@ semantic_search:
   result_limit: 10
   semantic_weight: 0.4
   max_embedding_concurrency: 2
+  max_query_embedding_concurrency: 1
+  query_embedding_timeout: 2
   # api_key: 'sk-...'            # required for hosted providers
   # headers: {}                  # extra HTTP headers for proxies or custom auth
 ```

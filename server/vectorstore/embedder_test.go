@@ -502,3 +502,169 @@ func TestEmbedClientTimeoutDoesNotRetryImmediately(t *testing.T) {
 		t.Errorf("request count = %d, want 1", got)
 	}
 }
+
+func TestEmbedQueryDoesNotWaitForIndexingSlot(t *testing.T) {
+	indexing := make(chan struct{}, 1)
+	release := make(chan struct{})
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req embeddingRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			t.Errorf("decode request: %v", err)
+		}
+		if req.Input == "document" {
+			indexing <- struct{}{}
+			<-release
+		}
+		writeEmbeddingResponse(w)
+	}))
+	defer server.Close()
+	defer close(release)
+
+	embedder := NewEmbedder(&config.SemanticSearch{
+		EmbeddingEndpoint:       server.URL,
+		EmbeddingModel:          "test-model",
+		Dimensions:              3,
+		MaxContextLength:        128,
+		MaxEmbeddingConcurrency: 1,
+	})
+
+	indexErr := make(chan error, 1)
+	go func() {
+		_, err := embedder.Embed(context.Background(), "document")
+		indexErr <- err
+	}()
+	select {
+	case <-indexing:
+	case err := <-indexErr:
+		t.Fatalf("indexing stopped before acquiring a slot: %v", err)
+	case <-time.After(3 * time.Second):
+		t.Fatal("indexing request did not start")
+	}
+
+	// The only indexing slot is held, so another indexing request must wait.
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+	if _, err := embedder.Embed(ctx, "document"); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("second indexing request error = %v, want deadline exceeded", err)
+	}
+
+	if _, err := embedder.EmbedQuery(context.Background(), "query"); err != nil {
+		t.Fatalf("EmbedQuery while indexing slot is held: %v", err)
+	}
+
+	select {
+	case release <- struct{}{}:
+	case <-time.After(3 * time.Second):
+		t.Fatal("indexing handler did not receive release")
+	}
+	select {
+	case err := <-indexErr:
+		if err != nil {
+			t.Fatalf("indexing request: %v", err)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("indexing request did not finish")
+	}
+}
+
+func TestEmbedQueryDeadline(t *testing.T) {
+	release := make(chan struct{})
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		<-release
+	}))
+	defer server.Close()
+	defer close(release)
+
+	embedder := NewEmbedder(&config.SemanticSearch{
+		EmbeddingEndpoint:     server.URL,
+		EmbeddingModel:        "test-model",
+		Dimensions:            3,
+		MaxContextLength:      128,
+		QueryEmbeddingTimeout: 1,
+	})
+
+	start := time.Now()
+	_, err := embedder.EmbedQuery(context.Background(), "query")
+	elapsed := time.Since(start)
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("EmbedQuery error = %v, want deadline exceeded", err)
+	}
+	if elapsed < time.Second || elapsed > 3*time.Second {
+		t.Fatalf("EmbedQuery returned after %v, want about one second", elapsed)
+	}
+}
+
+func TestQueryEmbeddingTimeoutDefault(t *testing.T) {
+	embedder := newTestEmbedder("http://localhost")
+	if embedder.queryTimeout != defaultQueryTimeout {
+		t.Fatalf("queryTimeout = %v, want %v", embedder.queryTimeout, defaultQueryTimeout)
+	}
+}
+
+func TestQueryEmbeddingConcurrency(t *testing.T) {
+	for _, configured := range []int{-1, 0, 3} {
+		e := NewEmbedder(&config.SemanticSearch{MaxEmbeddingConcurrency: 2, MaxQueryEmbeddingConcurrency: configured})
+		want := configured
+		if want <= 0 {
+			want = 1
+		}
+		if cap(e.querySem) != want || cap(e.sem) != 2 {
+			t.Fatalf("configured %d: query slots %d, indexing slots %d", configured, cap(e.querySem), cap(e.sem))
+		}
+	}
+}
+
+func TestEmbedQueryDeadlineWhileWaitingForQuerySlot(t *testing.T) {
+	e := NewEmbedder(&config.SemanticSearch{})
+	e.queryTimeout = 40 * time.Millisecond
+	e.querySem <- struct{}{}
+	defer func() { <-e.querySem }()
+	_, err := e.EmbedQuery(nil, "query")
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("error = %v, want deadline exceeded", err)
+	}
+	if len(e.querySem) != 1 {
+		t.Fatal("released an occupied query slot")
+	}
+}
+
+func TestEmbedQueryRespectsCallerDeadline(t *testing.T) {
+	e := newTestEmbedder("http://example.com")
+	e.client.Transport = roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		<-r.Context().Done()
+		return nil, r.Context().Err()
+	})
+	ctx, cancel := context.WithTimeout(context.Background(), 40*time.Millisecond)
+	defer cancel()
+	start := time.Now()
+	_, err := e.EmbedQuery(ctx, "query")
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("error = %v", err)
+	}
+	if time.Since(start) > time.Second {
+		t.Fatal("ignored caller deadline")
+	}
+	if len(e.querySem) != 0 {
+		t.Fatal("query slot leaked")
+	}
+}
+
+func TestEmbedQueryDeadlineCancelsRetry(t *testing.T) {
+	e := newTestEmbedder("http://example.com")
+	e.queryTimeout = 40 * time.Millisecond
+	calls := 0
+	e.client.Transport = roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		calls++
+		return &http.Response{StatusCode: 503, Body: http.NoBody, Header: make(http.Header), Request: r}, nil
+	})
+	_, err := e.EmbedQuery(nil, "query")
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("error = %v", err)
+	}
+	if calls != 1 {
+		t.Fatalf("requests = %d, want 1", calls)
+	}
+	if len(e.querySem) != 0 {
+		t.Fatal("query slot leaked")
+	}
+}

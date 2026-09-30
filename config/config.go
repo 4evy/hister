@@ -184,22 +184,24 @@ type Extractor struct {
 
 // SemanticSearch holds configuration for optional vector similarity search.
 type SemanticSearch struct {
-	Enable                  bool              `yaml:"enable" mapstructure:"enable"`
-	EmbeddingEndpoint       string            `yaml:"embedding_endpoint" mapstructure:"embedding_endpoint"`
-	EmbeddingModel          string            `yaml:"embedding_model" mapstructure:"embedding_model"`
-	EmbeddingTimeout        int               `yaml:"embedding_timeout" mapstructure:"embedding_timeout"`
-	APIKey                  string            `yaml:"api_key" mapstructure:"api_key"`
-	Headers                 map[string]string `yaml:"headers" mapstructure:"headers"`
-	Dimensions              int               `yaml:"dimensions" mapstructure:"dimensions"`
-	MaxContextLength        int               `yaml:"max_context_length" mapstructure:"max_context_length"`
-	ChunkOverlap            int               `yaml:"chunk_overlap" mapstructure:"chunk_overlap"`
-	MaxEmbeddingBatchSize   int               `yaml:"max_embedding_batch_size" mapstructure:"max_embedding_batch_size"`
-	QueryPrefix             string            `yaml:"query_prefix" mapstructure:"query_prefix"`
-	DocumentPrefix          string            `yaml:"document_prefix" mapstructure:"document_prefix"`
-	SimilarityThreshold     float64           `yaml:"similarity_threshold" mapstructure:"similarity_threshold"`
-	ResultLimit             int               `yaml:"result_limit" mapstructure:"result_limit"`
-	SemanticWeight          float64           `yaml:"semantic_weight" mapstructure:"semantic_weight"`
-	MaxEmbeddingConcurrency int               `yaml:"max_embedding_concurrency" mapstructure:"max_embedding_concurrency"`
+	Enable                       bool              `yaml:"enable" mapstructure:"enable"`
+	EmbeddingEndpoint            string            `yaml:"embedding_endpoint" mapstructure:"embedding_endpoint"`
+	EmbeddingModel               string            `yaml:"embedding_model" mapstructure:"embedding_model"`
+	EmbeddingTimeout             int               `yaml:"embedding_timeout" mapstructure:"embedding_timeout"`
+	APIKey                       string            `yaml:"api_key" mapstructure:"api_key"`
+	Headers                      map[string]string `yaml:"headers" mapstructure:"headers"`
+	Dimensions                   int               `yaml:"dimensions" mapstructure:"dimensions"`
+	MaxContextLength             int               `yaml:"max_context_length" mapstructure:"max_context_length"`
+	ChunkOverlap                 int               `yaml:"chunk_overlap" mapstructure:"chunk_overlap"`
+	MaxEmbeddingBatchSize        int               `yaml:"max_embedding_batch_size" mapstructure:"max_embedding_batch_size"`
+	QueryPrefix                  string            `yaml:"query_prefix" mapstructure:"query_prefix"`
+	DocumentPrefix               string            `yaml:"document_prefix" mapstructure:"document_prefix"`
+	SimilarityThreshold          float64           `yaml:"similarity_threshold" mapstructure:"similarity_threshold"`
+	ResultLimit                  int               `yaml:"result_limit" mapstructure:"result_limit"`
+	SemanticWeight               float64           `yaml:"semantic_weight" mapstructure:"semantic_weight"`
+	MaxEmbeddingConcurrency      int               `yaml:"max_embedding_concurrency" mapstructure:"max_embedding_concurrency"`
+	QueryEmbeddingTimeout        int               `yaml:"query_embedding_timeout" mapstructure:"query_embedding_timeout"`
+	MaxQueryEmbeddingConcurrency int               `yaml:"max_query_embedding_concurrency" mapstructure:"max_query_embedding_concurrency"`
 }
 
 // EmbeddingFingerprint identifies configuration that changes stored document
@@ -600,22 +602,24 @@ func CreateDefaultConfig() *Config {
 			"pgp_private_key":     `-----BEGIN PGP PRIVATE KEY BLOCK-----`,
 		},
 		SemanticSearch: SemanticSearch{
-			Enable:                  false,
-			EmbeddingEndpoint:       "http://localhost:11434/v1/embeddings",
-			EmbeddingModel:          "qwen3-embedding:8b",
-			EmbeddingTimeout:        300,
-			APIKey:                  "",
-			Headers:                 map[string]string{},
-			Dimensions:              postgresHNSWMaxDimensions,
-			MaxContextLength:        512,
-			ChunkOverlap:            64,
-			MaxEmbeddingBatchSize:   8,
-			QueryPrefix:             "query: ",
-			DocumentPrefix:          "",
-			SimilarityThreshold:     0.1,
-			ResultLimit:             50,
-			SemanticWeight:          0.4,
-			MaxEmbeddingConcurrency: 2,
+			Enable:                       false,
+			EmbeddingEndpoint:            "http://localhost:11434/v1/embeddings",
+			EmbeddingModel:               "qwen3-embedding:8b",
+			EmbeddingTimeout:             300,
+			APIKey:                       "",
+			Headers:                      map[string]string{},
+			Dimensions:                   postgresHNSWMaxDimensions,
+			MaxContextLength:             512,
+			ChunkOverlap:                 64,
+			MaxEmbeddingBatchSize:        8,
+			QueryPrefix:                  "query: ",
+			DocumentPrefix:               "",
+			SimilarityThreshold:          0.1,
+			ResultLimit:                  50,
+			SemanticWeight:               0.4,
+			MaxEmbeddingConcurrency:      2,
+			QueryEmbeddingTimeout:        2,
+			MaxQueryEmbeddingConcurrency: 1,
 		},
 	}
 }

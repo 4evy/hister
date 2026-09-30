@@ -218,6 +218,13 @@ func TestSemanticSearchRequestDefaults(t *testing.T) {
 	if got, want := cfg.SemanticSearch.MaxEmbeddingConcurrency, 2; got != want {
 		t.Errorf("semantic_search.max_embedding_concurrency = %d, want %d", got, want)
 	}
+	if got, want := cfg.SemanticSearch.QueryEmbeddingTimeout, 2; got != want {
+		t.Errorf("query embedding timeout = %d, want %d", got, want)
+	}
+	if got, want := cfg.SemanticSearch.MaxQueryEmbeddingConcurrency, 1; got != want {
+		t.Errorf("query embedding concurrency = %d, want %d", got, want)
+	}
+
 	if got, want := cfg.SemanticSearch.Dimensions, 2000; got != want {
 		t.Errorf("semantic_search.dimensions = %d, want %d", got, want)
 	}
@@ -744,6 +751,8 @@ func TestSemanticSearchEmbeddingFingerprint(t *testing.T) {
 	queryConfig.EmbeddingTimeout = 30
 	queryConfig.MaxEmbeddingBatchSize = 1
 	queryConfig.MaxEmbeddingConcurrency = 1
+	queryConfig.MaxQueryEmbeddingConcurrency = 3
+	queryConfig.QueryEmbeddingTimeout = 10
 	if base != queryConfig.EmbeddingFingerprint() {
 		t.Fatal("query and operational settings must not affect stored embedding fingerprint")
 	}
@@ -752,5 +761,25 @@ func TestSemanticSearchEmbeddingFingerprint(t *testing.T) {
 	disabledConfig.Enable = false
 	if fingerprint := disabledConfig.EmbeddingFingerprint(); fingerprint != "" {
 		t.Fatalf("disabled semantic search fingerprint = %q, want empty", fingerprint)
+	}
+}
+
+func TestSemanticQuerySettingsOverrides(t *testing.T) {
+	const raw = "semantic_search:\n  query_embedding_timeout: 9\n  max_query_embedding_concurrency: 3\n"
+	cfg, err := parseConfig([]byte(raw))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.SemanticSearch.QueryEmbeddingTimeout != 9 || cfg.SemanticSearch.MaxQueryEmbeddingConcurrency != 3 {
+		t.Fatal("query settings did not load from YAML")
+	}
+	t.Setenv("HISTER__SEMANTIC_SEARCH__QUERY_EMBEDDING_TIMEOUT", "12")
+	t.Setenv("HISTER__SEMANTIC_SEARCH__MAX_QUERY_EMBEDDING_CONCURRENCY", "4")
+	cfg, err = parseConfig([]byte(raw))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.SemanticSearch.QueryEmbeddingTimeout != 12 || cfg.SemanticSearch.MaxQueryEmbeddingConcurrency != 4 {
+		t.Fatal("environment did not override query settings")
 	}
 }

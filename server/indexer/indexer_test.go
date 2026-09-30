@@ -15,6 +15,7 @@ import (
 	"github.com/asciimoo/hister/server/document"
 	servermetrics "github.com/asciimoo/hister/server/metrics"
 	"github.com/asciimoo/hister/server/testutil"
+	"github.com/asciimoo/hister/server/vectorstore"
 
 	"github.com/blevesearch/bleve/v2"
 )
@@ -986,5 +987,38 @@ func TestNestedDocumentsRespectRulesAfterManualIndexing(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestSearchReturnsKeywordResultsAfterQueryEmbeddingTimeout(t *testing.T) {
+	release := make(chan struct{})
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		<-release
+	}))
+	defer server.Close()
+	defer close(release)
+	cfg := testutil.Config(t)
+	idx := newTestIndexer(t, cfg)
+	defer idx.Close()
+	doc := &document.Document{URL: "https://example.com/fallback", Title: "Fallback document", Text: "fallback", Processed: true}
+	if err := idx.Add(doc); err != nil {
+		t.Fatal(err)
+	}
+	idx.embedder = vectorstore.NewEmbedder(&config.SemanticSearch{
+		EmbeddingEndpoint: server.URL, EmbeddingModel: "test", Dimensions: 3, QueryEmbeddingTimeout: 1,
+	})
+	idx.vectorStore = &metadataVectorStore{}
+	result, err := idx.Search(&Query{Text: "fallback", SemanticEnabled: true})
+	if err != nil {
+		t.Fatalf("search: %v", err)
+	}
+	if len(result.Documents) != 1 || result.Documents[0].URL != doc.URL {
+		t.Fatalf("keyword results = %#v, want %s", result.Documents, doc.URL)
+	}
+	if len(result.SemanticHits) != 0 {
+		t.Fatalf("semantic hits = %#v, want none", result.SemanticHits)
+	}
+	if !result.SemanticEnabled {
+		t.Fatal("search did not attempt semantic embedding")
 	}
 }
