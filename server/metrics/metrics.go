@@ -62,7 +62,11 @@ func New(ctx context.Context, src GaugeSource) *Metrics {
 			Namespace: "hister",
 			Name:      "search_duration_seconds",
 			Help:      "Histogram of search query latency in seconds.",
-			Buckets:   prometheus.DefBuckets,
+			// Native-only: no classic Buckets. Sparse exponential buckets
+			// are emitted for Prometheus >= v2.40 (stable in v3.x).
+			NativeHistogramBucketFactor:     1.1,
+			NativeHistogramMaxBucketNumber:  160,
+			NativeHistogramMinResetDuration: time.Hour,
 		}),
 
 		DocumentsIndexedTotal: prometheus.NewCounterVec(prometheus.CounterOpts{
@@ -75,7 +79,10 @@ func New(ctx context.Context, src GaugeSource) *Metrics {
 			Namespace: "hister",
 			Name:      "indexing_duration_seconds",
 			Help:      "Histogram of single-document indexing latency in seconds.",
-			Buckets:   prometheus.DefBuckets,
+			// Native-only: no classic Buckets. See SearchDuration above.
+			NativeHistogramBucketFactor:     1.1,
+			NativeHistogramMaxBucketNumber:  160,
+			NativeHistogramMinResetDuration: time.Hour,
 		}),
 
 		DatastoreSizeBytes: prometheus.NewGauge(prometheus.GaugeOpts{
@@ -111,8 +118,10 @@ func New(ctx context.Context, src GaugeSource) *Metrics {
 }
 
 // Handler returns an http.Handler that serves the Prometheus metrics.
+// OpenMetrics negotiation is enabled so native histograms are exposed
+// to capable scrapers; classic text scrapers still receive count/sum.
 func (m *Metrics) Handler() http.Handler {
-	return promhttp.HandlerFor(m.registry, promhttp.HandlerOpts{})
+	return promhttp.HandlerFor(m.registry, promhttp.HandlerOpts{EnableOpenMetrics: true})
 }
 
 // Stop cancels the background gauge-refresh ticker.

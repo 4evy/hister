@@ -79,6 +79,66 @@ func TestMetricsNewAndHandler(t *testing.T) {
 	}
 }
 
+func TestHistogramsUseNativeFormat(t *testing.T) {
+	m := New(t.Context(), &mockGaugeSource{total: 1, dataDir: t.TempDir()})
+	defer m.Stop()
+
+	m.SearchDuration.Observe(0.123)
+	m.IndexingDuration.Observe(0.045)
+
+	mfs, err := m.registry.Gather()
+	if err != nil {
+		t.Fatalf("gather metrics: %v", err)
+	}
+	seen := map[string]bool{}
+	for _, mf := range mfs {
+		name := mf.GetName()
+		if name != "hister_search_duration_seconds" && name != "hister_indexing_duration_seconds" {
+			continue
+		}
+		seen[name] = true
+		for _, mt := range mf.GetMetric() {
+			h := mt.GetHistogram()
+			if h == nil {
+				t.Fatalf("%s: no histogram in gathered metric", name)
+			}
+			if n := len(h.GetBucket()); n != 0 {
+				t.Fatalf("%s: want native-only histogram with no classic buckets, got %d", name, n)
+			}
+			if h.GetSchema() == 0 || len(h.GetPositiveSpan()) == 0 {
+				t.Fatalf("%s: no native histogram buckets populated (schema=%d spans=%d)", name, h.GetSchema(), len(h.GetPositiveSpan()))
+			}
+		}
+	}
+	for _, name := range []string{"hister_search_duration_seconds", "hister_indexing_duration_seconds"} {
+		if !seen[name] {
+			t.Fatalf("metric %q missing from gather", name)
+		}
+	}
+}
+
+func TestHandlerNegotiatesOpenMetrics(t *testing.T) {
+	m := New(t.Context(), &mockGaugeSource{total: 1, dataDir: t.TempDir()})
+	defer m.Stop()
+
+	m.SearchDuration.Observe(0.123)
+
+	req := httptest.NewRequest(http.MethodGet, "/metrics", nil)
+	req.Header.Set("Accept", "application/openmetrics-text; version=1.0.0; charset=utf-8")
+	rec := httptest.NewRecorder()
+	m.Handler().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status OK, got %d", rec.Code)
+	}
+	if ct := rec.Header().Get("Content-Type"); !strings.Contains(strings.ToLower(ct), "openmetrics") {
+		t.Fatalf("expected openmetrics content type, got %q", ct)
+	}
+	if body := rec.Body.String(); !strings.Contains(body, "hister_search_duration_seconds_count 1") {
+		t.Fatalf("openmetrics exposition missing histogram count:\n%.500s", body)
+	}
+}
+
 func TestStopCancelsContext(t *testing.T) {
 	ctx := t.Context()
 	m := New(ctx, &mockGaugeSource{total: 1, dataDir: t.TempDir()})
