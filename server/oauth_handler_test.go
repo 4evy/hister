@@ -306,3 +306,129 @@ func TestOAuthNewLoginReplacesPendingFlow(t *testing.T) {
 		t.Fatal("invalid callback consumed the current flow")
 	}
 }
+
+func TestOAuthIdentityClaimFlow(t *testing.T) {
+	for _, discovery := range []bool{false, true} {
+		for _, tt := range []struct {
+			name         string
+			bodies       []string
+			wantUsername string
+			existing     *model.User
+			wantError    bool
+		}{
+			{
+				name: "email changes preserve account",
+				bodies: []string{
+					`{"sub":"s1","email":"before@example.com","preferred_username":"alice"}`,
+					`{"sub":"s1","email":"after@example.com","preferred_username":"alice-renamed"}`,
+				},
+				wantUsername: "alice",
+			},
+			{name: "email username", bodies: []string{`{"sub":"s1","email":"alice@example.com"}`}, wantUsername: "alice@example.com"},
+			{name: "identity username", bodies: []string{`{"sub":"s1"}`}, wantUsername: "oidc:sub:s1"},
+			{
+				name: "username collision", bodies: []string{`{"sub":"s1","preferred_username":"alice"}`},
+				wantUsername: "alice-c:sub:s1", existing: &model.User{Username: "alice", OAuthID: "other-identity"},
+			},
+			{
+				name: "identity username collision", bodies: []string{`{"sub":"s1"}`},
+				wantUsername: "oidc:sub:s1-c:sub:s1", existing: &model.User{Username: "oidc:sub:s1", OAuthID: "other-identity"},
+			},
+			{
+				name: "legacy identity remains separate", bodies: []string{`{"sub":"s1","preferred_username":"alice"}`},
+				wantUsername: "alice", existing: &model.User{Username: "legacy", OAuthID: "oidc-s1"},
+			},
+			{
+				name: "other claim remains separate", bodies: []string{`{"sub":"s1","preferred_username":"alice"}`},
+				wantUsername: "alice", existing: &model.User{Username: "other", OAuthID: "oidc:account_id:s1"},
+			},
+			{
+				name: "email never links existing account", bodies: []string{`{"sub":"s1","email":"alice@example.com"}`},
+				wantUsername: "alice@example.com", existing: &model.User{Username: "legacy", OAuthID: "oidc-alice@example.com"},
+			},
+			{
+				name: "missing identity never authenticates by email", bodies: []string{`{"email":"alice@example.com"}`},
+				existing: &model.User{Username: "legacy", OAuthID: "oidc-alice@example.com"}, wantError: true,
+			},
+		} {
+			t.Run(fmt.Sprintf("%s/discovery=%t", tt.name, discovery), func(t *testing.T) {
+				cfg, handler := newOAuthTestServer(t)
+				entry := cfg.Server.OAuth["oidc"]
+				entry.IdentityClaim = "sub"
+				if tt.existing != nil {
+					if _, err := model.CreateOAuthUser(tt.existing.Username, tt.existing.OAuthID); err != nil {
+						t.Fatal(err)
+					}
+				}
+				var userInfoCalls atomic.Int32
+				provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					switch r.URL.Path {
+					case "/discovery":
+						_ = json.NewEncoder(w).Encode(map[string]any{
+							"authorization_endpoint": entry.AuthURL, "token_endpoint": entry.TokenURL,
+							"userinfo_endpoint": entry.UserInfoURL, "scopes_supported": []string{"openid"},
+							"response_types_supported": []string{"code"}, "grant_types_supported": []string{"authorization_code"},
+						})
+					case "/token":
+						_, _ = fmt.Fprint(w, `{"access_token":"token"}`)
+					case "/userinfo":
+						_, _ = fmt.Fprint(w, tt.bodies[int(userInfoCalls.Add(1))-1])
+					default:
+						http.NotFound(w, r)
+					}
+				}))
+				t.Cleanup(provider.Close)
+				entry.TokenURL = provider.URL + "/token"
+				entry.UserInfoURL = provider.URL + "/userinfo"
+				if discovery {
+					entry.ConfigurationURL = provider.URL + "/discovery"
+				}
+				var firstUserID uint
+				for range tt.bodies {
+					// Each login starts without an authenticated session.
+					cookie, query := startOAuthLogin(t, handler, nil)
+					callback := url.Values{"provider": {"oidc"}, "state": {query.Get("state")}, "code": {"code"}}
+					rec := oauthCallback(handler, cookie, callback)
+					if tt.wantError {
+						if rec.Code != http.StatusInternalServerError {
+							t.Fatalf("callback status = %d, want 500", rec.Code)
+						}
+						assertOAuthFlowConsumed(t, cookie)
+						if oauthSessionValues(t, cookie)["user_id"] != nil {
+							t.Fatal("invalid identity authenticated a user")
+						}
+						continue
+					}
+					if rec.Code != http.StatusFound {
+						t.Fatalf("callback status = %d: %s", rec.Code, rec.Body.String())
+					}
+					user, err := model.GetUserByOAuthID("oidc:sub:s1")
+					if err != nil {
+						t.Fatal(err)
+					}
+					if user.Username != tt.wantUsername {
+						t.Fatalf("username = %q, want %q", user.Username, tt.wantUsername)
+					}
+					if firstUserID != 0 && user.ID != firstUserID {
+						t.Fatal("email change created a different user")
+					}
+					firstUserID = user.ID
+					if oauthSessionValues(t, responseSessionCookie(t, rec))["user_id"] != user.ID {
+						t.Fatal("session does not authenticate the selected identity")
+					}
+				}
+				wantCount := int64(1)
+				if tt.existing != nil {
+					wantCount++
+				}
+				if tt.wantError {
+					wantCount--
+				}
+				var count int64
+				if err := model.DB.Model(&model.User{}).Count(&count).Error; err != nil || count != wantCount {
+					t.Fatalf("users = %d, want %d; error = %v", count, wantCount, err)
+				}
+			})
+		}
+	}
+}

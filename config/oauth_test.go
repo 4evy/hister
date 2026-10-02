@@ -1,6 +1,7 @@
 package config
 
 import (
+	"strings"
 	"testing"
 
 	"gopkg.in/yaml.v3"
@@ -37,6 +38,64 @@ func TestOAuthPKCEConfig(t *testing.T) {
 		}
 		if cfg.Server.OAuth["oidc"].DisablePKCE != (value == "true") {
 			t.Fatalf("environment override %q was not applied", value)
+		}
+	}
+}
+
+func TestOAuthIdentityClaimConfig(t *testing.T) {
+	const raw = "server:\n  oauth:\n    oidc:\n      client_id: hister\n      client_secret: secret\n      auth_url: https://provider.example/auth\n"
+	for _, claim := range []string{"", "email", "sub", "https://example.com/subject"} {
+		t.Run(claim, func(t *testing.T) {
+			cfg, err := parseConfig([]byte(raw + "      identity_claim: '" + claim + "'\n"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := cfg.validateOAuth(); err != nil {
+				t.Fatal(err)
+			}
+			data, err := yaml.Marshal(cfg)
+			if err != nil {
+				t.Fatal(err)
+			}
+			reloaded, err := parseConfig(data)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := reloaded.Server.OAuth["oidc"].IdentityClaim; got != claim {
+				t.Fatalf("identity_claim = %q, want %q", got, claim)
+			}
+		})
+	}
+	t.Run("environment overrides YAML", func(t *testing.T) {
+		t.Setenv("HISTER__SERVER__OAUTH__OIDC__IDENTITY_CLAIM", "sub")
+		cfg, err := parseConfig([]byte(raw + "      identity_claim: email\n"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := cfg.Server.OAuth["oidc"].IdentityClaim; got != "sub" {
+			t.Fatalf("identity_claim = %q, want sub", got)
+		}
+	})
+}
+
+func TestValidateOAuthIdentityClaim(t *testing.T) {
+	for _, provider := range []string{"oidc", "github", "google"} {
+		for _, claim := range []string{"", "email", "sub", "https://example.com/subject", " sub", "sub ", "su b", "sub\t", "sub\n", "su\u00a0b", "sub\x00"} {
+			t.Run(provider+"/"+claim, func(t *testing.T) {
+				cfg := CreateDefaultConfig()
+				cfg.Server.OAuth = map[string]*OAuthEntry{provider: {
+					ClientID: "hister", ClientSecret: "secret", AuthURL: "https://provider.example/auth", IdentityClaim: claim,
+				}}
+				valid := claim == "" || provider == "oidc" && (claim == "email" || claim == "sub" || claim == "https://example.com/subject")
+				err := cfg.validateOAuth()
+				if valid {
+					if err != nil {
+						t.Fatal(err)
+					}
+				} else if err == nil || !strings.Contains(err.Error(), "identity_claim") {
+					t.Fatalf("validation error = %v, want identity_claim error", err)
+				}
+			})
 		}
 	}
 }

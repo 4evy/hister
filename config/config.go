@@ -26,6 +26,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"unicode"
 
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/viper"
@@ -118,6 +119,9 @@ type OAuthEntry struct {
 	UserInfoURL      string   `yaml:"userinfo_url"      mapstructure:"userinfo_url"`
 	Scopes           []string `yaml:"scopes"            mapstructure:"scopes"`
 	DisablePKCE      bool     `yaml:"disable_pkce"      mapstructure:"disable_pkce"`
+
+	// IdentityClaim selects the OIDC UserInfo claim used to match accounts. Empty means email.
+	IdentityClaim string `yaml:"identity_claim" mapstructure:"identity_claim"`
 }
 
 type Directory struct {
@@ -755,6 +759,14 @@ func (c *Config) validateOAuth() error {
 		}
 		if entry.ClientSecret == "" {
 			return fmt.Errorf("oauth provider %q: client_secret is required", name)
+		}
+		if entry.IdentityClaim != "" {
+			if name != "oidc" {
+				return fmt.Errorf("oauth provider %q: identity_claim is only supported for oidc", name)
+			}
+			if strings.ContainsFunc(entry.IdentityClaim, func(r rune) bool { return unicode.IsSpace(r) || unicode.IsControl(r) }) {
+				return fmt.Errorf("oauth provider %q: identity_claim must not contain whitespace or control characters", name)
+			}
 		}
 		if name == "oidc" && entry.ConfigurationURL == "" && entry.AuthURL == "" {
 			return fmt.Errorf("oauth provider oidc: configuration_url or auth_url is required")

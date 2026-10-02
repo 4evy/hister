@@ -329,6 +329,13 @@ description: 'Explore every configuration section, option, default value, enviro
       description: 'Additional OAuth scopes to request. Provider defaults are always included.',
     },
     {
+      name: 'identity_claim',
+      type: 'string',
+      defaultValue: 'email',
+      requirement: 'Optional',
+      description: 'OIDC only. UserInfo claim used to match a Hister account, such as sub. Empty uses email for compatibility. See OIDC Account Identity before changing this for existing accounts.',
+    },
+    {
       name: 'disable_pkce',
       type: 'bool',
       defaultValue: 'false',
@@ -1003,6 +1010,28 @@ server:
       userinfo_url: 'https://accounts.example.com/oauth/userinfo'
 ```
 
+### OIDC Account Identity
+
+Set `identity_claim: 'sub'` to identify an OIDC account by its subject, so changing the user's email address does not create a new Hister account. The [OIDC specification](https://openid.net/specs/openid-connect-core-1_0.html#ClaimStability) defines `sub` as stable and unique within its issuer. Keep the same issuer when using existing account links.
+
+```yaml
+server:
+  oauth:
+    oidc:
+      client_id: 'hister'
+      client_secret: 'your-client-secret'
+      configuration_url: 'https://accounts.example.com/.well-known/openid-configuration'
+      identity_claim: 'sub'
+```
+
+The equivalent environment variable is `HISTER__SERVER__OAUTH__OIDC__IDENTITY_CLAIM=sub`. This works with discovery or manually configured endpoints. The option selects an exact, case sensitive field in the UserInfo response. Custom claim names, including URI names, are supported; dots do not select nested fields. Choose a unique, immutable identifier controlled by the provider. Fields users can edit, such as `preferred_username`, are unsuitable for account matching.
+
+The selected claim must be a nonempty JSON string containing more than whitespace. If it is missing or invalid, login fails without falling back to email. An email address is optional when another claim identifies the account. New usernames use `preferred_username`, then email, then the OAuth identity if neither is available. Existing usernames are preserved on subsequent logins.
+
+Omitting `identity_claim`, leaving it empty, or setting it to `email` preserves existing `oidc-<email>` account links. Other claims use `oidc:<escaped claim name>:<claim value>`, for example `oidc:sub:abc123`. The claim name uses URL query escaping. This separates identities from different claims and from legacy email identities.
+
+Before switching an existing deployment, back up the database and explicitly relink each affected user's `o_auth_id` to the new identity using a verified mapping from the provider. Hister does not automatically link accounts by matching email addresses or usernames. Without relinking, a successful login with the new claim creates a separate account, and the old account retains its documents and history. Changing the issuer also requires a verified mapping because subjects are unique only within an issuer.
+
 ### PKCE and Compatibility
 
 Hister uses PKCE with the S256 challenge method for GitHub, Google, and OIDC logins by default. Each login generates a fresh private verifier stored in the server side session. The authorization request includes its SHA256 challenge, and the token exchange sends the original verifier. This supports providers such as Kanidm with PKCE enforcement enabled, including when OIDC discovery does not advertise PKCE support.
@@ -1031,7 +1060,7 @@ Logins started before upgrading must be restarted because their sessions lack th
 2. Clicking the button redirects the user to the provider's authorization page.
 3. After the user grants access the provider redirects back to `/api/oauth/callback?provider=<name>`.
 4. Hister verifies the state token and provider, exchanges the authorization code with the PKCE verifier for a token, and fetches the user's identity from the provider.
-5. If no local account is linked to that identity, one is created automatically. GitHub uses the login name, Google uses the account name with the full email address as a fallback, and OIDC uses `preferred_username` with the full email address as a fallback.
+5. If no local account is linked to that identity, one is created automatically. GitHub uses the login name, Google uses the account name with the full email address as a fallback, and OIDC uses `preferred_username`, then the full email address, then the OAuth identity as the username.
 6. The user is logged in and redirected to the home page.
 
 > **Note**: OAuth login requires `app.user_handling: true`. The buttons only appear on the login page when user handling is active and at least one provider is configured.

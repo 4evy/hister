@@ -3,6 +3,7 @@
 package server
 
 import (
+	"cmp"
 	"context"
 	"crypto/rand"
 	"encoding/hex"
@@ -44,7 +45,12 @@ func serveOAuthRedirect(c *webContext) {
 		http.Error(c.Response, "unknown oauth provider", http.StatusBadRequest)
 		return
 	}
-	provider, ok := oauth.NewProvider(providerName, entry.AuthURL, entry.TokenURL, entry.UserInfoURL)
+	provider, ok := oauth.NewProvider(providerName, oauth.ProviderConfig{
+		AuthURL:       entry.AuthURL,
+		TokenURL:      entry.TokenURL,
+		UserInfoURL:   entry.UserInfoURL,
+		IdentityClaim: entry.IdentityClaim,
+	})
 	if !ok {
 		http.Error(c.Response, "oauth provider not available", http.StatusBadRequest)
 		return
@@ -135,7 +141,12 @@ func serveOAuthCallback(c *webContext) {
 		http.Error(c.Response, "oauth authorization failed; restart login", http.StatusBadRequest)
 		return
 	}
-	provider, ok := oauth.NewProvider(providerName, entry.AuthURL, entry.TokenURL, entry.UserInfoURL)
+	provider, ok := oauth.NewProvider(providerName, oauth.ProviderConfig{
+		AuthURL:       entry.AuthURL,
+		TokenURL:      entry.TokenURL,
+		UserInfoURL:   entry.UserInfoURL,
+		IdentityClaim: entry.IdentityClaim,
+	})
 	if !ok {
 		serve500(c)
 		return
@@ -173,10 +184,7 @@ func serveOAuthCallback(c *webContext) {
 	}
 	user, err := model.GetUserByOAuthID(userInfo.UID)
 	if err != nil {
-		username := userInfo.Username
-		if username == "" {
-			username = userInfo.Email
-		}
+		username := cmp.Or(userInfo.Username, userInfo.Email, userInfo.UID)
 		user, err = model.CreateOAuthUser(username, userInfo.UID)
 		if err == model.ErrUserAlreadyExists {
 			suffix := userInfo.UID

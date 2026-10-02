@@ -16,10 +16,13 @@
 // secrets, and scopes. Users can sign in using any configured provider, and their
 // OAuth ID is linked to their Hister account.
 //
-// The Providers map contains factory functions for creating provider instances:
+// NewProvider creates a fresh instance with optional endpoint overrides:
 //
-//	provider := oauth.Providers["github"](oauthConfig)
-//	authURL := provider.GetAuthURL(state)
+//	provider, ok := oauth.NewProvider("github", oauth.ProviderConfig{})
+//	if ok {
+//		authURL := provider.GetRedirectURL(oauth.NewRedirectURIRequest(clientID, callbackURL, state, nil))
+//		// Redirect the user to authURL.
+//	}
 //
 // Example configuration:
 //
@@ -31,6 +34,7 @@
 package oauth
 
 import (
+	"cmp"
 	"context"
 	"net/http"
 	"net/url"
@@ -156,49 +160,36 @@ type Provider interface {
 	GetScope() (ScopeName, ScopeValue)
 }
 
+// ProviderConfig holds endpoint overrides and OIDC identity selection.
+type ProviderConfig struct {
+	AuthURL       string
+	TokenURL      string
+	UserInfoURL   string
+	IdentityClaim string
+}
+
 // NewProvider creates a fresh provider instance for the given provider name.
-// authURL and tokenURL override the provider defaults when non-empty.
-// userInfoURL sets the userinfo endpoint for OIDC providers; when empty the
-// endpoint is discovered from the configuration URL.
+// Empty endpoints use provider defaults or OIDC discovery.
 // Returns nil, false if the provider name is unknown.
-func NewProvider(name, authURL, tokenURL, userInfoURL string) (Provider, bool) {
+func NewProvider(name string, cfg ProviderConfig) (Provider, bool) {
 	switch name {
 	case "github":
-		p := GitHubOAuth{
-			AuthURL:  "https://github.com/login/oauth/authorize",
-			TokenURL: "https://github.com/login/oauth/access_token",
-		}
-		if authURL != "" {
-			p.AuthURL = authURL
-		}
-		if tokenURL != "" {
-			p.TokenURL = tokenURL
-		}
-		return p, true
+		return GitHubOAuth{
+			AuthURL:  cmp.Or(cfg.AuthURL, "https://github.com/login/oauth/authorize"),
+			TokenURL: cmp.Or(cfg.TokenURL, "https://github.com/login/oauth/access_token"),
+		}, true
 	case "google":
-		p := GoogleOAuth{
-			AuthURL:  "https://accounts.google.com/o/oauth2/auth",
-			TokenURL: "https://accounts.google.com/o/oauth2/token",
-		}
-		if authURL != "" {
-			p.AuthURL = authURL
-		}
-		if tokenURL != "" {
-			p.TokenURL = tokenURL
-		}
-		return p, true
+		return GoogleOAuth{
+			AuthURL:  cmp.Or(cfg.AuthURL, "https://accounts.google.com/o/oauth2/auth"),
+			TokenURL: cmp.Or(cfg.TokenURL, "https://accounts.google.com/o/oauth2/token"),
+		}, true
 	case "oidc":
-		p := &OIDCOAuth{}
-		if authURL != "" {
-			p.AuthURL = authURL
-		}
-		if tokenURL != "" {
-			p.TokenURL = tokenURL
-		}
-		if userInfoURL != "" {
-			p.UserInfoURL = userInfoURL
-		}
-		return p, true
+		return &OIDCOAuth{
+			AuthURL:       cfg.AuthURL,
+			TokenURL:      cfg.TokenURL,
+			UserInfoURL:   cfg.UserInfoURL,
+			IdentityClaim: cfg.IdentityClaim,
+		}, true
 	}
 	return nil, false
 }

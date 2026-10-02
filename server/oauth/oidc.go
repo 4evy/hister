@@ -1,6 +1,7 @@
 package oauth
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
@@ -26,6 +27,9 @@ type OIDCOAuth struct {
 	TokenURL    string       `json:"token_endpoint"`
 	UserInfoURL string       `json:"userinfo_endpoint"`
 	Client      *http.Client `json:"-"`
+
+	// IdentityClaim is local configuration and must not be set by discovery.
+	IdentityClaim string `json:"-"`
 
 	Scopes       []ScopeValue   `json:"scopes_supported"`
 	ResponseType []ResponseType `json:"response_types_supported"`
@@ -177,21 +181,55 @@ func (o *OIDCOAuth) GetUserInfo(ctx context.Context, response TokenResponse) (*U
 		return nil, fmt.Errorf("oidc: failed to read UserInfo response: %w", err)
 	}
 
-	var uData userData
-
-	if err := json.Unmarshal(uBody, &uData); err != nil {
+	var claims oidcClaims
+	if err := json.Unmarshal(uBody, &claims); err != nil {
 		return nil, fmt.Errorf("oidc: failed to parse UserInfo response: %w", err)
 	}
 
-	if len(uData.Email) < 1 {
-		return nil, fmt.Errorf("oidc: failed to parse email from UserInfo response")
+	claim := cmp.Or(o.IdentityClaim, "email")
+	id, err := claims.stringValue(claim)
+	if err != nil {
+		return nil, err
+	}
+	if strings.TrimSpace(id) == "" {
+		return nil, fmt.Errorf("oidc: UserInfo claim %q must be a nonempty string", claim)
+	}
+	email, err := claims.stringValue("email")
+	if err != nil {
+		return nil, err
+	}
+	username, err := claims.stringValue("preferred_username")
+	if err != nil {
+		return nil, err
+	}
+
+	// Preserve existing email identities. Other claims have a separate namespace
+	// so changing the selected claim cannot match an unrelated existing account.
+	uid := "oidc-" + id
+	if claim != "email" {
+		uid = "oidc:" + url.QueryEscape(claim) + ":" + id
 	}
 
 	return &UserInfoResponse{
-		UID:      "oidc-" + uData.Email,
-		Email:    uData.Email,
-		Username: uData.PreferredUsername,
+		UID:      uid,
+		Email:    email,
+		Username: username,
 	}, nil
+}
+
+// oidcClaims preserves exact claim names and types, including custom claims.
+type oidcClaims map[string]json.RawMessage
+
+func (c oidcClaims) stringValue(name string) (string, error) {
+	value, ok := c[name]
+	if !ok {
+		return "", nil
+	}
+	var s string
+	if err := json.Unmarshal(value, &s); err != nil {
+		return "", fmt.Errorf("oidc: UserInfo claim %q must be a string", name)
+	}
+	return s, nil
 }
 
 // GetScope returns the OAuth scopes required for OIDC authentication.
