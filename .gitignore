@@ -14,6 +14,8 @@ server/static/app
 tmp/
 
 .test/
+webui/app/test-results/
+webui/app/playwright-report/
 .pre-commit-config.yaml
 scripts/fetch_dataset_helpers/my-rfc-mirror/
 scripts/**/__pycache__

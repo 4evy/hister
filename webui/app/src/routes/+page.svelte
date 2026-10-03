@@ -1342,7 +1342,7 @@
     inputEl?.focus();
   }
 
-  function deleteRecentSearch(q: string) {
+  function hideRecentSearch(q: string) {
     recentSearches = recentSearches.filter((s) => s !== q);
     localStorage.setItem(
       'deletedSearches',
@@ -1350,7 +1350,7 @@
     );
   }
 
-  function deleteAllRecentSearches() {
+  function hideAllRecentSearches() {
     localStorage.setItem(
       'deletedSearches',
       JSON.stringify([
@@ -2885,7 +2885,7 @@
         class="home-recents flex w-full max-w-[900px] shrink-0 flex-col gap-2"
         aria-labelledby="recent-searches-title"
       >
-        <div class="flex items-center justify-between gap-4">
+        <div class="flex flex-wrap items-center justify-between gap-2">
           <h2
             id="recent-searches-title"
             class="font-inter text-text-brand-secondary flex items-center gap-2 text-sm font-semibold"
@@ -2897,12 +2897,15 @@
             variant="ghost"
             size="sm"
             class="font-inter text-text-brand-muted hover:text-hister-rose h-auto cursor-pointer px-2 py-1 text-xs"
-            onclick={deleteAllRecentSearches}
-            title="Clear all recent searches"
+            onclick={hideAllRecentSearches}
+            title="Hide all recent searches on this browser"
           >
-            Clear all
+            Hide all on this browser
           </Button>
         </div>
+        <p class="font-inter text-text-brand-muted text-xs">
+          Hiding searches only affects this browser. Your history remains on the server.
+        </p>
         <div class="flex flex-wrap items-center justify-center gap-2">
           {#each recentSearches.slice(0, 8) as search, i}
             {@const chip = chipColors[i % chipColors.length]}
@@ -2920,9 +2923,9 @@
               <button
                 type="button"
                 class="hover:bg-hister-rose/10 hover:text-hister-rose flex w-8 shrink-0 cursor-pointer items-center justify-center border-l transition-colors {chip.border} {chip.text}"
-                aria-label="Remove recent search: {search}"
-                title="Remove recent search"
-                onclick={() => deleteRecentSearch(search)}
+                aria-label="Hide recent search on this browser: {search}"
+                title="Hide on this browser"
+                onclick={() => hideRecentSearch(search)}
               >
                 <X class="size-3.5" />
               </button>

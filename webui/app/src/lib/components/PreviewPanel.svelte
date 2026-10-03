@@ -1,6 +1,7 @@
 <!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
 <script lang="ts">
   import VideoPreview from './VideoPreview.svelte';
+  import PreviewLoadError from './PreviewLoadError.svelte';
   import { apiFetch } from '#lib/api.js';
   import {
     buildPreviewUrl,
@@ -64,9 +65,13 @@
   let added = $state<number | null>(null);
   let updated = $state<number | null>(null);
   let loading = $state(false);
+  let previewError = $state('');
   let versionCount = $state(0);
   let versions = $state<DocumentVersion[]>([]);
   let showVersions = $state(false);
+  let versionsLoading = $state(false);
+  let versionsLoaded = $state(false);
+  let versionsError = $state('');
   let viewingVersion = $state<DocumentVersion | null>(null);
   let extractorName = $state('');
   let availableExtractors = $state<{ name: string; description: string }[]>([]);
@@ -145,6 +150,9 @@
   // Tracks whether this component instance has already performed its first load.
   // Plain variable (not $state) so it persists across effect runs without triggering reactivity.
   let _mountedWithDocument = '';
+  let contentRequestId = 0;
+  let versionsRequestId = 0;
+  let retryPreview: () => void = () => {};
 
   function documentRequestUrl(
     path: string,
@@ -192,20 +200,28 @@
     versionId: number | null = null,
     selectedDocumentId: string = documentId,
   ) {
+    const requestId = ++contentRequestId;
+    retryPreview = () => loadContent(u, hint, extractor, versionId, selectedDocumentId);
     loading = true;
+    previewError = '';
     content = '';
     template = '';
     templateData = null;
     documentDetails = null;
     showEmbeddedVideos = false;
     showVersions = false;
+    // Discard version history requests belonging to the previous preview.
+    versionsRequestId++;
+    versionsLoading = false;
+    versionsLoaded = false;
+    versionsError = '';
+    versions = [];
     viewingVersion = null;
     if (versionId === null) {
       meta = null;
       added = null;
       updated = null;
       title = hint;
-      versions = [];
       versionCount = 0;
     }
     try {
@@ -213,34 +229,33 @@
       if (extractor) extra.extractor = extractor;
       if (versionId != null) extra.version = String(versionId);
       const resp = await apiFetch(documentRequestUrl('/preview', u, selectedDocumentId, extra));
-      if (!resp.ok) {
-        content = `<p class="text-hister-rose">Failed to load readable content. Status: ${resp.status}</p>`;
-      } else {
-        const data = (await resp.json()) as DocumentPreviewResponse;
-        template = data.template || '';
-        templateData = template === 'video' ? parseTemplateData(data.content) : null;
-        content = template === 'video' ? '' : data.content || '<p>No content available</p>';
-        // Always update metadata (server always returns current doc's metadata regardless of version).
-        title = data.title || hint;
-        added = data.added ?? null;
-        updated = data.updated ?? null;
-        meta = data.meta ?? null;
-        documentDetails = data.details;
-        versionCount = data.version_count ?? 0;
-        if (data.version_id && data.version_created_at) {
-          viewingVersion = {
-            id: data.version_id,
-            created_at: data.version_created_at,
-            html_diff: '',
-            text_diff: '',
-          };
-        }
-        onviewingversionchange?.(viewingVersion?.id ?? null);
+      if (!resp.ok) throw new Error('Preview request failed');
+      const data = (await resp.json()) as DocumentPreviewResponse;
+      if (requestId !== contentRequestId) return;
+      template = data.template || '';
+      templateData = template === 'video' ? parseTemplateData(data.content) : null;
+      content = template === 'video' ? '' : data.content || '<p>No content available</p>';
+      // Always update metadata (server always returns current doc's metadata regardless of version).
+      title = data.title || hint;
+      added = data.added ?? null;
+      updated = data.updated ?? null;
+      meta = data.meta ?? null;
+      documentDetails = data.details;
+      versionCount = data.version_count ?? 0;
+      if (data.version_id && data.version_created_at) {
+        viewingVersion = {
+          id: data.version_id,
+          created_at: data.version_created_at,
+          html_diff: '',
+          text_diff: '',
+        };
       }
-    } catch (err) {
-      content = `<p class="text-hister-rose">Failed to load: ${err}</p>`;
+      onviewingversionchange?.(viewingVersion?.id ?? null);
+    } catch {
+      if (requestId !== contentRequestId) return;
+      previewError = 'Could not load this preview. Please try again.';
     } finally {
-      loading = false;
+      if (requestId === contentRequestId) loading = false;
     }
   }
 
@@ -261,22 +276,29 @@
     }
   }
 
-  async function toggleVersions(u: string) {
-    if (showVersions) {
-      showVersions = false;
-      return;
+  async function loadVersions() {
+    if (versionsLoading) return;
+    const requestId = ++versionsRequestId;
+    versionsLoading = true;
+    versionsError = '';
+    try {
+      const resp = await apiFetch(documentRequestUrl('/versions', url, documentId));
+      if (!resp.ok) throw new Error('Version history request failed');
+      const data = (await resp.json()) ?? [];
+      if (requestId !== versionsRequestId) return;
+      versions = data;
+      versionsLoaded = true;
+    } catch {
+      if (requestId !== versionsRequestId) return;
+      versionsError = 'Could not load previous versions. Please try again.';
+    } finally {
+      if (requestId === versionsRequestId) versionsLoading = false;
     }
-    if (versions.length === 0) {
-      try {
-        const resp = await apiFetch(documentRequestUrl('/versions', u, documentId));
-        if (resp.ok) {
-          versions = (await resp.json()) ?? [];
-        }
-      } catch {
-        // silently ignore
-      }
-    }
-    showVersions = true;
+  }
+
+  function toggleVersions() {
+    showVersions = !showVersions;
+    if (showVersions && !versionsLoaded) void loadVersions();
   }
 </script>
 
@@ -287,7 +309,7 @@
       ? 'preview-panel-connected shrink-0 border-l-0'
       : 'shrink-0 border-l-[3px]'}"
 >
-  {#if loading}
+  {#if loading || previewError}
     <div
       class="border-border-brand-muted flex shrink-0 items-center justify-end gap-1 border-b-[2px] px-2 py-1"
     >
@@ -316,7 +338,11 @@
       </Button>
     </div>
     <div class="flex flex-1 items-center justify-center">
-      <span class="font-inter text-text-brand-muted text-sm">Loading…</span>
+      {#if previewError}
+        <PreviewLoadError message={previewError} onretry={() => retryPreview()} originalUrl={url} />
+      {:else}
+        <span role="status" class="font-inter text-text-brand-muted text-sm">Loading…</span>
+      {/if}
     </div>
   {:else if content || templateData}
     <div
@@ -449,7 +475,7 @@
           {#if versionCount > 0}
             <span class="text-text-brand-muted">·</span>
             <button
-              onclick={() => toggleVersions(url)}
+              onclick={toggleVersions}
               class="font-inter text-hister-teal inline-flex cursor-pointer items-center gap-1 text-xs hover:underline"
             >
               <History class="size-3" />
@@ -542,7 +568,13 @@
       </div>
     {/if}
     <ScrollArea class="min-h-0 flex-1">
-      {#if showVersions}
+      {#if showVersions && versionsLoading}
+        <p role="status" class="font-inter text-text-brand-muted p-4 text-sm">
+          Loading previous versions…
+        </p>
+      {:else if showVersions && versionsError}
+        <PreviewLoadError message={versionsError} onretry={loadVersions} />
+      {:else if showVersions}
         <div class="flex flex-col divide-y divide-[var(--border-brand-muted)] p-4">
           {#each versions as v}
             <div class="py-4 first:pt-0 last:pb-0">
@@ -585,6 +617,8 @@
                 <p class="font-inter text-xs italic">No diff recorded.</p>
               {/if}
             </div>
+          {:else}
+            <p class="font-inter text-text-brand-muted text-sm">No previous versions available.</p>
           {/each}
         </div>
       {:else}

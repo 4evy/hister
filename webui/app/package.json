@@ -4,13 +4,15 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "tsc -p tests/tsconfig.json && node --test .test/tests/*.test.js",
+    "test": "npm run test:browser",
+    "test:browser": "playwright test",
     "build": "vite build",
     "dev": "vite dev",
     "preview": "vite preview",
     "serve": "sh ../dev-serve.sh"
   },
   "devDependencies": {
+    "@playwright/test": "^1.63.0",
     "@sveltejs/adapter-static": "^4.0.0",
     "@sveltejs/kit": "^3.0.0",
     "@sveltejs/vite-plugin-svelte": "^7.3.1",
