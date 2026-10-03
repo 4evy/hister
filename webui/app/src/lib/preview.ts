@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { tick } from 'svelte';
-import { base } from '$app/paths';
+import { resolve } from '$app/paths';
 
 const previewDetailsOpenStorageKey = 'hister-preview-details-open';
 
@@ -14,7 +14,9 @@ export function buildPreviewUrl(
 ): string {
   const versionParam = versionId != null ? `&version=${versionId}` : '';
   const documentParam = documentId ? `&document_id=${encodeURIComponent(documentId)}` : '';
-  return `${base}/preview?id=${encodeURIComponent(id)}${title ? '&title=' + encodeURIComponent(title) : ''}${versionParam}${documentParam}`;
+  return resolve(
+    `preview?id=${encodeURIComponent(id)}${title ? '&title=' + encodeURIComponent(title) : ''}${versionParam}${documentParam}`,
+  );
 }
 
 /** Pushes a preview entry onto the browser history stack. */

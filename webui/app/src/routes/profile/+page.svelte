@@ -1,12 +1,12 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { apiFetch, fetchConfig } from '$lib/api';
-  import { base } from '$app/paths';
+  import { apiFetch, fetchConfig } from '#lib/api.js';
+  import { resolve } from '$app/paths';
   import { Button } from '@hister/components/ui/button';
   import * as Card from '@hister/components/ui/card';
   import * as Dialog from '@hister/components/ui/dialog';
   import { PageHeader } from '@hister/components';
-  import { StatusMessage } from '$lib/components';
+  import { StatusMessage } from '#lib/components/index.js';
   import { Copy, Eye, EyeOff, RefreshCw, User, Info } from '@lucide/svelte';
 
   let username = $state('');
@@ -23,7 +23,7 @@
   onMount(async () => {
     const cfg = await fetchConfig();
     if (cfg.authMode !== 'user' || !cfg.authenticated) {
-      window.location.href = base + '/auth';
+      window.location.href = resolve('auth');
       return;
     }
     apiFetch('/profile')

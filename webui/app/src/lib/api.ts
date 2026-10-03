@@ -1,5 +1,5 @@
-import { base } from '$app/paths';
-import type { SearchCapabilities } from '$lib/search-schema';
+import { resolve } from '$app/paths';
+import type { SearchCapabilities } from '#lib/search-schema.js';
 
 export interface AppConfig {
   basePath?: string;
@@ -43,9 +43,9 @@ let _csrf: string = '';
 
 function apiPath(path: string): string {
   if (path === '') {
-    return `${base}/api`;
+    return `${resolve('/')}api`;
   }
-  return `${base}/api${path.startsWith('/') ? path : `/${path}`}`;
+  return `${resolve('/')}api${path.startsWith('/') ? path : `/${path}`}`;
 }
 
 function clearLegacyAccessToken(): void {
@@ -54,7 +54,7 @@ function clearLegacyAccessToken(): void {
 
 function redirectToAuth(reason: 'auth_required' | 'invalid_token' = 'auth_required'): void {
   const params = new URLSearchParams({ reason });
-  window.location.href = `${base}/auth?${params.toString()}`;
+  window.location.href = resolve(`auth?${params.toString()}`);
 }
 
 function getCsrf(): string {
@@ -155,9 +155,8 @@ interface ApiFetchOptions extends RequestInit {
 
 export async function apiFetch(url: string, options: ApiFetchOptions = {}): Promise<Response> {
   const { redirectOnForbidden = true, ...fetchOptions } = options;
-  const headers: Record<string, string> = {
-    ...(fetchOptions.headers as Record<string, string>),
-  };
+  const headers: Record<string, string> = { ...(fetchOptions.headers as Record<string, string>) };
+
   if (_csrf && fetchOptions.method && fetchOptions.method.toUpperCase() !== 'GET') {
     headers['X-CSRF-Token'] = _csrf;
   }

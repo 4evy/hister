@@ -11,7 +11,7 @@
   import Copy from '@lucide/svelte/icons/copy';
   import Check from '@lucide/svelte/icons/check';
   import { Button } from '@hister/components';
-  import Seo from '$lib/Seo.svelte';
+  import Seo from '#lib/Seo.svelte';
 
   const cryptoWallets = [
     {

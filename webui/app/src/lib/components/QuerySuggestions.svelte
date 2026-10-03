@@ -4,7 +4,7 @@
 <script lang="ts">
   import { onMount, tick } from 'svelte';
   import { ArrowUpDown, Clock3, Filter, Link2, SearchCheck, TextCursorInput } from '@lucide/svelte';
-  import type { QuerySuggestion } from '$lib/query-suggestions';
+  import type { QuerySuggestion } from '#lib/query-suggestions.js';
 
   interface Props {
     activeIndex: number;

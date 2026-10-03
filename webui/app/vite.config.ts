@@ -1,9 +1,20 @@
+import adapter from '@sveltejs/adapter-static';
 import { sveltekit } from '@sveltejs/kit/vite';
 import { defineConfig } from 'vite';
 import tailwindcss from '@tailwindcss/vite';
 
+const dev = process.env.NODE_ENV === 'development';
+
 export default defineConfig(({ mode }) => ({
-  plugins: [tailwindcss(), sveltekit()],
+  plugins: [
+    tailwindcss(),
+    sveltekit({
+      paths: {
+        base: dev ? '' : '/magic-string-that-we-replace-runtime-in-the-app',
+      },
+      adapter: adapter({ pages: 'build', assets: 'build', fallback: 'index.html' }),
+    }),
+  ],
   build: {
     minify: mode !== 'development',
     cssMinify: mode !== 'development',

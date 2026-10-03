@@ -2,9 +2,9 @@
 //
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import type { FacetsResult, TermCount } from '$lib/search';
-import { valuesForField } from '$lib/search-schema';
-import type { SearchCapabilities, SearchFieldDefinition } from '$lib/search-schema';
+import type { FacetsResult, TermCount } from '#lib/search.js';
+import { valuesForField } from '#lib/search-schema.js';
+import type { SearchCapabilities, SearchFieldDefinition } from '#lib/search-schema.js';
 
 export type QuerySuggestionKind = 'alias' | 'facet' | 'field' | 'recent' | 'sort' | 'spelling';
 

@@ -1,4 +1,4 @@
-import { docsStructure } from '$lib/docs-structure.js';
+import { docsStructure } from '#lib/docs-structure.js';
 
 const modules = import.meta.glob('../../content/docs/*.md', { eager: true });
 

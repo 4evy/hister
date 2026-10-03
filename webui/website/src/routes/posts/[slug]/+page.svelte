@@ -1,6 +1,6 @@
 <script lang="ts">
-  import ImageLightbox from '$lib/ImageLightbox.svelte';
-  import Seo from '$lib/Seo.svelte';
+  import ImageLightbox from '#lib/ImageLightbox.svelte';
+  import Seo from '#lib/Seo.svelte';
 
   let { data } = $props();
 </script>

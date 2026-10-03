@@ -6,7 +6,7 @@
   import Server from '@lucide/svelte/icons/server';
   import { Button } from '@hister/components';
   import { onMount } from 'svelte';
-  import HeroSearchDemo from '$lib/HeroSearchDemo.svelte';
+  import HeroSearchDemo from '#lib/HeroSearchDemo.svelte';
 
   const chromeExtensionURL =
     'https://chromewebstore.google.com/detail/hister/cciilamhchpmbdnniabclekddabkifhb';

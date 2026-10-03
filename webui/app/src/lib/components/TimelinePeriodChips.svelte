@@ -6,7 +6,7 @@
     getGroupColor,
     timelineBucketLabel,
     type TimelinePeriodRendererProps,
-  } from '$lib/history-timeline';
+  } from '#lib/history-timeline.js';
 
   let {
     buckets,

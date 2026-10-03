@@ -1,12 +1,14 @@
 <script lang="ts">
   import '../app.css';
   import { afterNavigate } from '$app/navigation';
-  import Header from '$lib/Header.svelte';
-  import Footer from '$lib/Footer.svelte';
+  import Header from '#lib/Header.svelte';
+  import Footer from '#lib/Footer.svelte';
 
   let { children } = $props();
 
-  afterNavigate(() => {
+  afterNavigate(({ shallow }) => {
+    if (shallow) return;
+
     const hash = window.location.hash;
     if (hash) {
       const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;

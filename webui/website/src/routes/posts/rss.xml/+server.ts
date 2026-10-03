@@ -1,5 +1,5 @@
 import type { RequestHandler } from '@sveltejs/kit';
-import { SITE_URL } from '$lib/config';
+import { SITE_URL } from '#lib/config.js';
 
 const FEED_TITLE = 'Hister Posts';
 const FEED_DESCRIPTION = 'Latest posts from the Hister blog';

@@ -1,12 +1,12 @@
 <script lang="ts">
   import { onMount, tick } from 'svelte';
   import { ModeWatcher, setMode } from 'mode-watcher';
-  import SiteHeader from '$lib/components/SiteHeader.svelte';
+  import SiteHeader from '#lib/components/SiteHeader.svelte';
   import { Toaster, toast } from '@hister/components/ui/sonner';
-  import { fetchConfig, logout, resetConfig, type AppConfig } from '$lib/api';
-  import { setFlashMessage, showFlashMessage } from '$lib/flash';
-  import { getStoredThemePreference } from '$lib/theme';
-  import { base } from '$app/paths';
+  import { fetchConfig, logout, resetConfig, type AppConfig } from '#lib/api.js';
+  import { setFlashMessage, showFlashMessage } from '#lib/flash.js';
+  import { getStoredThemePreference } from '#lib/theme.js';
+  import { resolve } from '$app/paths';
   import '../style.css';
 
   let { children } = $props();
@@ -45,7 +45,7 @@
     resetConfig();
     config = null;
     setFlashMessage('You have been logged out.');
-    window.location.href = isPublic ? base + '/' : base + '/auth';
+    window.location.href = isPublic ? resolve('/') : resolve('auth');
   }
 </script>
 

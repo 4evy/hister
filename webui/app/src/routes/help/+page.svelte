@@ -1,8 +1,8 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { base } from '$app/paths';
-  import { fetchConfig, type AppConfig } from '$lib/api';
-  import { hotkeyDescriptions } from '$lib/hotkeys';
+  import { resolve } from '$app/paths';
+  import { fetchConfig, type AppConfig } from '#lib/api.js';
+  import { hotkeyDescriptions } from '#lib/hotkeys.js';
   import { Button } from '@hister/components/ui/button';
   import { Kbd } from '@hister/components/ui/kbd';
   import { ArrowRight, ArrowUpRight, Keyboard, Search } from '@lucide/svelte';
@@ -108,7 +108,10 @@
   <ul class="example-list {columns ? 'md:grid md:grid-cols-2 md:gap-x-8' : ''}">
     {#each examples as example (example.query)}
       <li>
-        <a class="example-link group" href={`${base}/?q=${encodeURIComponent(example.query)}`}>
+        <a
+          class="example-link group"
+          href={`${resolve('/')}?q=${encodeURIComponent(example.query)}`}
+        >
           <span class="min-w-0">
             <code>{example.query}</code>
             <span class="text-text-brand-secondary mt-1.5 block text-sm leading-relaxed"
@@ -144,7 +147,7 @@
         </p>
         <div class="mt-6 flex flex-wrap items-center gap-4">
           <Button
-            href={`${base}/`}
+            href={resolve('/')}
             class="font-space shadow-brutal-sm gap-3 px-5 font-bold hover:no-underline"
           >
             <Search class="size-4" aria-hidden="true" />Search
@@ -152,7 +155,7 @@
           {@render docLink('query-language', 'Query language guide')}
         </div>
         <p class="text-text-brand-secondary mt-5 text-sm">
-          For setup and indexing instructions, see <a class="text-link" href={`${base}/about`}
+          For setup and indexing instructions, see <a class="text-link" href={resolve('/about')}
             >About Hister</a
           >.
         </p>
@@ -257,7 +260,7 @@
           <p class="text-text-brand-secondary mt-3 text-sm leading-relaxed">
             A leading minus sign excludes a filter. For example, <a
               class="query-link"
-              href={`${base}/?q=${encodeURIComponent('golang -domain:stackoverflow.com')}`}
+              href={`${resolve('/')}?q=${encodeURIComponent('golang -domain:stackoverflow.com')}`}
               ><code>golang -domain:stackoverflow.com</code></a
             > excludes results from that domain.
           </p>
@@ -268,8 +271,9 @@
             <code>url_re:</code> matches normalized URLs with a Go regular expression. Use quotes if
             the expression contains spaces. Anchor with <code>^</code> to match the start of a URL.
           </p>
-          <a class="query-link mt-3 block" href={`${base}/?q=${encodeURIComponent(urlRegexp)}`}
-            ><code>{urlRegexp}</code></a
+          <a
+            class="query-link mt-3 block"
+            href={`${resolve('/')}?q=${encodeURIComponent(urlRegexp)}`}><code>{urlRegexp}</code></a
           >
           <div class="mt-3">
             {@render docLink('query-language#url-regular-expressions', 'Regular expression syntax')}
@@ -324,7 +328,7 @@
         </p>
         <div class="mt-5 flex flex-wrap gap-x-5 gap-y-3">
           {#if config?.canWrite}
-            <a class="text-link" href={`${base}/rules`}
+            <a class="text-link" href={resolve('/rules')}
               >Manage aliases<ArrowRight class="size-4" aria-hidden="true" /></a
             >
           {/if}
@@ -368,7 +372,7 @@
           <p class="text-text-brand-secondary mt-2 text-sm leading-relaxed">
             Remove filters and try a single keyword. Search for <a
               class="query-link"
-              href={`${base}/?q=*`}><code>*</code></a
+              href={`${resolve('/')}?q=*`}><code>*</code></a
             > to check which documents are available. Hister searches its index, not the live web.
           </p>
           <div class="mt-4">

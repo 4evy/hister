@@ -4,8 +4,8 @@
   import Search from '@lucide/svelte/icons/search';
   import SlidersHorizontal from '@lucide/svelte/icons/sliders-horizontal';
   import X from '@lucide/svelte/icons/x';
-  import Seo from '$lib/Seo.svelte';
-  import { focusTrap } from '$lib/focus-trap';
+  import Seo from '#lib/Seo.svelte';
+  import { focusTrap } from '#lib/focus-trap.js';
   import type { Dataset } from './+page.ts';
 
   let { data } = $props();

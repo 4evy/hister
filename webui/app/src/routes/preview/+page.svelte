@@ -3,9 +3,9 @@
   import { onMount } from 'svelte';
   import { Button } from '@hister/components/ui/button';
   import { ArrowLeft } from '@lucide/svelte';
-  import PreviewPanel from '$lib/components/PreviewPanel.svelte';
-  import { replacePreviewHistory } from '$lib/preview';
-  import { base } from '$app/paths';
+  import PreviewPanel from '#lib/components/PreviewPanel.svelte';
+  import { replacePreviewHistory } from '#lib/preview.js';
+  import { resolve } from '$app/paths';
 
   let docUrl = $state('');
   let documentId = $state('');
@@ -54,7 +54,7 @@
         } catch {
           // ignore referrer parse errors
         }
-        window.location.href = base + '/';
+        window.location.href = resolve('/');
       }}
     />
   {:else}
@@ -62,7 +62,7 @@
       <p class="font-inter text-text-brand-secondary">No document URL specified.</p>
       <Button
         variant="outline"
-        href={base + '/'}
+        href={resolve('/')}
         class="font-inter gap-2 rounded-none border-[2px]"
       >
         <ArrowLeft class="size-4" />

@@ -1,5 +1,5 @@
 import type { RequestHandler } from '@sveltejs/kit';
-import { SITE_URL } from '$lib/config';
+import { SITE_URL } from '#lib/config.js';
 
 export const prerender = true;
 

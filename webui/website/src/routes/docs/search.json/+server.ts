@@ -1,6 +1,6 @@
 import GithubSlugger from 'github-slugger';
 import type { RequestHandler } from '@sveltejs/kit';
-import type { DocsSearchEntry, DocsSearchIndex } from '$lib/docs-search';
+import type { DocsSearchEntry, DocsSearchIndex } from '#lib/docs-search.js';
 
 const sources = import.meta.glob('../../../content/docs/*.md', {
   eager: true,

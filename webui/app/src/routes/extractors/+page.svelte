@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { PageHeader } from '@hister/components';
-  import { fetchExtractors, type ExtractorInfo } from '$lib/api';
+  import { fetchExtractors, type ExtractorInfo } from '#lib/api.js';
 
   let extractors = $state<ExtractorInfo[]>([]);
   let error = $state<string | null>(null);

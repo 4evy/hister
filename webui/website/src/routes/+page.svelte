@@ -1,11 +1,11 @@
 <script lang="ts">
-  import Hero from '$lib/Hero.svelte';
-  import HowItWorks from '$lib/HowItWorks.svelte';
-  import Previews from '$lib/Previews.svelte';
-  import WhyHister from '$lib/WhyHister.svelte';
-  import Features from '$lib/Features.svelte';
-  import FinalCTA from '$lib/FinalCTA.svelte';
-  import Seo from '$lib/Seo.svelte';
+  import Hero from '#lib/Hero.svelte';
+  import HowItWorks from '#lib/HowItWorks.svelte';
+  import Previews from '#lib/Previews.svelte';
+  import WhyHister from '#lib/WhyHister.svelte';
+  import Features from '#lib/Features.svelte';
+  import FinalCTA from '#lib/FinalCTA.svelte';
+  import Seo from '#lib/Seo.svelte';
 </script>
 
 <Seo

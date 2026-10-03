@@ -6,9 +6,8 @@
     replacePreviewHistory,
     withSkipUrl,
     createResizeHandler,
-  } from '$lib/preview';
-  import { page } from '$app/stores';
-  import { base } from '$app/paths';
+  } from '#lib/preview.js';
+  import { resolve } from '$app/paths';
   import { beforeNavigate } from '$app/navigation';
   import {
     WebSocketManager,
@@ -25,43 +24,43 @@
     parseSearchResults,
     openURL,
     isIMEKeyboardEvent,
-  } from '$lib/search';
-  import { fetchConfig, apiFetch, getUserId } from '$lib/api';
-  import { ResultState } from '$lib/result-state.svelte';
-  import { mergeSearchResults, removeSearchResults } from '$lib/search-results';
-  import { showHelp } from '$lib/stores';
-  import { hotkeyDescriptions } from '$lib/hotkeys';
+  } from '#lib/search.js';
+  import { fetchConfig, apiFetch, getUserId } from '#lib/api.js';
+  import { ResultState } from '#lib/result-state.svelte.js';
+  import { mergeSearchResults, removeSearchResults } from '#lib/search-results.js';
+  import { showHelp } from '#lib/stores.js';
+  import { hotkeyDescriptions } from '#lib/hotkeys.js';
   import type {
     SearchResults,
     SearchResult,
     SearchQueryOptions,
     FacetsResult,
     WebSocketRequest,
-  } from '$lib/search';
-  import { RESULTS_PER_PAGE } from '$lib/search';
+  } from '#lib/search.js';
+  import { RESULTS_PER_PAGE } from '#lib/search.js';
   import {
     customDatesFromQuery,
     removeTimeFilters,
     replaceTimeFilters,
     shiftISODate,
     timeFilters,
-  } from '$lib/time-filters';
-  import { emptySearchCapabilities, valuesForFacet } from '$lib/search-schema';
-  import { queryFilters, removeQueryFilters, toggleQueryFilter } from '$lib/query-filters';
-  import type { QueryFilter } from '$lib/query-filters';
-  import type { SearchCapabilities, SearchFacetDefinition } from '$lib/search-schema';
+  } from '#lib/time-filters.js';
+  import { emptySearchCapabilities, valuesForFacet } from '#lib/search-schema.js';
+  import { queryFilters, removeQueryFilters, toggleQueryFilter } from '#lib/query-filters.js';
+  import type { QueryFilter } from '#lib/query-filters.js';
+  import type { SearchCapabilities, SearchFacetDefinition } from '#lib/search-schema.js';
   import {
     removeSortDirectives,
     replaceSortDirective,
     sortDirectiveFromQuery,
     sortValueFromQuery,
-  } from '$lib/sort-directive';
+  } from '#lib/sort-directive.js';
   import {
     applyQuerySuggestion,
     buildQuerySuggestions,
     facetSuggestionContext,
-  } from '$lib/query-suggestions';
-  import type { QuerySuggestion } from '$lib/query-suggestions';
+  } from '#lib/query-suggestions.js';
+  import type { QuerySuggestion } from '#lib/query-suggestions.js';
   import { animate } from 'animejs';
   import { Input } from '@hister/components/ui/input';
   import { Button } from '@hister/components/ui/button';
@@ -78,7 +77,7 @@
     SearchLoading,
     ResultActionsMenu,
     ResultFavicon,
-  } from '$lib/components';
+  } from '#lib/components/index.js';
   import { Kbd } from '@hister/components/ui/kbd';
   import {
     Search,
@@ -107,7 +106,7 @@
     RefreshCw,
     WifiOff,
   } from '@lucide/svelte';
-  import type { HistoryItem } from '$lib/types';
+  import type { HistoryItem } from '#lib/types.js';
 
   interface Config {
     wsUrl: string;
@@ -408,7 +407,7 @@
     ],
     [
       { type: 'text', value: 'Define aliases in the' },
-      { type: 'link', value: 'Rules page', href: base + '/rules' },
+      { type: 'link', value: 'Rules page', href: resolve('/rules') },
       { type: 'text', value: 'to shorten common queries' },
     ],
     [
@@ -718,7 +717,8 @@
     wsManager.connect();
   }
 
-  beforeNavigate(({ willUnload, complete }) => {
+  beforeNavigate(({ willUnload, complete, shallow }) => {
+    if (shallow) return;
     if (!willUnload) return;
     unloading = true;
     complete.catch(() => {
@@ -780,7 +780,7 @@
     const params = new URLSearchParams();
     if (query) params.set('q', query);
     const search = params.toString();
-    return `${base}/${search ? `?${search}` : ''}`;
+    return `${resolve('/')}${search ? `?${search}` : ''}`;
   }
 
   // --- History state helpers ---
@@ -2978,7 +2978,7 @@
           </a>
 
           <a
-            href="{base}/add"
+            href={resolve('/add')}
             class="empty-index-action border-hister-coral bg-hister-coral/5 hover:bg-hister-coral/10"
           >
             <Link2 class="text-hister-coral size-5 shrink-0" />
@@ -3026,7 +3026,7 @@
         {/each}
       {:else if statsAvailable}
         {@render homeStatChip(
-          `${base}/?q=*`,
+          `${resolve('/')}?q=*`,
           'text-hister-indigo',
           'Browse all indexed pages',
           History,
@@ -3036,7 +3036,7 @@
         )}
         {#if fileCount > 0}
           {@render homeStatChip(
-            `${base}/?q=type:file`,
+            `${resolve('/')}?q=type:file`,
             'text-hister-amber',
             'Browse all indexed files',
             FileText,
@@ -3047,7 +3047,7 @@
         {/if}
         {#if !config.public || config.canWrite}
           {@render homeStatChip(
-            `${base}/rules#indexing-rules`,
+            `${resolve('/rules')}#indexing-rules`,
             'text-hister-teal',
             'Open indexing rules',
             Shield,
@@ -3056,7 +3056,7 @@
             null,
           )}
           {@render homeStatChip(
-            `${base}/rules#search-aliases`,
+            `${resolve('/rules')}#search-aliases`,
             'text-hister-coral',
             'Open search aliases',
             Link2,

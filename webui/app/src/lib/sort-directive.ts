@@ -1,4 +1,4 @@
-import type { SearchSortCapabilities } from '$lib/search-schema';
+import type { SearchSortCapabilities } from '#lib/search-schema.js';
 
 function escapeRegularExpression(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');

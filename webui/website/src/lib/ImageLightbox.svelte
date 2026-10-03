@@ -1,6 +1,6 @@
 <script lang="ts">
   import X from '@lucide/svelte/icons/x';
-  import { focusTrap } from '$lib/focus-trap';
+  import { focusTrap } from '#lib/focus-trap.js';
 
   let { contentKey }: { contentKey?: string } = $props();
 

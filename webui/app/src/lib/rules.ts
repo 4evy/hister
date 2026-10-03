@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-import { apiFetch } from '$lib/api';
+import { apiFetch } from '#lib/api.js';
 
 export type RuleType = 'allow' | 'skip' | 'priority' | 'versioning';
 export type RuleMatchMode = 'domain' | 'url' | 'regex';
