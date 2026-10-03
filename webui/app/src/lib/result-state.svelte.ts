@@ -69,15 +69,17 @@ export class ResultState {
   async updateLabel(url: string) {
     this.labelMessage = null;
     this.labelError = false;
-    const res = await apiFetch('/label', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ url, label: this.labelInput }),
-    });
-    if (res.ok) {
-      this.displayLabel = this.labelInput || undefined;
-      this.labelMessage = this.labelInput ? 'Label saved.' : 'Label cleared.';
-    } else {
+    const label = this.labelInput;
+    try {
+      const res = await apiFetch('/label', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url, label }),
+      });
+      if (!res.ok) throw new Error('Failed to save label');
+      this.displayLabel = label || undefined;
+      this.labelMessage = label ? 'Label saved.' : 'Label cleared.';
+    } catch {
       this.labelMessage = 'Failed to save label.';
       this.labelError = true;
     }
@@ -88,11 +90,12 @@ export class ResultState {
     if (!q) return;
     const cleanTitle = title.replace(/<[^>]*>/g, '');
     try {
-      await apiFetch('/history', {
+      const res = await apiFetch('/history', {
         method: 'POST',
         headers: { 'Content-type': 'application/json; charset=UTF-8' },
         body: JSON.stringify({ url, title: cleanTitle, query: q, pin: !remove }),
       });
+      if (!res.ok) throw new Error('Failed to update priority');
       this.actionsMessage = `Priority result ${remove ? 'removed' : 'added'}.`;
       this.actionsError = false;
     } catch {

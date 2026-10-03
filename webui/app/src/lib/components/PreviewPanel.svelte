@@ -333,6 +333,7 @@
         size="icon-sm"
         class="text-text-brand-muted hover:text-text-brand"
         onclick={onclose}
+        aria-label="Close preview"
       >
         <X class="size-4" />
       </Button>
@@ -439,7 +440,13 @@
               {/if}
             </Button>
           {/if}
-          <Button variant="ghost" size="icon-sm" class="hover:text-text-brand" onclick={onclose}>
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            class="hover:text-text-brand"
+            onclick={onclose}
+            aria-label="Close preview"
+          >
             <X class="size-4" />
           </Button>
         </div>
@@ -720,6 +727,7 @@
         size="icon-sm"
         class="text-text-brand-muted hover:text-text-brand"
         onclick={onclose}
+        aria-label="Close preview"
       >
         <X class="size-4" />
       </Button>

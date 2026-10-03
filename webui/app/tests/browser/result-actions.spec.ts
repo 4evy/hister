@@ -1,0 +1,264 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+import { expect, test, type Page } from '@playwright/test';
+import { mockAPI, original, preview, previewPath } from './fixtures';
+
+async function openActions(page: Page) {
+  const trigger = page.getByRole('button', { name: `Actions for ${preview.title}`, exact: true });
+  await expect(trigger).toBeVisible({ timeout: 3000 });
+  await trigger.click();
+  return trigger;
+}
+
+test('result actions use a bottom sheet on phones and a dropdown on desktop', async ({
+  page,
+  isMobile,
+}) => {
+  await mockAPI(page);
+  await page.goto('/?q=article');
+  const trigger = await openActions(page);
+  if (isMobile) {
+    const sheet = page.getByRole('dialog', { name: 'Result actions', exact: true });
+    await expect(sheet).toBeVisible();
+    await expect(sheet.getByRole('textbox')).toHaveCount(0);
+    for (const name of ['Pin result', 'Edit label', 'Disable indexing', 'Delete result']) {
+      const action = sheet.getByRole('button', { name, exact: true });
+      await expect(action).toBeVisible();
+      expect((await action.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+    }
+    await expect(async () => {
+      const box = (await sheet.boundingBox())!;
+      expect(box.x).toBeGreaterThanOrEqual(0);
+      expect(box.x + box.width).toBeLessThanOrEqual(page.viewportSize()!.width);
+      expect(Math.abs(box.y + box.height - page.viewportSize()!.height)).toBeLessThan(2);
+    }).toPass();
+    await page.screenshot({ path: test.info().outputPath('result-actions.png') });
+    for (let tab = 0; tab < 6; tab++) {
+      await page.keyboard.press('Tab');
+      await expect(sheet.locator(':focus')).toHaveCount(1);
+    }
+    await page.keyboard.press('Escape');
+    await expect(sheet).toHaveCount(0);
+    await expect(trigger).toBeFocused();
+    await expect(page).toHaveURL(/q=article/);
+    await trigger.click();
+    await sheet.getByRole('button', { name: 'Close result actions' }).click();
+    await expect(trigger).toBeFocused();
+  } else {
+    await expect(page.getByRole('menu')).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Pin', exact: true })).toBeVisible();
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+  }
+});
+
+test('the mobile label editor preserves input after failure and updates the result after saving', async ({
+  page,
+  isMobile,
+}) => {
+  test.skip(!isMobile, 'Mobile editor');
+  await mockAPI(page);
+  const bodies: unknown[] = [];
+  await page.route('**/api/label', async (route) => {
+    bodies.push(route.request().postDataJSON());
+    if (bodies.length === 1) await route.abort();
+    else if (bodies.length === 2) await route.fulfill({ status: 500 });
+    else await route.fulfill({ json: {} });
+  });
+  await page.goto('/?q=article');
+  await openActions(page);
+  await page.getByRole('button', { name: 'Edit label', exact: true }).click();
+  const editor = page.getByRole('dialog', { name: 'Edit label', exact: true });
+  await expect(editor.getByRole('textbox', { name: 'Label', exact: true })).toHaveValue('reading');
+  await editor.getByRole('textbox', { name: 'Label', exact: true }).fill('research');
+  await page.screenshot({ path: test.info().outputPath('label-editor.png') });
+  for (let attempt = 0; attempt < 2; attempt++) {
+    await editor.getByRole('button', { name: 'Save label' }).click();
+    await expect(editor.getByRole('alert')).toContainText('Failed to save label.');
+    await expect(editor.getByRole('textbox', { name: 'Label', exact: true })).toHaveValue(
+      'research',
+    );
+  }
+  await editor.getByRole('button', { name: 'Save label' }).click();
+  await expect(editor.getByRole('status')).toHaveText('Label saved.');
+  await editor.getByRole('button', { name: 'Back to actions' }).click();
+  await page.getByRole('button', { name: 'Close result actions' }).click();
+  await expect(page.locator('[data-result]').getByText('research', { exact: true })).toBeVisible();
+  expect(bodies).toEqual(Array(3).fill({ url: original, label: 'research' }));
+});
+
+test('the mobile pin editor submits its query with Enter and reports server failures', async ({
+  page,
+  isMobile,
+}) => {
+  test.skip(!isMobile, 'Mobile editor');
+  await mockAPI(page);
+  const bodies: unknown[] = [];
+  await page.route('**/api/history', async (route) => {
+    bodies.push(route.request().postDataJSON());
+    await route.fulfill({ status: bodies.length === 1 ? 500 : 200, json: {} });
+  });
+  await page.goto('/?q=article');
+  await openActions(page);
+  await page.getByRole('button', { name: 'Pin result', exact: true }).click();
+  const editor = page.getByRole('dialog', { name: 'Pin result', exact: true });
+  const query = editor.getByRole('textbox', { name: 'Search query' });
+  await expect(query).toHaveValue('article');
+  await query.fill('research');
+  await query.press('Enter');
+  await expect(editor.getByRole('alert')).toHaveText('Failed to update priority.');
+  await query.press('Enter');
+  await expect(editor.getByRole('status')).toHaveText('Priority result added.');
+  await expect(page).toHaveURL(/q=article/);
+  expect(bodies).toEqual(
+    Array(2).fill({ url: original, title: preview.title, query: 'research', pin: true }),
+  );
+});
+
+for (const confirm of [false, true]) {
+  test(`mobile skip rules ${confirm ? 'delete matches only after confirmation' : 'keep documents when deletion is canceled'}`, async ({
+    page,
+    isMobile,
+  }) => {
+    test.skip(!isMobile, 'Mobile editor');
+    await mockAPI(page);
+    const deletions: { dry_run?: boolean }[] = [];
+    let savedRules = '';
+    await page.route('**/api/rules', async (route) => {
+      if (route.request().method() === 'POST') savedRules = route.request().postData() ?? '';
+      await route.fulfill({ json: { allow: [], skip: [], priority: [], versioning: [] } });
+    });
+    await page.route('**/api/delete', async (route) => {
+      const body = route.request().postDataJSON();
+      deletions.push(body);
+      await route.fulfill({ json: body.dry_run ? { matched: 2 } : { deleted: 2 } });
+    });
+    await page.goto('/?q=article');
+    await openActions(page);
+    await page.getByRole('button', { name: 'Disable indexing', exact: true }).click();
+    const editor = page.getByRole('dialog', { name: 'Disable indexing', exact: true });
+    await editor.getByRole('checkbox', { name: 'Delete matching documents' }).check();
+    await editor.getByRole('button', { name: 'This URL', exact: true }).click();
+    const confirmation = page.getByRole('dialog', { name: 'Delete matching documents?' });
+    await expect(confirmation).toBeVisible();
+    expect(deletions).toHaveLength(1);
+    expect(deletions[0].dry_run).toBe(true);
+    expect(original).toMatch(new RegExp(new URLSearchParams(savedRules).get('skip')!));
+    await confirmation
+      .getByRole('button', { name: confirm ? 'Delete 2 documents' : 'Cancel', exact: true })
+      .click();
+    await expect(confirmation).toHaveCount(0);
+    if (confirm) {
+      await expect(page.locator('[data-result]')).toHaveCount(0);
+      expect(deletions).toHaveLength(2);
+      expect(deletions[1].dry_run).toBeUndefined();
+    } else {
+      await expect(page.locator('[data-result]')).toHaveCount(1);
+      expect(deletions).toHaveLength(1);
+    }
+  });
+}
+
+test('pinned and history results retain their mobile actions', async ({ page, isMobile }) => {
+  test.skip(!isMobile, 'Mobile actions');
+  await mockAPI(page, { historyResult: true, pinned: true });
+  const bodies: unknown[] = [];
+  await page.route('**/api/history', async (route) => {
+    bodies.push(route.request().postDataJSON());
+    await route.fulfill({ json: {} });
+  });
+  await page.goto('/?q=article');
+  await openActions(page);
+  const sheet = page.getByRole('dialog', { name: 'Result actions', exact: true });
+  await expect(sheet.getByRole('button', { name: 'Pin result', exact: true })).toHaveCount(0);
+  await expect(sheet.getByRole('button', { name: 'Delete result', exact: true })).toHaveCount(0);
+  await sheet.getByRole('button', { name: 'Unpin', exact: true }).click();
+  await expect(sheet.getByRole('status')).toHaveText('Priority result removed.');
+  await sheet.getByRole('button', { name: 'Forget for this query', exact: true }).click();
+  await expect(sheet).toHaveCount(0);
+  expect(bodies).toEqual([
+    { url: original, title: preview.title, query: 'article', pin: false },
+    { url: original, query: 'article', delete: true },
+  ]);
+});
+
+test('result actions stay hidden for read only users', async ({ page }) => {
+  await mockAPI(page, { canWrite: false });
+  await page.goto('/?q=article');
+  await expect(page.locator('[data-result]')).toHaveCount(1);
+  await expect(
+    page.locator('[data-result]').getByRole('button', { name: /^Actions for / }),
+  ).toHaveCount(0);
+});
+
+test('the mobile delete action removes the selected result', async ({ page, isMobile }) => {
+  test.skip(!isMobile, 'Mobile actions');
+  await mockAPI(page);
+  const requests: unknown[] = [];
+  await page.route('**/api/delete', async (route) => {
+    requests.push(route.request().postDataJSON());
+    await route.fulfill({ json: { deleted: 1 } });
+  });
+  await page.goto('/?q=article');
+  await openActions(page);
+  await page
+    .getByRole('dialog')
+    .getByRole('button', { name: 'Delete result', exact: true })
+    .click();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await expect(page.locator('[data-result]')).toHaveCount(0);
+  expect(requests).toEqual([{ query: `url:"${original}"` }]);
+});
+
+test('changing viewport closes the previous menu and fits the new layout', async ({ page }) => {
+  await mockAPI(page);
+  await page.setViewportSize({ width: 375, height: 812 });
+  await page.goto('/?q=article');
+  await openActions(page);
+  await expect(page.getByRole('dialog', { name: 'Result actions', exact: true })).toBeVisible();
+  await page.setViewportSize({ width: 1024, height: 768 });
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await openActions(page);
+  await expect(page.getByRole('menu')).toBeVisible();
+  await page.setViewportSize({ width: 320, height: 568 });
+  await expect(page.getByRole('menu')).toHaveCount(0);
+  await openActions(page);
+  await page.getByRole('button', { name: 'Disable indexing', exact: true }).click();
+  const editor = page.getByRole('dialog', { name: 'Disable indexing', exact: true });
+  await expect(editor.getByRole('button', { name: 'This Domain', exact: true })).toBeInViewport();
+  await expect(async () => {
+    const box = (await editor.boundingBox())!;
+    expect(box.x).toBeGreaterThanOrEqual(0);
+    expect(box.x + box.width).toBeLessThanOrEqual(320);
+    expect(box.y).toBeGreaterThanOrEqual(0);
+    expect(box.y + box.height).toBeLessThanOrEqual(568);
+  }).toPass();
+  await page.screenshot({ path: test.info().outputPath('skip-editor-small.png') });
+});
+
+test('preview close buttons are named while loading, after failure, and after recovery', async ({
+  page,
+}) => {
+  await mockAPI(page);
+  let finish: () => void = () => {};
+  const pending = new Promise<void>((resolve) => {
+    finish = resolve;
+  });
+  let attempts = 0;
+  await page.route('**/api/preview?**', async (route) => {
+    if (++attempts === 1) {
+      await pending;
+      await route.fulfill({ status: 500 });
+    } else {
+      await route.fulfill({ json: preview });
+    }
+  });
+  await page.goto(previewPath());
+  await expect(page.getByRole('status')).toHaveText('Loading…');
+  await expect(page.getByRole('button', { name: 'Close preview', exact: true })).toBeVisible();
+  finish();
+  await expect(page.getByRole('alert')).toContainText('Could not load this preview.');
+  await expect(page.getByRole('button', { name: 'Close preview', exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Retry', exact: true }).click();
+  await expect(page.getByText('Saved article content', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Close preview', exact: true }).click();
+  await expect(page.getByRole('searchbox', { name: 'Search your history' })).toBeVisible();
+});

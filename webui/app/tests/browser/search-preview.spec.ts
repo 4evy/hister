@@ -1,58 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test } from '@playwright/test';
 
-const original = 'https://example.com/article';
-const preview = {
-  title: 'Saved article',
-  content: '<p>Saved article content</p>',
-  added: 1700000000,
-  version_count: 1,
-};
-
-function previewPath(url = original, version?: number) {
-  const params = new URLSearchParams({ id: url, document_id: 'document-1', title: 'Article' });
-  if (version) params.set('version', String(version));
-  return `/preview?${params}`;
-}
-
-async function mockAPI(page: Page) {
-  await page.routeWebSocket('**/search', () => {});
-  await page.route('**/api/**', async (route) => {
-    const path = new URL(route.request().url()).pathname;
-    const data: Record<string, unknown> = {
-      '/api/config': {
-        wsUrl: 'ws://127.0.0.1:4174/search',
-        title: 'Hister',
-        searchUrl: 'https://example.com/search?q=',
-        hotkeys: {},
-        authMode: 'none',
-        authenticated: true,
-        canWrite: true,
-        historyEnabled: true,
-        colorScheme: 'automatic',
-        search: {
-          version: 0,
-          fields: [],
-          facets: [],
-          sort: { field: '', label: '', description: '', options: [] },
-          valueSets: {},
-        },
-      },
-      '/api/stats': {
-        doc_count: 2,
-        recent_searches: [{ query: 'svelte' }, { query: 'golang' }],
-      },
-      '/api/rules': { aliases: {} },
-      '/api/preview': preview,
-      '/api/versions': [],
-      '/api/extractors': [
-        { name: 'basic', description: 'Stored content' },
-        { name: 'readability', description: 'Readable content' },
-      ],
-    };
-    await route.fulfill({ json: data[path] ?? {} });
-  });
-}
+import { mockAPI, original, preview, previewPath } from './fixtures';
 
 test.beforeEach(async ({ page }) => {
   await mockAPI(page);
