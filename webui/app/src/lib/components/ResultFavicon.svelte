@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { base } from '$app/paths';
+  import { resolve } from '$app/paths';
   import { Globe, Star } from '@lucide/svelte';
 
   interface Props {
@@ -15,7 +15,7 @@
 
   const src = $derived.by(() => {
     if (favicon) return favicon;
-    if (faviconKey) return `${base}/api/favicon?key=${encodeURIComponent(faviconKey)}`;
+    if (faviconKey) return `${resolve('/')}api/favicon?key=${encodeURIComponent(faviconKey)}`;
     return '';
   });
 

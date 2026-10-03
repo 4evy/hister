@@ -1,8 +1,8 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { base } from '$app/paths';
-  import { fetchConfig, type AppConfig } from '$lib/api';
-  import { extensionStores } from '$lib/extension';
+  import { resolve } from '$app/paths';
+  import { fetchConfig, type AppConfig } from '#lib/api.js';
+  import { extensionStores } from '#lib/extension.js';
   import { Button } from '@hister/components/ui/button';
   import {
     ArrowRight,
@@ -124,7 +124,7 @@
         </p>
         <div class="mt-7 flex flex-wrap items-center gap-4">
           <Button
-            href={`${base}/`}
+            href={resolve('/')}
             class="font-space shadow-brutal-sm gap-3 px-5 font-bold hover:no-underline"
           >
             Search<ArrowRight class="size-4" aria-hidden="true" />
@@ -227,7 +227,7 @@
           <div class="mt-auto flex flex-wrap gap-x-4 gap-y-2 pt-5">
             {@render docLink('crawler', 'Crawling guide')}
             {#if config?.canWrite}
-              <a class="text-link" href={`${base}/add`}
+              <a class="text-link" href={resolve('/add')}
                 >Add a page<ArrowRight class="size-4" aria-hidden="true" /></a
               >
             {/if}
@@ -247,7 +247,7 @@
           <div class="mt-auto flex flex-wrap gap-x-4 gap-y-2 pt-5">
             {@render docLink('rules', 'Rules reference')}
             {#if config?.canWrite}
-              <a class="text-link" href={`${base}/rules`}
+              <a class="text-link" href={resolve('/rules')}
                 >Manage rules<ArrowRight class="size-4" aria-hidden="true" /></a
               >
             {/if}
@@ -269,7 +269,7 @@
             <li class="border-border-brand-muted border-b last:border-b-0">
               <a
                 class="search-example group"
-                href={`${base}/?q=${encodeURIComponent(example.query)}`}
+                href={`${resolve('/')}?q=${encodeURIComponent(example.query)}`}
               >
                 <span class="min-w-0">
                   <code class="font-fira text-text-brand bg-transparent p-0 text-sm break-words"
@@ -310,7 +310,7 @@
               When history is enabled, revisit earlier searches and the results you opened.
             </p>
             {#if config?.canWrite && config.historyEnabled}
-              <a class="text-link mt-2" href={`${base}/history`}
+              <a class="text-link mt-2" href={resolve('/history')}
                 >Open history<ArrowRight class="size-4" aria-hidden="true" /></a
               >
             {/if}
@@ -320,7 +320,7 @@
             <p class="text-text-brand-secondary mt-1">
               Open the search page's menu for your configured keyboard shortcuts.
             </p>
-            <a class="text-link mt-2" href={`${base}/help`}
+            <a class="text-link mt-2" href={resolve('/help')}
               >Search help<ArrowRight class="size-4" aria-hidden="true" /></a
             >
           </div>

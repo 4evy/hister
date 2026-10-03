@@ -1,6 +1,6 @@
 <script lang="ts">
-  import { page } from '$app/stores';
-  import { base } from '$app/paths';
+  import { page } from '$app/state';
+  import { resolve } from '$app/paths';
   import { Button } from '@hister/components/ui/button';
   import * as DropdownMenu from '@hister/components/ui/dropdown-menu';
   import { userPrefersMode } from 'mode-watcher';
@@ -15,10 +15,10 @@
     Sun,
     UserRound,
   } from '@lucide/svelte';
-  import type { AppConfig } from '$lib/api';
-  import { detectExtensionBrowser, extensionStores } from '$lib/extension';
-  import { showHelp } from '$lib/stores';
-  import { setThemePreference, type ThemePreference } from '$lib/theme';
+  import type { AppConfig } from '#lib/api.js';
+  import { detectExtensionBrowser, extensionStores } from '#lib/extension.js';
+  import { showHelp } from '#lib/stores.js';
+  import { setThemePreference, type ThemePreference } from '#lib/theme.js';
 
   let { config, onLogout }: { config: AppConfig | null; onLogout: () => void } = $props();
 
@@ -92,7 +92,7 @@
   <nav class="flex items-center justify-self-center" aria-label="Primary">
     {#if showWriteNav}
       {#each navItems as item (item.href)}
-        {@const active = $page.url.pathname === new URL(item.href, $page.url).pathname}
+        {@const active = page.url.pathname === new URL(item.href, page.url.href).pathname}
         <a
           class="{navLink} {active
             ? 'is-active text-text-brand font-bold'
@@ -128,7 +128,7 @@
         class="border-brutal-border bg-card-surface w-64 rounded-none border-[3px] p-2 shadow-[4px_4px_0_var(--brutal-shadow)]"
       >
         {#if showWriteNav}
-          {@const active = $page.route.id === `/${addMenuItem.href}`}
+          {@const active = page.route.id === `/${addMenuItem.href}`}
           <DropdownMenu.Item
             class="primary-menu-item font-space cursor-pointer rounded-none border-l-4 px-3 py-2.5 text-sm font-extrabold tracking-widest uppercase {active
               ? 'is-active text-text-brand'
@@ -145,7 +145,7 @@
         {/if}
 
         {#each menuItems as item (item.href)}
-          {@const active = !item.external && $page.route.id === `/${item.href}`}
+          {@const active = !item.external && page.route.id === `/${item.href}`}
           <DropdownMenu.Item
             class="secondary-menu-item {menuItem} {active ? 'is-active text-text-brand' : ''}"
             style="--menu-color: {item.color};"
@@ -167,7 +167,7 @@
 
         <DropdownMenu.Separator class="bg-border-brand-muted mx-0 my-2 h-[2px]" />
 
-        {#if $page.route.id === '/'}
+        {#if page.route.id === '/'}
           <DropdownMenu.Item
             class={menuItem}
             onSelect={() => ($showHelp = !$showHelp)}
@@ -207,7 +207,7 @@
         {#if showProfile}
           <DropdownMenu.Item
             class={menuItem}
-            onSelect={() => (window.location.href = base + '/profile')}
+            onSelect={() => (window.location.href = resolve('profile'))}
           >
             <UserRound class="size-4" />
             Profile
@@ -215,7 +215,7 @@
         {:else if showLogin}
           <DropdownMenu.Item
             class={menuItem}
-            onSelect={() => (window.location.href = base + '/auth')}
+            onSelect={() => (window.location.href = resolve('auth'))}
           >
             <LogIn class="size-4" />
             Login

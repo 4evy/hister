@@ -1,7 +1,7 @@
 <script lang="ts">
   import { Button } from '@hister/components/ui/button';
-  import DeleteMatchingDocumentsOption from '$lib/components/DeleteMatchingDocumentsOption.svelte';
-  import type { RuleType } from '$lib/rules';
+  import DeleteMatchingDocumentsOption from '#lib/components/DeleteMatchingDocumentsOption.svelte';
+  import type { RuleType } from '#lib/rules.js';
   import * as Dialog from '@hister/components/ui/dialog';
   import { Label } from '@hister/components/ui/label';
   import { Textarea } from '@hister/components/ui/textarea';

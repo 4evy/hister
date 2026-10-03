@@ -5,9 +5,9 @@
   import * as Card from '@hister/components/ui/card';
   import { Lock } from '@lucide/svelte';
   import { toast } from '@hister/components/ui/sonner';
-  import { fetchConfig, login, loginWithToken, resetConfig } from '$lib/api';
-  import { setFlashMessage, showFlashMessage } from '$lib/flash';
-  import { base } from '$app/paths';
+  import { fetchConfig, login, loginWithToken, resetConfig } from '#lib/api.js';
+  import { setFlashMessage, showFlashMessage } from '#lib/flash.js';
+  import { resolve } from '$app/paths';
 
   let authMode = $state<'token' | 'user' | 'none'>('token');
   let token = $state('');
@@ -56,7 +56,7 @@
       await loginWithToken(token);
       resetConfig();
       setFlashMessage('Signed in successfully.');
-      window.location.href = base + '/';
+      window.location.href = resolve('/');
     } catch {
       error = 'Invalid password';
       toast.error(error);
@@ -72,7 +72,7 @@
       await login(username, password);
       resetConfig();
       setFlashMessage('Signed in successfully.');
-      window.location.href = base + '/';
+      window.location.href = resolve('/');
     } catch {
       error = 'Invalid username or password';
       toast.error(error);

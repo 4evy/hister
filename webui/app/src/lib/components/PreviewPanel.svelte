@@ -1,20 +1,20 @@
 <!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
 <script lang="ts">
   import VideoPreview from './VideoPreview.svelte';
-  import { apiFetch } from '$lib/api';
+  import { apiFetch } from '#lib/api.js';
   import {
     buildPreviewUrl,
     getStoredPreviewDetailsOpen,
     setStoredPreviewDetailsOpen,
-  } from '$lib/preview';
-  import { formatTimestamp, formatMetaDate } from '$lib/search';
+  } from '#lib/preview.js';
+  import { formatTimestamp, formatMetaDate } from '#lib/search.js';
   import type {
     DocumentPreviewResponse,
     DocumentVersion,
     EmbeddedVideo,
     PreviewDocumentDetails,
     PreviewMetadata,
-  } from '$lib/types';
+  } from '#lib/types.js';
   import { ScrollArea } from '@hister/components/ui/scroll-area';
   import { Button } from '@hister/components/ui/button';
   import * as DropdownMenu from '@hister/components/ui/dropdown-menu';

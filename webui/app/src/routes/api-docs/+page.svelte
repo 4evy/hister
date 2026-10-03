@@ -1,8 +1,8 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { page } from '$app/state';
-  import { pushState, replaceState } from '$app/navigation';
-  import { apiFetch } from '$lib/api';
+  import { goto } from '$app/navigation';
+  import { apiFetch } from '#lib/api.js';
   import { Badge } from '@hister/components/ui/badge';
   import * as Card from '@hister/components/ui/card';
   import * as Table from '@hister/components/ui/table';
@@ -96,9 +96,9 @@
     if (typeof window !== 'undefined') {
       const url = `#${id}`;
       if (replace) {
-        replaceState(url, {});
+        void goto(url, { shallow: true, replace: true });
       } else {
-        pushState(url, {});
+        void goto(url, { shallow: true });
       }
     }
 

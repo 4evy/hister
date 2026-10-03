@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { previewRule, type RuleMatchMode, type RulePreview } from '$lib/rules';
+  import { previewRule, type RuleMatchMode, type RulePreview } from '#lib/rules.js';
   import { Input } from '@hister/components/ui/input';
   import { Label } from '@hister/components/ui/label';
   import { Button } from '@hister/components/ui/button';

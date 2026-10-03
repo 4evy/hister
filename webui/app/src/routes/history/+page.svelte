@@ -5,13 +5,13 @@
     replacePreviewHistory,
     withSkipUrl,
     createResizeHandler,
-  } from '$lib/preview';
+  } from '#lib/preview.js';
   import { onMount, untrack } from 'svelte';
-  import { fetchConfig, apiFetch, getUserId } from '$lib/api';
-  import { base } from '$app/paths';
+  import { fetchConfig, apiFetch, getUserId } from '#lib/api.js';
+  import { resolve } from '$app/paths';
   import { page } from '$app/state';
-  import { formatTimestamp, formatRelativeTime, KeyHandler, scrollTo } from '$lib/search';
-  import type { HistoryItem } from '$lib/types';
+  import { formatTimestamp, formatRelativeTime, KeyHandler, scrollTo } from '#lib/search.js';
+  import type { HistoryItem } from '#lib/types.js';
   import { Button } from '@hister/components/ui/button';
   import { Input } from '@hister/components/ui/input';
   import { Badge } from '@hister/components/ui/badge';
@@ -24,7 +24,7 @@
     ResultFavicon,
     TimelinePeriodChips,
     TimelinePeriodRows,
-  } from '$lib/components';
+  } from '#lib/components/index.js';
   import {
     formatDateLabel,
     getColorVar,
@@ -32,7 +32,7 @@
     timelineBucketLabel,
     type HistoryTimeline,
     type TimelineBucket,
-  } from '$lib/history-timeline';
+  } from '#lib/history-timeline.js';
   import {
     CalendarDays,
     ChevronDown,
@@ -128,7 +128,7 @@
     const normalizedFilter = filterValue.trim();
     if (normalizedFilter) params.set('filter', normalizedFilter);
     const query = params.toString();
-    return `${base}/history${query ? `?${query}` : ''}`;
+    return `${resolve('/history')}${query ? `?${query}` : ''}`;
   }
 
   function pushHistoryPageHistory() {
@@ -350,7 +350,7 @@
       const cfg = await fetchConfig();
       if (controller.signal.aborted) return;
       if (!cfg.historyEnabled) {
-        window.location.href = base + '/';
+        window.location.href = resolve('/');
         return;
       }
       const params = historyQueryParams(requestedFilter, requestedOpenedOnly, requestedBucket);
@@ -689,7 +689,7 @@
   onMount(async () => {
     const cfg = await fetchConfig();
     if (!cfg.historyEnabled) {
-      window.location.href = base + '/';
+      window.location.href = resolve('/');
       return;
     }
     openResultsOnNewTab = (cfg as any).openResultsOnNewTab ?? false;

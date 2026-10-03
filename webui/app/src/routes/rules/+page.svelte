@@ -5,20 +5,20 @@
   const focusInput: Action<HTMLElement> = (node) => {
     (node.querySelector('input') as HTMLInputElement | null)?.focus();
   };
-  import { fetchConfig, apiFetch, getUserId } from '$lib/api';
-  import { base } from '$app/paths';
-  import BulkRulesDialog from '$lib/components/BulkRulesDialog.svelte';
-  import DeleteMatchingDocumentsDialog from '$lib/components/DeleteMatchingDocumentsDialog.svelte';
-  import DeleteMatchingDocumentsOption from '$lib/components/DeleteMatchingDocumentsOption.svelte';
-  import RulePatternEditor from '$lib/components/RulePatternEditor.svelte';
-  import { deleteDocuments, previewDocumentDeletion } from '$lib/document-delete';
+  import { fetchConfig, apiFetch, getUserId } from '#lib/api.js';
+  import { resolve } from '$app/paths';
+  import BulkRulesDialog from '#lib/components/BulkRulesDialog.svelte';
+  import DeleteMatchingDocumentsDialog from '#lib/components/DeleteMatchingDocumentsDialog.svelte';
+  import DeleteMatchingDocumentsOption from '#lib/components/DeleteMatchingDocumentsOption.svelte';
+  import RulePatternEditor from '#lib/components/RulePatternEditor.svelte';
+  import { deleteDocuments, previewDocumentDeletion } from '#lib/document-delete.js';
   import {
     fetchRules,
     saveRuleLists,
     type RulesData,
     type RuleType,
     type RuleMatchMode,
-  } from '$lib/rules';
+  } from '#lib/rules.js';
   import { Button } from '@hister/components/ui/button';
   import { Input } from '@hister/components/ui/input';
   import { Badge } from '@hister/components/ui/badge';
@@ -49,7 +49,6 @@
     type: RuleType;
     addedOrder: number;
   }
-
   interface PendingDocumentDeletion {
     patterns: string[];
     matched: number;
@@ -212,7 +211,7 @@
   onMount(async () => {
     const cfg = await fetchConfig();
     if (cfg.public && !cfg.canWrite) {
-      window.location.href = base + '/auth';
+      window.location.href = resolve('auth');
       return;
     }
     await loadRules();
