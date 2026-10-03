@@ -6,7 +6,7 @@ description: 'Install and configure browser capture, authentication, search inte
 ---
 
 <script>
-  import ConfigReference from '$lib/ConfigReference.svelte';
+  import ConfigReference from '#lib/ConfigReference.svelte';
 
   const connectionOptions = [
     {

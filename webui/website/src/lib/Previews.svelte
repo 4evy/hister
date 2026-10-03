@@ -5,7 +5,7 @@
   import Search from '@lucide/svelte/icons/search';
   import { BrowserFrame } from '@hister/components';
 
-  import screenshot from '$lib/assets/screenshot.png';
+  import screenshot from '#lib/assets/screenshot.png';
 
   const proofPoints = [
     {

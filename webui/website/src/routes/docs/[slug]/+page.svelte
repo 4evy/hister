@@ -4,8 +4,8 @@
   import ChevronDownIcon from '@lucide/svelte/icons/chevron-down';
   import ListIcon from '@lucide/svelte/icons/list';
   import { Button, Separator } from '@hister/components';
-  import ImageLightbox from '$lib/ImageLightbox.svelte';
-  import Seo from '$lib/Seo.svelte';
+  import ImageLightbox from '#lib/ImageLightbox.svelte';
+  import Seo from '#lib/Seo.svelte';
 
   let { data } = $props();
 

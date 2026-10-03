@@ -3,8 +3,8 @@
   import Globe from '@lucide/svelte/icons/globe';
   import SettingsIcon from '@lucide/svelte/icons/settings';
   import * as Card from '@hister/components/ui/card';
-  import DocsSearch from '$lib/DocsSearch.svelte';
-  import Seo from '$lib/Seo.svelte';
+  import DocsSearch from '#lib/DocsSearch.svelte';
+  import Seo from '#lib/Seo.svelte';
 
   let { data } = $props();
   const featuredSlugs = new Set(['configuration']);

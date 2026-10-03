@@ -1,7 +1,7 @@
 <script lang="ts">
   import * as Card from '@hister/components/ui/card';
   import Rss from '@lucide/svelte/icons/rss';
-  import Seo from '$lib/Seo.svelte';
+  import Seo from '#lib/Seo.svelte';
 
   let { data } = $props();
 </script>

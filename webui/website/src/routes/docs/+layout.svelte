@@ -2,8 +2,8 @@
   import { page } from '$app/state';
   import BookOpenIcon from '@lucide/svelte/icons/book-open';
   import ChevronDownIcon from '@lucide/svelte/icons/chevron-down';
-  import DocsNavigation from '$lib/DocsNavigation.svelte';
-  import DocsSearch from '$lib/DocsSearch.svelte';
+  import DocsNavigation from '#lib/DocsNavigation.svelte';
+  import DocsSearch from '#lib/DocsSearch.svelte';
 
   let { children, data } = $props();
 

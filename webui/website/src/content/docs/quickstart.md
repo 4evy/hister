@@ -6,7 +6,7 @@ description: 'Start a local Hister server, connect a browser extension, and sear
 ---
 
 <script>
-import screenshot from "$lib/assets/landing_screenshot.png";
+import screenshot from "#lib/assets/landing_screenshot.png";
 </script>
 
 The simplest way to use Hister requires no configuration. First [install the Hister binary](installing), then follow the steps below.

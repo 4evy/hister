@@ -1,7 +1,7 @@
 <script lang="ts">
   import { goto } from '$app/navigation';
   import SearchIcon from '@lucide/svelte/icons/search';
-  import type { DocsSearchEntry, DocsSearchIndex } from '$lib/docs-search';
+  import type { DocsSearchEntry, DocsSearchIndex } from '#lib/docs-search.js';
 
   interface RankedResult {
     entry: DocsSearchEntry;

@@ -6,7 +6,7 @@ description: 'Explore every configuration section, option, default value, enviro
 ---
 
 <script>
-  import ConfigReference from '$lib/ConfigReference.svelte';
+  import ConfigReference from '#lib/ConfigReference.svelte';
 
   const appOptions = [
     {

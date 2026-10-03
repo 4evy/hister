@@ -6,7 +6,7 @@ description: 'Understand and configure the built in content handlers used for in
 ---
 
 <script>
-  import ConfigReference from '$lib/ConfigReference.svelte';
+  import ConfigReference from '#lib/ConfigReference.svelte';
 
   const ytdlpOptions = [
     {

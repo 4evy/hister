@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { SITE_URL } from '$lib/config';
+  import { SITE_URL } from '#lib/config.js';
 
   interface Breadcrumb {
     name: string;
