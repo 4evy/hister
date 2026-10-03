@@ -18,6 +18,7 @@ var (
 	ErrUserNotFound      = errors.New("user not found")
 	ErrInvalidPassword   = errors.New("invalid password")
 	ErrUserAlreadyExists = errors.New("user already exists")
+	ErrEmptyPassword     = errors.New("password must not be empty")
 )
 
 type User struct {
@@ -85,6 +86,9 @@ func CreateUser(username, password string, isAdmin bool) (*User, error) {
 	if err := DB.Where("username = ?", username).First(&existing).Error; err == nil {
 		return nil, ErrUserAlreadyExists
 	}
+	if password == "" {
+		return nil, ErrEmptyPassword
+	}
 	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
 	if err != nil {
 		return nil, err
@@ -108,6 +112,9 @@ func AuthenticateUser(username, password string) (*User, error) {
 	var u User
 	if err := DB.Where("username = ?", username).First(&u).Error; err != nil {
 		return nil, ErrUserNotFound
+	}
+	if password == "" || u.Password == "" {
+		return nil, ErrInvalidPassword
 	}
 	if err := bcrypt.CompareHashAndPassword([]byte(u.Password), []byte(password)); err != nil {
 		return nil, ErrInvalidPassword
@@ -171,6 +178,9 @@ func UpdateUsername(username, newUsername string) error {
 }
 
 func UpdatePassword(username, password string) error {
+	if password == "" {
+		return ErrEmptyPassword
+	}
 	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
 	if err != nil {
 		return err
@@ -199,6 +209,19 @@ func CreateOAuthUser(username, oauthID string) (*User, error) {
 		return nil, ErrUserAlreadyExists
 	}
 	u := &User{Username: username, Token: rand.Text(), OAuthID: oauthID}
+	return u, DB.Create(u).Error
+}
+
+// CreateProxyUser creates an account for reverse-proxy authentication.
+// Like CreateOAuthUser it leaves Password empty so password authentication
+// stays disabled: AuthenticateUser rejects users with no stored password,
+// so these credentials can never be used if proxy auth is later disabled.
+func CreateProxyUser(username string) (*User, error) {
+	var existing User
+	if err := DB.Where("username = ?", username).First(&existing).Error; err == nil {
+		return nil, ErrUserAlreadyExists
+	}
+	u := &User{Username: username, Token: rand.Text()}
 	return u, DB.Create(u).Error
 }
 
