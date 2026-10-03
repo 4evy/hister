@@ -246,25 +246,28 @@ func withTokenAuth(handler endpointHandler) endpointHandler {
 
 func populateUserContext(c *webContext) {
 	if c.Config.Server.ProxyAuthHeader != "" {
-		username := strings.TrimSpace(c.Request.Header.Get(c.Config.Server.ProxyAuthHeader))
-		if username == "" {
-			return
-		}
-		u, err := model.GetUser(username)
-		if err != nil {
-			u, err = model.CreateUser(username, "", false)
-			if err != nil {
+		if username := strings.TrimSpace(c.Request.Header.Get(c.Config.Server.ProxyAuthHeader)); username != "" {
+			u, err := model.GetUser(username)
+			if err != nil && errors.Is(err, model.ErrUserNotFound) {
+				u, err = model.CreateProxyUser(username)
+				if err != nil && errors.Is(err, model.ErrUserAlreadyExists) {
+					u, err = model.GetUser(username)
+				}
+			}
+			if err == nil && u != nil {
+				c.UserID = u.ID
+				c.Username = u.Username
+				c.IsAdmin = u.IsAdmin
+				c.Authenticated = true
+				if rules, err := u.ParseRules(); err == nil {
+					c.userRules = rules
+				}
 				return
 			}
 		}
-		c.UserID = u.ID
-		c.Username = u.Username
-		c.IsAdmin = u.IsAdmin
-		c.Authenticated = true
-		if rules, err := u.ParseRules(); err == nil {
-			c.userRules = rules
-		}
-		return
+		// Missing/empty header or proxy lookup failure falls through to
+		// session and API token authentication below, so CLI, extension,
+		// and MCP token access keeps working when proxy auth is enabled.
 	}
 
 	session, err := sessionStore.Get(c.Request, storeName)
