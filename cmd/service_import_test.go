@@ -104,7 +104,7 @@ func TestServiceImportLanguageSettings(t *testing.T) {
 	}{
 		{"default accuracy", true, "", "en"},
 		{"low accuracy", true, "low", "en"},
-		{"high accuracy", true, "high", document.UnknownLanguage},
+		{"high accuracy", true, "high", "en"},
 		{"disabled", false, "low", document.UnknownLanguage},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -123,7 +123,11 @@ func TestServiceImportLanguageSettings(t *testing.T) {
 					t.Errorf("close service import runtime: %v", err)
 				}
 			})
-			for text, want := range map[string]string{"hello world": tc.want, "bonjour": document.UnknownLanguage} {
+			for text, want := range map[string]string{
+				"This document explains how to search through saved articles and find useful information.": tc.want,
+				"hello world": document.UnknownLanguage,
+				"bonjour":     document.UnknownLanguage,
+			} {
 				d := &document.Document{URL: "https://example.com/article"}
 				fetched := &document.Document{URL: d.URL, Text: text}
 				if err := applyServiceContent(context.Background(), d, fetched, "", "", runtime.languageDetector); err != nil {
@@ -149,6 +153,19 @@ func TestApplyServiceContentPreservesFetchedFavicon(t *testing.T) {
 	}
 	if d.Favicon != fetched.Favicon {
 		t.Errorf("favicon = %q, want fetched favicon %q", d.Favicon, fetched.Favicon)
+	}
+}
+
+func TestServiceImportPreservesMetadataDuringLanguageDetection(t *testing.T) {
+	for _, prefix := range []string{"", "An introduction to this useful document."} {
+		d := &document.Document{URL: "https://example.com/evidence", Metadata: map[string]any{"author": "Alice"}}
+		fetched := &document.Document{URL: d.URL, Text: "This document explains how a search engine stores web pages and helps people find useful information in their personal library of saved articles."}
+		if err := applyServiceContent(context.Background(), d, fetched, prefix, "", document.NewLanguageDetectorFor([]string{"en", "de"}, true)); err != nil {
+			t.Fatal(err)
+		}
+		if d.Language != "en" || len(d.Metadata) != 1 || d.Metadata["author"] != "Alice" {
+			t.Fatalf("language=%s metadata=%+v", d.Language, d.Metadata)
+		}
 	}
 }
 
@@ -199,5 +216,17 @@ func TestApplyServiceContentReusesFreshLanguageDetection(t *testing.T) {
 				t.Errorf("imported text = %q, language = %q; want %q, %q", d.Text, d.Language, tc.wantText, tc.wantLanguage)
 			}
 		})
+	}
+}
+
+func TestServiceImportUsesSourceTitleForLanguage(t *testing.T) {
+	d := &document.Document{URL: "https://example.com/title-language"}
+	fetched := &document.Document{URL: d.URL, Text: "123", Title: "This document explains how to find useful information in your saved articles."}
+	const title = "Eine Suchmaschine organisiert gespeicherte Artikel, damit Leser wichtige Informationen später wiederfinden können."
+	if err := applyServiceContent(context.Background(), d, fetched, "", title, document.NewLanguageDetectorFor([]string{"en", "de"}, true)); err != nil {
+		t.Fatal(err)
+	}
+	if d.Language != "de" || d.Title != title || len(d.Metadata) != 0 {
+		t.Fatalf("document = %+v, want German source title with no metadata", d)
 	}
 }

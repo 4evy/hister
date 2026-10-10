@@ -170,7 +170,7 @@ func TestLanguageConfidenceCutoff(t *testing.T) {
 				fixedLanguageConfidence{lingua.English, tc.confidence},
 				fixedLanguageConfidence{lingua.German, 1 - tc.confidence},
 			}}
-			if got := d.DetectLanguage("text"); got != tc.want {
+			if got := d.DetectLanguage(evidenceEnglish); got != tc.want {
 				t.Fatalf("DetectLanguage = %q, want %q", got, tc.want)
 			}
 		})
@@ -209,7 +209,7 @@ func TestLanguageDetectionSelectsHighestQualifyingConfidence(t *testing.T) {
 				detector:      fixedConfidenceDetector{values: tc.values},
 				minConfidence: 0.3,
 			}
-			if got := d.DetectLanguage("text"); got != tc.want {
+			if got := d.DetectLanguage(evidenceEnglish); got != tc.want {
 				t.Fatalf("DetectLanguage = %q, want %q", got, tc.want)
 			}
 		})

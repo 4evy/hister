@@ -118,11 +118,10 @@ func TestRestrictedLanguageSettingsSurviveReindex(t *testing.T) {
 	idx := newTestIndexer(t, cfg)
 	defer idx.Close()
 
-	// "hello world" distinguishes the accuracy modes at the restricted
-	// confidence threshold. "bonjour" verifies the restricted candidate list
-	// and fallback to the default index instead of a French language index.
+	// Confident prose uses the English index; a short ambiguous word uses the
+	// default index. Both decisions must survive a rebuild with the same settings.
 	for round := range 2 {
-		for text, want := range map[string]string{"hello world": "en", "bonjour": document.UnknownLanguage} {
+		for text, want := range map[string]string{overrideTestEnglish: "en", "bonjour": document.UnknownLanguage} {
 			d := &document.Document{
 				URL: fmt.Sprintf("https://example.com/%d/%s", round, want), Text: text,
 			}

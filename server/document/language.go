@@ -2,6 +2,7 @@ package document
 
 import (
 	"strings"
+	"unicode"
 
 	"github.com/asciimoo/hister/server/languages"
 
@@ -130,16 +131,11 @@ type LanguageDetector interface {
 	DetectLanguage(string) string
 }
 
-// ResolveLanguage applies an explicit choice or detects the current text.
-// Overrides are validated by the indexer before storage.
-func (d *Document) ResolveLanguage(ld LanguageDetector) {
-	if d.LanguageOverride != "" {
-		d.Language = d.LanguageOverride
-	} else if ld == nil {
-		d.Language = UnknownLanguage
-	} else {
-		d.Language = ld.DetectLanguage(d.Text)
-	}
+// EvidenceLanguageDetector exposes the evidence behind a language decision.
+// Detectors implementing only LanguageDetector remain supported.
+type EvidenceLanguageDetector interface {
+	LanguageDetector
+	DetectLanguageWithEvidence(string) languages.Detection
 }
 
 type nullLangDetector struct{}
@@ -154,7 +150,13 @@ type langDetector struct {
 // probability that the text belongs to one of those languages: lingua's scores
 // are relative to the configured candidates, so excluded languages can still
 // receive a confident but incorrect classification.
-const restrictedLanguageMinConfidence = 0.8
+const (
+	restrictedLanguageMinConfidence = 0.8
+	defaultLanguageMinConfidence    = 0.5
+	languageMinMargin               = 0.15
+	minimumLanguageLetters          = 12
+	minimumCJKLetters               = 4
+)
 
 func NewLanguageDetector() LanguageDetector {
 	return NewLanguageDetectorFor(nil, true)
@@ -169,8 +171,8 @@ func NewLanguageDetector() LanguageDetector {
 // Loading is lazy, so narrowing the language set keeps the excluded models from
 // being decompressed at all, and lowAccuracy restricts lingua to trigram models
 // instead of the unigram through fivegram set.
-// Restricted detection requires a confidence of at least 0.8. An empty list
-// preserves lingua's default decision rule, rejecting only tied results.
+// Restricted detection requires a confidence of at least 0.8; unrestricted
+// detection requires 0.5. Both require enough text and a margin of at least 0.15.
 func NewLanguageDetectorFor(codes []string, lowAccuracy bool) LanguageDetector {
 	langs := ResolveLanguages(codes)
 	if len(langs) < 2 {
@@ -182,7 +184,7 @@ func NewLanguageDetectorFor(codes []string, lowAccuracy bool) LanguageDetector {
 	if lowAccuracy {
 		b = b.WithLowAccuracyMode()
 	}
-	d := &langDetector{detector: b.Build()}
+	d := &langDetector{detector: b.Build(), minConfidence: defaultLanguageMinConfidence}
 	if len(codes) > 0 {
 		d.minConfidence = restrictedLanguageMinConfidence
 	}
@@ -194,14 +196,51 @@ func NewNullLanguageDetector() LanguageDetector {
 }
 
 func (d *langDetector) DetectLanguage(s string) string {
+	return d.DetectLanguageWithEvidence(s).Language
+}
+
+func (d *langDetector) DetectLanguageWithEvidence(s string) languages.Detection {
+	result := languages.Detection{Language: UnknownLanguage}
+	cjkLetters := 0
+	for _, r := range s {
+		if unicode.IsLetter(r) {
+			result.Letters++
+			if unicode.In(r, unicode.Han, unicode.Hiragana, unicode.Katakana, unicode.Hangul) {
+				cjkLetters++
+			}
+		}
+	}
+	if result.Letters < minimumLanguageLetters && cjkLetters < minimumCJKLetters {
+		result.Reason = languages.ReasonInsufficient
+		return result
+	}
 	// Lingua sorts scores in descending order, so the first result is the best match.
 	values := d.detector.ComputeLanguageConfidenceValues(s)
-	if len(values) < 2 || values[0].Value() == values[1].Value() || values[0].Value() < d.minConfidence {
-		return UnknownLanguage
+	if len(values) < 2 {
+		result.Reason = languages.ReasonNoScores
+		return result
 	}
-	return languageCode(values[0].Language())
+	result.Candidate = languageCode(values[0].Language())
+	result.Confidence = values[0].Value()
+	result.RunnerUp = languageCode(values[1].Language())
+	result.RunnerUpConfidence = values[1].Value()
+	result.Margin = result.Confidence - result.RunnerUpConfidence
+	switch {
+	case result.Confidence < d.minConfidence:
+		result.Reason = languages.ReasonConfidence
+	case result.Margin < languageMinMargin:
+		result.Reason = languages.ReasonAmbiguous
+	default:
+		result.Language = result.Candidate
+		result.Reason = languages.ReasonAccepted
+	}
+	return result
 }
 
 func (d *nullLangDetector) DetectLanguage(s string) string {
 	return UnknownLanguage
+}
+
+func (d *nullLangDetector) DetectLanguageWithEvidence(string) languages.Detection {
+	return languages.Detection{Language: UnknownLanguage, Reason: languages.ReasonDisabled}
 }

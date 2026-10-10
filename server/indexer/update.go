@@ -68,7 +68,7 @@ func normalizeDocumentChanges(changes *servertypes.DocumentChanges) error {
 	return nil
 }
 
-func (i *Indexer) documentsForMutation(q query.Query) ([]*document.Document, error) {
+func (i *Indexer) documentsForMutation(q query.Query, include resultInclude) ([]*document.Document, error) {
 	var documents []*document.Document
 	seen := make(map[string]struct{})
 	var searchAfter []string
@@ -92,7 +92,7 @@ func (i *Indexer) documentsForMutation(q query.Query) ([]*document.Document, err
 				continue
 			}
 			seen[hit.ID] = struct{}{}
-			d := i.resFromHit(hit, resultIncludeText)
+			d := i.resFromHit(hit, include)
 			if d.HTMLKey == "" {
 				d.HTML, _ = hit.Fields["html"].(string)
 			}
@@ -112,7 +112,8 @@ func (i *Indexer) applyDocumentChanges(d *document.Document, changes servertypes
 		d.Label = *changes.Label
 		changed = true
 	}
-	if changes.Title != nil && d.Title != *changes.Title {
+	titleChanged := changes.Title != nil && d.Title != *changes.Title
+	if titleChanged {
 		d.Title = *changes.Title
 		changed = true
 		embeddingContextDirty = true
@@ -132,6 +133,10 @@ func (i *Indexer) applyDocumentChanges(d *document.Document, changes servertypes
 			changed = true
 			embeddingContextDirty = true
 		}
+	} else if titleChanged && d.Type == document.Web && d.LanguageOverride == "" {
+		// Reevaluate the content because the title can supply a language when
+		// the body is too short. A manual pin remains authoritative.
+		d.ResolveLanguage(i.langDetector)
 	}
 	return changed, embeddingContextDirty
 }
@@ -154,7 +159,11 @@ func (i *Indexer) UpdateByQuery(
 	if err != nil {
 		return result, err
 	}
-	documents, err := i.documentsForMutation(q)
+	include := resultIncludeText
+	if changes.Language != nil || changes.Title != nil {
+		include |= resultIncludeHTML
+	}
+	documents, err := i.documentsForMutation(q, include)
 	if err != nil {
 		return result, err
 	}

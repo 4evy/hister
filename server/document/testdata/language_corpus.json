@@ -1,0 +1,63 @@
+[
+  {
+    "name": "english article",
+    "language": "en",
+    "text": "A search engine organizes saved articles so readers can find useful information later. This guide explains how to collect documents, choose meaningful titles, and search the contents of a personal library."
+  },
+  {
+    "name": "german article",
+    "language": "de",
+    "text": "Eine Suchmaschine organisiert gespeicherte Artikel, damit Leser wichtige Informationen später wiederfinden können. Diese Anleitung erklärt, wie Dokumente gesammelt und die Inhalte einer persönlichen Bibliothek durchsucht werden."
+  },
+  {
+    "name": "french article",
+    "language": "fr",
+    "text": "Une bibliothèque personnelle permet de conserver des articles pour les retrouver plus tard. Ce guide explique comment organiser les documents et rechercher des informations utiles dans les pages enregistrées."
+  },
+  {
+    "name": "spanish article",
+    "language": "es",
+    "text": "Una biblioteca personal permite guardar artículos para consultarlos más adelante. Esta guía explica cómo organizar los documentos y encontrar información útil entre todas las páginas que hemos guardado."
+  },
+  {
+    "name": "norwegian article",
+    "language": "nb",
+    "text": "Et personlig bibliotek gjør det mulig å ta vare på artikler og finne dem igjen senere. Denne veiledningen forklarer hvordan du kan organisere dokumentene dine og søke etter nyttig informasjon på lagrede nettsider."
+  },
+  {
+    "name": "indonesian article",
+    "language": "id",
+    "text": "Perpustakaan pribadi membantu pembaca menyimpan artikel dan menemukan informasi yang berguna di kemudian hari. Panduan ini menjelaskan cara mengatur dokumen dan mencari isi halaman yang sudah disimpan."
+  },
+  {
+    "name": "russian article",
+    "language": "ru",
+    "text": "Личная библиотека помогает сохранять полезные статьи и находить нужную информацию позже. В этом руководстве объясняется, как организовать документы и выполнять поиск по содержимому сохранённых страниц."
+  },
+  {
+    "name": "arabic article",
+    "language": "ar",
+    "text": "تساعد المكتبة الشخصية القراء على حفظ المقالات والعثور على المعلومات المفيدة في وقت لاحق. يشرح هذا الدليل كيفية تنظيم المستندات والبحث في محتوى الصفحات المحفوظة للوصول إلى المعلومات المطلوبة بسهولة."
+  },
+  {
+    "name": "chinese article",
+    "language": "zh",
+    "text": "个人图书馆可以帮助读者保存有用的文章，以便日后查找所需的信息。本指南介绍如何整理文档以及搜索已保存网页的内容，让知识管理变得更加方便。"
+  },
+  {
+    "name": "japanese article",
+    "language": "ja",
+    "text": "個人用の図書館では、役立つ記事を保存して必要な情報を後から見つけることができます。このガイドでは、文書を整理し、保存したページの内容を検索する方法を説明します。"
+  },
+  {
+    "name": "korean article",
+    "language": "ko",
+    "text": "개인 도서관을 사용하면 유용한 기사를 저장하고 나중에 필요한 정보를 찾을 수 있습니다. 이 안내서는 문서를 정리하고 저장된 페이지의 내용을 검색하는 방법을 설명합니다."
+  },
+  { "name": "short greeting", "language": "unknown", "text": "hello world" },
+  { "name": "ambiguous word", "language": "unknown", "text": "test" },
+  { "name": "brand", "language": "unknown", "text": "Hister" },
+  { "name": "numbers and symbols", "language": "unknown", "text": "12345 67890 {} [] () + = !?" },
+  { "name": "single ideograph", "language": "unknown", "text": "文" },
+  { "name": "empty", "language": "unknown", "text": "" }
+]

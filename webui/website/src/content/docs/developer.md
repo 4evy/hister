@@ -163,6 +163,55 @@ newest record first. Each entry contains `id`, `created_at`, `url`, `user_id`,
 }
 ```
 
+## Document Language Handling
+
+User configuration and correction workflows are described in
+[Language Settings and Detection](/docs/language-detection).
+
+`server/languages` resolves language tags, aliases, detector candidates, and
+Bleve analyzer routing. These are separate concerns: a valid document tag can
+lack a detector model or a language analyzer. Regional tags share their base
+language's analyzer and index. Norwegian Bokmal (`nb`) uses analyzer `no` and
+`index_no.db`; Chinese, Japanese, and Korean share the CJK analyzer while keeping
+separate indexes. Unknown languages and tags without an analyzer use `index.db`.
+
+`server/document` runs Lingua on extracted text. Low accuracy uses trigram
+models; high accuracy can use models for one through five letters on short
+text. Both modes use trigrams for text with at least 120 letters. Models load
+lazily and remain cached for the process lifetime.
+
+The built in detector requires at least 12 Unicode letters or four letters
+from the Han, Hiragana, Katakana, or Hangul scripts. It then requires a top
+confidence score of at least `0.5` with all languages, or `0.8` with an explicit
+candidate list, and a margin of at least `0.15` over the runner up. These are
+heuristics; scores are relative to the candidate set, not calibrated
+probabilities. An excluded language can still receive an incorrect confident
+classification.
+
+`Document.ResolveLanguage` tries a web title only when the body has insufficient
+text, not when a longer body is ambiguous. File titles are excluded from this
+fallback. A root HTML `lang` or `xml:lang` declaration can refine an agreeing
+base language. Parsing is capped at 64 KiB, and child attributes are ignored.
+Declarations cannot bypass disabled detection or override conflicting text.
+`EvidenceLanguageDetector` exposes transient scores and decision reasons;
+implementations of the original `LanguageDetector` interface remain supported.
+Resolution leaves document metadata unchanged.
+
+The `language_override` document field persists a manual pin separately from
+`language`. Export and import preserve it. Ordinary resubmissions retain an
+existing pin. `/api/update` accepts `{"language":"auto"}` in `changes` to clear
+it and reevaluate saved content. Title edits also reevaluate unpinned web
+documents. Updates load stored HTML to preserve agreeing regional declarations.
+
+The authored regression corpus in
+`server/document/testdata/language_corpus.json` covers eleven languages and
+short or empty inputs in both accuracy modes. It checks expected behavior,
+not accuracy on representative browsing collections. Run the focused tests with:
+
+```bash
+go test ./server/languages ./server/document ./server/indexer/... ./cmd
+```
+
 ## Extractor Development
 
 Extractors are components that enrich metadata, produce searchable content,
@@ -506,6 +555,10 @@ Clients should use `structuredContent` and enforce the `untrusted_content`
 trust markers when placing results into model context.
 
 ## Documentation Maintenance
+
+Write user documentation around settings, actions, and observable behavior.
+Keep implementation details, internal algorithms, and test design on this
+Developer Documentation page.
 
 Add documentation pages under `webui/website/src/content/docs` and register
 their slugs in `webui/website/src/lib/docs-structure.ts`. The docs search index,

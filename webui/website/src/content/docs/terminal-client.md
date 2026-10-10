@@ -213,9 +213,9 @@ hister update 'language:unknown' --language en
 
 The supported attributes are `user_id`, `label`, `title`, and `language`. Pass an empty label or
 title to clear it. A language choice remains pinned across reindexing and resubmission.
-Known language tags such as `en-US`, `nb`, and `uk` are accepted and normalized. A tag without
-a language analyzer remains searchable using the default analyzer. Use
-`unknown` to pin the default analyzer, or `auto` to clear the pin and classify the stored text
+Known language codes such as `en-US`, `nb`, and `uk` are accepted. Support for matching related
+word forms varies by language, but documents remain searchable. Use `unknown` to keep a document
+without an identified language, or `auto` to clear the pin and identify the language from saved content
 using the running server's detection settings. Hister reports the number of
 matching, changed, unchanged, and conflicting documents.
 

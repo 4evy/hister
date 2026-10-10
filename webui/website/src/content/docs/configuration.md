@@ -220,20 +220,20 @@ description: 'Explore every configuration section, option, default value, enviro
       name: 'languages',
       type: 'string[]',
       defaultValue: '(none)',
-      description: 'Restricts detection to at least two distinct supported base languages. Regional tags and aliases select the same model. Empty detects every supported language. Restricted detection requires a confidence of at least 0.8; uncertain text uses the default index. Excluded languages can still be misclassified. See Language Detection below for tradeoffs.',
+      description: 'Limits automatic detection to at least two distinct supported languages. Regional codes and aliases count as the same language. Leave empty to consider all supported languages. A shorter list can reduce memory use, but content in other languages may be misidentified.',
     },
     {
       name: 'language_detection_accuracy',
       type: 'string',
       defaultValue: 'low',
-      description: 'Detection accuracy, low (the default) or high. Low uses only trigram models and less memory, with reduced accuracy on short text. Both modes use trigrams for text of at least 120 letters. Select high to restore the previous behavior for short text.',
+      description: 'Use low (the default) to reduce memory use, or high to improve detection of short text at the cost of more memory. Very short or unclear text can remain unknown in either mode.',
     },
     {
       name: 'keep_stopwords',
       type: 'bool',
       defaultValue: 'false',
       scopes: ['server'],
-      description: 'Preserves stop words while retaining language analysis. Changing this setting requires reindexing.',
+      description: 'Keeps common words such as for and your searchable. Changing this setting requires reindexing.',
     },
     {
       name: 'directories',
@@ -1134,7 +1134,7 @@ The login page hides the username/password form when `oauth_only` is active, sho
 
 ## Language Detection
 
-Hister detects document languages locally and uses language specific search analyzers. The defaults consider all supported languages with reduced memory use:
+Hister identifies document languages locally to help searches match related word forms. The defaults consider all supported languages with reduced memory use:
 
 ```yaml
 indexer:
@@ -1144,11 +1144,13 @@ indexer:
   keep_stopwords: false
 ```
 
-Use `languages` to restrict detection to at least two distinct supported base languages (regional tags and aliases select the same model), `language_detection_accuracy: high` to favor short text accuracy, or `keep_stopwords: true` to preserve common words during language analysis. Setting `detect_languages: false` uses the default analyzer for newly processed documents without a manual language pin. Existing documents remain searchable with their stored language analyzers. Manual pins survive reindexing and take precedence over detection settings. These settings also apply to service imports processed by the command line client.
+Use `languages` to limit detection to at least two distinct supported languages, `language_detection_accuracy: high` to improve detection of short text, or `keep_stopwords: true` to keep common words searchable. Regional codes and aliases count as the same language.
 
-Restart after changing the server configuration. Reindex to apply changes to `detect_languages`, the candidate list, or the accuracy mode to existing documents; searching them does not require a reindex. Changing `keep_stopwords` requires reindexing to rebuild existing analyzer mappings and terms.
+Setting `detect_languages: false` turns off automatic detection for newly processed documents. Existing documents remain searchable, and manual language pins are preserved. These settings also apply to service imports run from the command line.
 
-See [Language Settings and Detection](/docs/language-detection) for supported codes, configuration examples, accuracy and memory tradeoffs, confidence limits, search behavior, and reindexing instructions.
+Restart after changing the server configuration. Reindex to apply the new settings to existing documents. Until then, those documents remain searchable with their previous settings.
+
+See [Language Settings and Detection](/docs/language-detection) for supported codes, configuration examples, accuracy and memory tradeoffs, and instructions for correcting document languages.
 
 ## `hotkeys.web` Section
 

@@ -525,11 +525,11 @@ func applyServiceContent(
 			d.Metadata[key] = value
 		}
 	}
-	if !alreadyProcessed && d.Text == fetched.Text {
-		// Processing just detected this text with the current detector.
+	if !alreadyProcessed && d.Text == fetched.Text && d.Title == fetched.Title && d.LanguageOverride == "" {
+		// Processing just detected this content with the current detector.
 		d.Language = fetched.Language
 	} else {
-		d.Language = languageDetector.DetectLanguage(d.Text)
+		d.ResolveLanguage(languageDetector)
 	}
 	return nil
 }
