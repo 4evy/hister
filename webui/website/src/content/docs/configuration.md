@@ -214,7 +214,7 @@ description: 'Explore every configuration section, option, default value, enviro
       name: 'detect_languages',
       type: 'bool',
       defaultValue: 'true',
-      description: 'Enables automatic language detection. Changing this setting requires reindexing.',
+      description: 'Enables automatic language detection for newly processed documents. Existing documents remain searchable; reindex to apply the setting to them.',
     },
     {
       name: 'languages',
@@ -1144,9 +1144,9 @@ indexer:
   keep_stopwords: false
 ```
 
-Use `languages` to restrict detection to at least two distinct supported codes, `language_detection_accuracy: high` to favor short text accuracy, or `keep_stopwords: true` to preserve common words during language analysis. Setting `detect_languages: false` uses the default analyzer. These settings also apply to service imports processed by the command line client.
+Use `languages` to restrict detection to at least two distinct supported codes, `language_detection_accuracy: high` to favor short text accuracy, or `keep_stopwords: true` to preserve common words during language analysis. Setting `detect_languages: false` uses the default analyzer for newly processed documents. Existing documents remain searchable with their stored language analyzers. These settings also apply to service imports processed by the command line client.
 
-Restart after changing the server configuration. Changing `detect_languages` or `keep_stopwords` requires reindexing existing documents. Changes to the candidate list or accuracy mode require reindexing only if you want to reclassify existing content.
+Restart after changing the server configuration. Reindex to apply changes to `detect_languages`, the candidate list, or the accuracy mode to existing documents; searching them does not require a reindex. Changing `keep_stopwords` requires reindexing to rebuild existing analyzer mappings and terms.
 
 See [Language Settings and Detection](/docs/language-detection) for supported codes, configuration examples, accuracy and memory tradeoffs, confidence limits, search behavior, and reindexing instructions.
 

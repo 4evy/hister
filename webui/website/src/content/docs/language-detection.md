@@ -42,13 +42,13 @@ Documents classified as `unknown`, or without an available language analyzer, us
 
 ## Choosing Settings
 
-| Collection or priority              | Suggested settings                                     | Benefits                                                       | Tradeoffs                                                                                           |
-| ----------------------------------- | ------------------------------------------------------ | -------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
-| General browsing across languages   | `languages: []`, accuracy `low`                        | Covers all supported languages while limiting model memory.    | Short snippets can be harder to identify correctly.                                                 |
-| Content in a known set of languages | A list such as `['en', 'de']`, accuracy `low`          | Loads fewer models and narrows the possible detection results. | Text outside the list can be assigned the wrong language or become `unknown`.                       |
-| Short notes or snippets             | Accuracy `high`, with all languages or a suitable list | Uses more evidence for short text.                             | Loads more models and uses more memory; correct detection is still not guaranteed.                  |
-| Minimal detection overhead          | `detect_languages: false`                              | Avoids language model loading and uses the default analyzer.   | Loses automatic language labels and language specific analysis; existing documents need reindexing. |
-| Phrases containing common words     | `keep_stopwords: true` with detection enabled          | Keeps words such as `for` and `your` searchable.               | Retains more indexed terms and can increase index size.                                             |
+| Collection or priority              | Suggested settings                                     | Benefits                                                       | Tradeoffs                                                                                                                                   |
+| ----------------------------------- | ------------------------------------------------------ | -------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| General browsing across languages   | `languages: []`, accuracy `low`                        | Covers all supported languages while limiting model memory.    | Short snippets can be harder to identify correctly.                                                                                         |
+| Content in a known set of languages | A list such as `['en', 'de']`, accuracy `low`          | Loads fewer models and narrows the possible detection results. | Text outside the list can be assigned the wrong language or become `unknown`.                                                               |
+| Short notes or snippets             | Accuracy `high`, with all languages or a suitable list | Uses more evidence for short text.                             | Loads more models and uses more memory; correct detection is still not guaranteed.                                                          |
+| Minimal detection overhead          | `detect_languages: false`                              | Avoids language model loading for newly processed documents.   | New documents lose automatic language labels and language specific analysis. Existing indexes stay open until reindexing consolidates them. |
+| Phrases containing common words     | `keep_stopwords: true` with detection enabled          | Keeps words such as `for` and `your` searchable.               | Retains more indexed terms and can increase index size.                                                                                     |
 
 The accuracy and candidate settings are independent. You can use `high` with a restricted list or `low` with all supported languages. `keep_stopwords` changes analysis after detection; it does not improve the detector's accuracy.
 
@@ -170,12 +170,12 @@ To return to the full candidate set, set `languages: []` in YAML and remove any 
 
 Restart the server after editing its configuration. A changed candidate list or accuracy mode applies when documents are next processed; it does not relabel the stored collection automatically.
 
-| Changed setting               | Action for existing documents                                                                                                                                                                              |
-| ----------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `languages`                   | Reindex if you want existing documents classified using the new candidates. With detection enabled, previously created language indexes remain searchable even if their language is removed from the list. |
-| `language_detection_accuracy` | Reindex if you want existing documents classified using the new accuracy mode.                                                                                                                             |
-| `detect_languages`            | Run a full reindex to apply the new detection and analyzer behavior to the collection.                                                                                                                     |
-| `keep_stopwords`              | Run a full reindex to rebuild the stored analyzer mappings and terms.                                                                                                                                      |
+| Changed setting               | Action for existing documents                                                                                                                                                      |
+| ----------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `languages`                   | Reindex if you want existing documents classified using the new candidates. Previously created language indexes remain searchable even if their language is removed from the list. |
+| `language_detection_accuracy` | Reindex if you want existing documents classified using the new accuracy mode.                                                                                                     |
+| `detect_languages`            | Reindex if you want to apply the new detection and analyzer behavior to existing documents. They remain searchable without reindexing.                                             |
+| `keep_stopwords`              | Run a full reindex to rebuild the stored analyzer mappings and terms.                                                                                                              |
 
 After restarting with the desired settings, leave the server running and request a rebuild:
 
@@ -185,7 +185,7 @@ hister reindex
 
 Use the same `detect_languages` setting for this command and the server. The command sends its configured value to the server, while the candidate list, accuracy mode, and stop word setting come from the running server. If you use a custom configuration path, pass it with `hister --config /path/to/config.yml reindex`.
 
-When detection is disabled, the server does not open the old language indexes for normal searches. Documents in those indexes are temporarily absent from results until reindexing moves them into the default index. The reindex operation can still read those indexes.
+When detection is disabled, existing language indexes remain open and searchable with their stored analyzers and language labels. Newly processed documents use the default analyzer and receive the `unknown` language label. Reprocessing an existing document moves it into the default index without leaving a duplicate in its old language index. Run a full reindex if you want to consolidate the existing collection into the default index and release the resources used by separate language indexes.
 
 Hister records the analyzer configuration and warns at startup when `detect_languages` or the effective `keep_stopwords` setting differs from the stored index configuration. Changes to the candidate list or accuracy mode do not trigger that warning. Reindexing also performs normal document processing and rule checks; see [Data Storage and Lifecycle](/docs/data-lifecycle) for its broader effects.
 

@@ -547,10 +547,8 @@ func initializeIndexer(basePath string, opts indexOptions, embeddingFingerprint 
 		if !isLanguageIndexName(fn) {
 			continue
 		}
-		if !detectLanguages {
-			log.Warn().Str("Index", fn).Msg("Language specific index database found while language detection is turned off. Run hister reindex to be able to use the content of this index.")
-			continue
-		}
+		// Detection settings apply to newly processed documents. Existing
+		// language indexes remain searchable with their stored analyzers.
 		langIdx, err := bleve.OpenUsing(filepath.Join(basePath, fn), bleveRuntimeConfig())
 		if err != nil {
 			return nil, err

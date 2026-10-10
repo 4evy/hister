@@ -76,15 +76,15 @@ func TestLanguageIndexesAreReindexSourcesWhenDetectionIsDisabled(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer idx.Close()
-	if _, exists := idx.indexers[indexNameForLanguage("en")]; exists {
-		t.Fatal("English index is active with language detection disabled")
+	if _, exists := idx.indexers[indexNameForLanguage("en")]; !exists {
+		t.Fatal("English index is unavailable with language detection disabled")
 	}
 	activeCount, err := idx.idx.DocCount()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if activeCount != 0 {
-		t.Fatalf("active index document count = %d, want 0", activeCount)
+	if activeCount != 1 {
+		t.Fatalf("active index document count = %d, want 1", activeCount)
 	}
 
 	sources, closeSources, err := openReindexSources(dir, idx.indexers)

@@ -2,12 +2,88 @@ package indexer
 
 import (
 	"fmt"
+	"slices"
 	"testing"
 
 	"github.com/asciimoo/hister/config"
 	"github.com/asciimoo/hister/server/document"
 	"github.com/asciimoo/hister/server/testutil"
 )
+
+func TestDisabledLanguageDetectionKeepsExistingDocumentsSearchable(t *testing.T) {
+	cfg := testutil.Config(t)
+	idx := newTestIndexer(t, cfg)
+	t.Cleanup(func() { idx.Close() })
+	const (
+		englishURL = "https://example.com/english"
+		frenchURL  = "https://example.com/french"
+		unknownURL = "https://example.com/unknown"
+		newURL     = "https://example.com/new"
+	)
+	for _, d := range []*document.Document{
+		{URL: englishURL, Text: "running", Language: "en", Processed: true},
+		{URL: frenchURL, Text: "bonjour", Language: "fr", Processed: true},
+		{URL: unknownURL, Text: "granite", Language: document.UnknownLanguage, Processed: true},
+	} {
+		if err := idx.Add(d); err != nil {
+			t.Fatal(err)
+		}
+	}
+	idx.Close()
+
+	cfg.Indexer.DetectLanguages = false
+	idx = newTestIndexer(t, cfg)
+	if err := idx.Add(&document.Document{URL: newURL, Text: "running"}); err != nil {
+		t.Fatal(err)
+	}
+
+	assertSearch := func(query string, want ...string) {
+		t.Helper()
+		res, err := idx.Search(&Query{Text: query})
+		if err != nil {
+			t.Fatalf("search %q: %v", query, err)
+		}
+		var got []string
+		for _, d := range res.Documents {
+			got = append(got, d.URL)
+		}
+		slices.Sort(got)
+		slices.Sort(want)
+		if !slices.Equal(got, want) {
+			t.Fatalf("search %q = %v, want %v", query, got, want)
+		}
+	}
+
+	// Existing documents retain their language and analyzer. New documents use
+	// the default analyzer, which does not stem "running" to "run".
+	assertSearch("*", englishURL, frenchURL, unknownURL, newURL)
+	assertSearch("language:en", englishURL)
+	assertSearch("language:fr", frenchURL)
+	assertSearch("language:unknown", unknownURL, newURL)
+	assertSearch("text:run", englishURL)
+	assertSearch("text:running", englishURL, newURL)
+	if d := idx.GetByURLAndUser(englishURL, 0); d == nil || d.Language != "en" {
+		t.Fatalf("existing document lookup = %+v, want English document", d)
+	}
+
+	// Reprocessing an existing document moves it into the default index and
+	// removes its old language copy.
+	if err := idx.Add(&document.Document{URL: englishURL, Text: "running"}); err != nil {
+		t.Fatal(err)
+	}
+	assertSearch("*", englishURL, frenchURL, unknownURL, newURL)
+	assertSearch("language:en")
+	assertSearch("text:run")
+	assertSearch("language:unknown", englishURL, unknownURL, newURL)
+
+	// A full reindex can still consolidate the remaining language documents.
+	if err := idx.Reindex(&config.Rules{}, false, false, false, nil); err != nil {
+		t.Fatal(err)
+	}
+	assertSearch("language:unknown", englishURL, frenchURL, unknownURL, newURL)
+	assertSearch("language:fr")
+	assertSearch("text:bonjour", frenchURL)
+}
 
 func TestRestrictedLanguagesKeepExistingIndexesSearchable(t *testing.T) {
 	cfg := testutil.Config(t)

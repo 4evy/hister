@@ -45,15 +45,15 @@ indexer:
   detect_languages: false
 ```
 
-This setting disables automatic language detection for indexed pages, which reduces memory consumption by using a single default analyzer instead of maintaining separate language-specific indexes. This comes at the cost of potentially less accurate search results.
+Restart Hister after changing this setting to release language detection models already loaded in memory. Newly processed documents use the default analyzer, which can reduce search accuracy because it does not apply language specific stemming. Existing documents remain searchable with their stored language labels and analyzers.
 
-**Important**: After changing this setting, you must run a full reindex:
+To also consolidate existing documents into the default index and release the resources used by separate language indexes, run a full reindex:
 
 ```bash
 hister reindex
 ```
 
-The reindex operation will rebuild all indexes according to the new setting, compacting your existing data to a single index.
+The reindex operation rebuilds all indexes according to the new setting. It is optional if you only want to disable detection for newly processed documents. See [Language Settings and Detection](/docs/language-detection) for other ways to balance accuracy and memory use.
 
 ## Debugging the Web Extension
 
