@@ -174,7 +174,7 @@ func TestUpdateByQueryValidatesChanges(t *testing.T) {
 	if _, err := idx.UpdateByQuery("*", nil, servertypes.DocumentChanges{Language: new("zz")}, false); !errors.Is(err, ErrInvalidLanguage) {
 		t.Fatalf("unregistered language error = %v, want %v", err, ErrInvalidLanguage)
 	}
-	if !registeredLanguageAnalyzer("en") || !registeredLanguageAnalyzer("zh") {
+	if analyzerForLanguage("en") != "en" || analyzerForLanguage("zh") != "cjk" {
 		t.Fatal("registered language analyzer was rejected")
 	}
 }

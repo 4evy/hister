@@ -62,7 +62,15 @@
       query: 'type:file budget',
       description: 'Search both local files and imported file snapshots.',
     },
-    { query: 'language:en', description: 'Filter by detected language.' },
+    {
+      query: 'language:en',
+      description: 'Filter by English, including regional tags such as en-US.',
+    },
+    {
+      query: 'language:en-US',
+      description: 'Filter by a regional language tag, ignoring letter case.',
+    },
+    { query: 'language:nb', description: 'Find Norwegian Bokmal, including historical no labels.' },
     { query: 'label:research', description: 'Find documents with a matching label.' },
     { query: 'has:label', description: 'Find documents with a nonempty label.' },
     {

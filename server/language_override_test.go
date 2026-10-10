@@ -20,6 +20,8 @@ func TestLanguageOverrideSubmission(t *testing.T) {
 			status                    int
 		}{
 			{"web", "https://example.com/import", "de", "Imported text", 0, http.StatusCreated},
+			{"regional", "https://example.com/regional", "en-US", "Imported text", 0, http.StatusCreated},
+			{"no analyzer", "https://example.com/ukrainian", "uk", "Imported text", 0, http.StatusCreated},
 			{"remote", "remote-file://client/tmp/note.txt", "de", "Imported text", 2, http.StatusCreated},
 			{"invalid", "https://example.com/invalid", "../en", "text", 0, http.StatusBadRequest},
 			{"sensitive", "remote-file://client/tmp/secret.txt", "de", "-----BEGIN OPENSSH PRIVATE KEY-----", 2, http.StatusUnprocessableEntity},

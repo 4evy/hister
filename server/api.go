@@ -67,7 +67,7 @@ func documentLanguageOverrideSchema() *JSONSchemaField {
 	return &JSONSchemaField{
 		Name:        "language_override",
 		Type:        "string",
-		Description: "Optional persistent language choice: a supported code or unknown. Preserved in exports and imports. To change or clear an existing pin, use /api/update; language auto resumes detection.",
+		Description: "Optional persistent language tag, such as en-US, nb, uk, or unknown. Tags are normalized; languages without an analyzer use the default analyzer. Preserved in exports and imports. To change or clear an existing pin, use /api/update; language auto resumes detection.",
 	}
 }
 
@@ -596,7 +596,7 @@ func init() {
 						{Name: "user_id", Type: "integer", Required: false, Description: "New owner user ID; 0 makes the document global"},
 						{Name: "label", Type: "string", Required: false, Description: "New label; an empty value clears it"},
 						{Name: "title", Type: "string", Required: false, Description: "New title; an empty value clears it"},
-						{Name: "language", Type: "string", Required: false, Description: "Pin a supported language code or unknown across reindexing and resubmission. Use auto to clear the pin and detect the stored text using current settings."},
+						{Name: "language", Type: "string", Required: false, Description: "Pin a known language tag, such as en-US or nb, or unknown across reindexing and resubmission. Tags are normalized independently of analyzer availability. Use auto to clear the pin and detect the stored text using current settings."},
 					},
 				},
 				{

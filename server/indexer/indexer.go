@@ -23,6 +23,7 @@ import (
 	"github.com/asciimoo/hister/server/extractor"
 	"github.com/asciimoo/hister/server/indexer/querybuilder"
 	"github.com/asciimoo/hister/server/indexer/searchschema"
+	"github.com/asciimoo/hister/server/languages"
 	"github.com/asciimoo/hister/server/metrics"
 	"github.com/asciimoo/hister/server/model"
 	"github.com/asciimoo/hister/server/vectorstore"
@@ -1396,6 +1397,13 @@ func (i *Indexer) prepareStorageWrite(d *document.Document, state storedDocument
 	if err := normalizeDocumentLanguageOverride(d); err != nil {
 		return plan, err
 	}
+	// Processed imports and old stored documents may still carry legacy codes.
+	// Invalid derived labels fall back to unknown; explicit pins are validated above.
+	if resolved, err := languages.Resolve(d.Language); err == nil {
+		d.Language = resolved.Tag
+	} else {
+		d.Language = document.UnknownLanguage
+	}
 	// An ordinary update must not erase an earlier explicit indexing choice.
 	if _, supplied := d.Metadata[document.MetadataIgnoreSkipRules]; !supplied && state.ignoreSkipRules {
 		d.SetIgnoreSkipRules(true)
@@ -1612,10 +1620,11 @@ func (i *Indexer) getOrCreate(lang string) bleve.Index {
 }
 
 func indexNameForLanguage(lang string) string {
-	if lang == document.UnknownLanguage || lang == "" || !registeredLanguageAnalyzer(lang) {
+	resolved, err := languages.Resolve(lang)
+	if err != nil || resolved.Index == "" {
 		return defaultIndexerName
 	}
-	return fmt.Sprintf(langIndexerName, lang)
+	return fmt.Sprintf(langIndexerName, resolved.Index)
 }
 
 func isLanguageIndexName(name string) bool {
@@ -1627,7 +1636,7 @@ func isLanguageIndexName(name string) bool {
 		return false
 	}
 	language := strings.TrimSuffix(strings.TrimPrefix(name, prefix), suffix)
-	return registeredLanguageAnalyzer(language)
+	return languages.IsIndexCode(language)
 }
 
 func (i *Indexer) addIndexer(name, lang string) error {
@@ -2420,7 +2429,7 @@ func createMapping(lang string, keepStopwords bool) mapping.IndexMapping {
 			panic(err)
 		}
 	}
-	if lang == document.UnknownLanguage || lang == "" || lang == "default" {
+	if textAnalyzer == languages.DefaultAnalyzer {
 		addDefaultAnalyzer()
 		textAnalyzer = "default"
 	} else if keepStopwords {

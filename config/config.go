@@ -28,6 +28,8 @@ import (
 	"strings"
 	"unicode"
 
+	"github.com/asciimoo/hister/server/languages"
+
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/viper"
 )
@@ -156,9 +158,8 @@ func (i Indexer) LowAccuracyLanguageDetection() bool {
 	return i.LanguageDetectionAccuracy == "" || i.LanguageDetectionAccuracy == LanguageDetectionAccuracyLow
 }
 
-// Validate checks what can be checked without knowing which languages the
-// detector supports. The codes themselves are validated in server/document,
-// which owns that list; config keeps no dependency on it.
+// Validate checks detector settings using the shared language registry without
+// loading the detector's models.
 func (i Indexer) Validate() error {
 	switch i.LanguageDetectionAccuracy {
 	case "", LanguageDetectionAccuracyHigh, LanguageDetectionAccuracyLow:
@@ -176,7 +177,11 @@ func (i Indexer) Validate() error {
 	// the detector disabled without saying so.
 	distinct := make(map[string]struct{}, len(i.Languages))
 	for _, code := range i.Languages {
-		distinct[strings.ToLower(strings.TrimSpace(code))] = struct{}{}
+		resolved, err := languages.Resolve(code)
+		if err != nil || resolved.Detector == "" {
+			return fmt.Errorf("unsupported language in indexer.languages: %q", code)
+		}
+		distinct[resolved.Detector] = struct{}{}
 	}
 	if len(distinct) < 2 {
 		return errors.New("indexer.languages needs at least two distinct languages, or none at all to detect every supported language")

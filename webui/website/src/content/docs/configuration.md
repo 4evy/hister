@@ -220,7 +220,7 @@ description: 'Explore every configuration section, option, default value, enviro
       name: 'languages',
       type: 'string[]',
       defaultValue: '(none)',
-      description: 'Restricts detection to at least two distinct supported language codes. Empty detects every supported language. Restricted detection requires a confidence of at least 0.8; uncertain text uses the default index. Excluded languages can still be misclassified. See Language Detection below for tradeoffs.',
+      description: 'Restricts detection to at least two distinct supported base languages. Regional tags and aliases select the same model. Empty detects every supported language. Restricted detection requires a confidence of at least 0.8; uncertain text uses the default index. Excluded languages can still be misclassified. See Language Detection below for tradeoffs.',
     },
     {
       name: 'language_detection_accuracy',
@@ -1144,7 +1144,7 @@ indexer:
   keep_stopwords: false
 ```
 
-Use `languages` to restrict detection to at least two distinct supported codes, `language_detection_accuracy: high` to favor short text accuracy, or `keep_stopwords: true` to preserve common words during language analysis. Setting `detect_languages: false` uses the default analyzer for newly processed documents without a manual language pin. Existing documents remain searchable with their stored language analyzers. Manual pins survive reindexing and take precedence over detection settings. These settings also apply to service imports processed by the command line client.
+Use `languages` to restrict detection to at least two distinct supported base languages (regional tags and aliases select the same model), `language_detection_accuracy: high` to favor short text accuracy, or `keep_stopwords: true` to preserve common words during language analysis. Setting `detect_languages: false` uses the default analyzer for newly processed documents without a manual language pin. Existing documents remain searchable with their stored language analyzers. Manual pins survive reindexing and take precedence over detection settings. These settings also apply to service imports processed by the command line client.
 
 Restart after changing the server configuration. Reindex to apply changes to `detect_languages`, the candidate list, or the accuracy mode to existing documents; searching them does not require a reindex. Changing `keep_stopwords` requires reindexing to rebuild existing analyzer mappings and terms.
 

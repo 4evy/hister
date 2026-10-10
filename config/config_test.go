@@ -204,6 +204,10 @@ func TestIndexerValidate(t *testing.T) {
 		// A repeated code resolves to a single language, which would leave the
 		// detector disabled rather than narrowed.
 		{"repeated language", Indexer{Languages: []string{"en", " EN "}}, true},
+		{"regional duplicates", Indexer{Languages: []string{"en-US", "en-GB"}}, true},
+		{"norwegian aliases", Indexer{Languages: []string{"no", "nb"}}, true},
+		{"regional candidates", Indexer{Languages: []string{"en-US", "de-DE"}}, false},
+		{"unsupported detector", Indexer{Languages: []string{"en", "uk"}}, true},
 		{"unknown accuracy", Indexer{LanguageDetectionAccuracy: "medium"}, true},
 		{"low accuracy", Indexer{LanguageDetectionAccuracy: "low"}, false},
 	} {

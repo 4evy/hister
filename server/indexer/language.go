@@ -2,12 +2,13 @@ package indexer
 
 import (
 	"fmt"
-	"strings"
 
 	"github.com/asciimoo/hister/server/document"
+	"github.com/asciimoo/hister/server/languages"
 
 	_ "github.com/blevesearch/bleve/v2/analysis/lang/ar"
-	"github.com/blevesearch/bleve/v2/analysis/lang/cjk"
+	_ "github.com/blevesearch/bleve/v2/analysis/lang/cjk"
+	_ "github.com/blevesearch/bleve/v2/analysis/lang/ckb"
 	_ "github.com/blevesearch/bleve/v2/analysis/lang/da"
 	_ "github.com/blevesearch/bleve/v2/analysis/lang/de"
 	_ "github.com/blevesearch/bleve/v2/analysis/lang/en"
@@ -30,11 +31,11 @@ import (
 )
 
 func normalizeLanguageOverride(language string) (string, error) {
-	language = strings.ToLower(strings.TrimSpace(language))
-	if language != document.UnknownLanguage && !registeredLanguageAnalyzer(language) {
+	resolved, err := languages.Resolve(language)
+	if err != nil {
 		return "", fmt.Errorf("%w %q", ErrInvalidLanguage, language)
 	}
-	return language, nil
+	return resolved.Tag, nil
 }
 
 func normalizeDocumentLanguageOverride(d *document.Document) error {
@@ -51,10 +52,9 @@ func normalizeDocumentLanguageOverride(d *document.Document) error {
 }
 
 func analyzerForLanguage(language string) string {
-	switch language {
-	case "zh", "ja", "ko":
-		return cjk.AnalyzerName
-	default:
-		return language
+	resolved, err := languages.Resolve(language)
+	if err != nil {
+		return languages.DefaultAnalyzer
 	}
+	return resolved.Analyzer
 }

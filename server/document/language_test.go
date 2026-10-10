@@ -4,6 +4,9 @@ import (
 	"slices"
 	"testing"
 
+	"golang.org/x/text/language"
+
+	"github.com/asciimoo/hister/server/languages"
 	"github.com/asciimoo/lingua-go"
 )
 
@@ -26,9 +29,9 @@ func TestResolveLanguages(t *testing.T) {
 	}{
 		{"normalizes case and spacing", []string{"EN", " de ", "nl", "id"}, []string{"de", "en", "id", "nl"}},
 		{"drops unsupported", []string{"en", "de", "xx"}, []string{"de", "en"}},
-		// Norwegian Bokmal is exposed as the generic "no" code, not lingua's "nb".
-		{"uses generic norwegian code", []string{"no", "en"}, []string{"en", "no"}},
-		{"rejects lingua's nb spelling", []string{"nb", "en"}, []string{"en"}},
+		{"legacy norwegian alias", []string{"no", "en"}, []string{"en", "nb"}},
+		{"bokmal and regions", []string{"nb-NO", "en-US", "en-GB", "no"}, []string{"en", "nb"}},
+		{"deprecated indonesian alias", []string{"in", "de-DE"}, []string{"de", "id"}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			if got := codesOf(t, tc.codes); !slices.Equal(got, tc.want) {
@@ -56,6 +59,25 @@ func TestUnsupportedLanguages(t *testing.T) {
 	// silently ignored.
 	if got := UnsupportedLanguages([]string{"cs"}); !slices.Equal(got, []string{"cs"}) {
 		t.Fatalf("UnsupportedLanguages([cs]) = %v, want [cs]", got)
+	}
+}
+
+func TestDetectionRegistryMatchesBundledModels(t *testing.T) {
+	seen := make(map[string]bool)
+	for _, base := range language.Supported.BaseLanguages() {
+		resolved, err := languages.Resolve(base.String())
+		if err != nil || resolved.Detector == "" {
+			continue
+		}
+		if _, ok := SupportedLanguages[resolved.Detector]; !ok {
+			t.Errorf("candidate %s has no bundled model", resolved.Detector)
+		}
+		seen[resolved.Detector] = true
+	}
+	for code := range SupportedLanguages {
+		if !seen[code] {
+			t.Errorf("bundled model %s is not a candidate", code)
+		}
 	}
 }
 

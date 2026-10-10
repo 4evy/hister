@@ -694,8 +694,8 @@ func TestAddDocumentAndMultiBatchUseSamePreparation(t *testing.T) {
 			if got.Label != "preserved label" {
 				t.Fatalf("Label = %q, want preserved label", got.Label)
 			}
-			if got.Language != "" {
-				t.Fatalf("Language = %q, want the default index", got.Language)
+			if got.Language != document.UnknownLanguage {
+				t.Fatalf("Language = %q, want unknown in the default index", got.Language)
 			}
 			if got.HTML != "<p>new preview</p>" {
 				t.Fatalf("HTML = %q, want updated preview", got.HTML)

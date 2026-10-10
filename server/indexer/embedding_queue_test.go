@@ -69,6 +69,32 @@ func TestLanguageOverridesRefreshEmbeddingContext(t *testing.T) {
 	waitForEmbeddingJobs(t, &requests, 4)
 }
 
+func TestNormalizingLegacyLanguageRefreshesEmbeddingContext(t *testing.T) {
+	var requests atomic.Int64
+	server := embeddingTestServer(t, &requests)
+	defer server.Close()
+	cfg := testutil.Config(t)
+	cfg.Indexer.DetectLanguages = false
+	cfg.SemanticSearch.Enable = true
+	cfg.SemanticSearch.EmbeddingEndpoint = server.URL
+	cfg.SemanticSearch.EmbeddingModel = "test"
+	cfg.SemanticSearch.Dimensions = 2
+	cfg.SemanticSearch.MaxContextLength = 512
+	cfg.SemanticSearch.MaxEmbeddingConcurrency = 1
+	testutil.InitModelWithConfig(t, cfg)
+	idx := newTestIndexer(t, cfg)
+	defer idx.Close()
+	legacy := &document.Document{URL: "https://example.com/legacy-language-context", Text: "original text", Language: "no", LanguageOverride: "no"}
+	if err := idx.getOrCreate("nb").Index(legacy.ID(), legacy); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := idx.UpdateByQuery("*", nil, servertypes.DocumentChanges{Label: new("research")}, false); err != nil {
+		t.Fatal(err)
+	}
+	requireStoredLanguage(t, idx, legacy.URL, 0, "nb")
+	waitForEmbeddingJobs(t, &requests, 1)
+}
+
 func embeddingTestServer(t *testing.T, requests *atomic.Int64) *httptest.Server {
 	t.Helper()
 	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

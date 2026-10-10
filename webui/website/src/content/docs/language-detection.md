@@ -36,9 +36,11 @@ For documents without a manual language pin, Hister runs Lingua locally on the e
 
 Hister assigns one language to the whole document. It does not split a page into separate language regions, so mixed language pages, code, names, and very short snippets can produce an unexpected result.
 
-Detected languages with a registered analyzer use a separate search index, such as `index_en.db` for English. Chinese (`zh`), Japanese (`ja`), and Korean (`ko`) use Bleve's shared CJK analyzer. Searches run across the active indexes, applying their respective analyzers to text queries. You do not need to choose a language before searching.
+Languages with an available analyzer use a separate search index, such as `index_en.db` for English. A regional tag such as `en-US` stays in the document metadata but shares the English analyzer and index with `en` and `en-GB`. Norwegian Bokmal (`nb`) uses the Norwegian analyzer in `index_no.db`. Chinese (`zh`), Japanese (`ja`), and Korean (`ko`) use Bleve's shared CJK analyzer in their respective indexes. Searches run across the active indexes, applying their respective analyzers to text queries. You do not need to choose a language before searching.
 
 Documents classified as `unknown`, or without an available language analyzer, use `index.db`. Its default analyzer splits text using Unicode word boundaries and lowercases terms. It keeps stop words and does not apply language specific stemming. The content remains searchable, but different forms of a word may no longer match each other.
+
+Document tags, detection candidates, and analyzers are separate. For example, Indonesian (`id`) can be detected but uses the default analyzer. Ukrainian (`uk`) can be assigned manually and searched by its language tag, even though it has neither a bundled detector model nor a language analyzer.
 
 ## Choosing Settings
 
@@ -84,7 +86,7 @@ indexer:
   language_detection_accuracy: 'low'
 ```
 
-Codes ignore case and surrounding whitespace. Duplicates do not count as distinct languages, so both `['en']` and `['en', 'EN']` are invalid. Unsupported codes are rejected. This validation also applies when detection is disabled. There is no single language mode that forces every document to English, for example.
+Codes ignore case and surrounding whitespace. Regional tags select the base language's model, so `en-US` selects English without making detection distinguish American English. Duplicates and aliases do not count as distinct candidates: `['en', 'en-GB']` and `['no', 'nb']` are invalid. Languages without bundled detection models are rejected. This validation also applies when detection is disabled. There is no single language mode that forces every document to English, for example.
 
 The list controls detection candidates. It does not reject documents written in other languages or restrict the languages you can search for in existing content.
 
@@ -100,42 +102,46 @@ Keep the full set if your browsing spans unpredictable languages. An incorrect l
 
 ### Supported Codes
 
-Hister currently accepts these 30 detection codes:
+Hister bundles detection models for these 30 base language codes. Aliases select the same model as their canonical code and do not count as additional detection candidates.
 
-| Code | Language         |
-| ---- | ---------------- |
-| `ar` | Arabic           |
-| `bg` | Bulgarian        |
-| `ca` | Catalan          |
-| `da` | Danish           |
-| `de` | German           |
-| `el` | Greek            |
-| `en` | English          |
-| `es` | Spanish          |
-| `eu` | Basque           |
-| `fa` | Persian          |
-| `fi` | Finnish          |
-| `fr` | French           |
-| `ga` | Irish            |
-| `hi` | Hindi            |
-| `hr` | Croatian         |
-| `hu` | Hungarian        |
-| `hy` | Armenian         |
-| `id` | Indonesian       |
-| `it` | Italian          |
-| `ja` | Japanese         |
-| `ko` | Korean           |
-| `nl` | Dutch            |
-| `no` | Norwegian Bokmal |
-| `pl` | Polish           |
-| `pt` | Portuguese       |
-| `ro` | Romanian         |
-| `ru` | Russian          |
-| `sv` | Swedish          |
-| `tr` | Turkish          |
-| `zh` | Chinese          |
+| Code | Language         | Aliases |
+| ---- | ---------------- | ------- |
+| `ar` | Arabic           |         |
+| `bg` | Bulgarian        |         |
+| `ca` | Catalan          |         |
+| `da` | Danish           |         |
+| `de` | German           |         |
+| `el` | Greek            |         |
+| `en` | English          |         |
+| `es` | Spanish          |         |
+| `eu` | Basque           |         |
+| `fa` | Persian          |         |
+| `fi` | Finnish          |         |
+| `fr` | French           |         |
+| `ga` | Irish            |         |
+| `hi` | Hindi            |         |
+| `hr` | Croatian         |         |
+| `hu` | Hungarian        |         |
+| `hy` | Armenian         |         |
+| `id` | Indonesian       | `in`    |
+| `it` | Italian          |         |
+| `ja` | Japanese         |         |
+| `ko` | Korean           |         |
+| `nb` | Norwegian Bokmal | `no`    |
+| `nl` | Dutch            |         |
+| `pl` | Polish           |         |
+| `pt` | Portuguese       |         |
+| `ro` | Romanian         | `mo`    |
+| `ru` | Russian          |         |
+| `sv` | Swedish          |         |
+| `tr` | Turkish          |         |
+| `zh` | Chinese          |         |
 
-Use `no` for Norwegian Bokmal; `nb` is not accepted. Regional codes such as `en-US` and the fallback value `unknown` are not detection candidates.
+Prefer the canonical codes for new configuration. The alias `no` preserves Hister's historical spelling for Norwegian Bokmal; `in` and `mo` are deprecated language codes. Regional and script tags such as `en-US` and `zh-Hant` select their base models. Automatic detection returns a base code, such as `en`, `zh`, or `nb`. The fallback value `unknown` is not a detection candidate.
+
+Manual pins accept known BCP 47 tags, including scripts, regions, and variants, even when no detector model or analyzer is available. Tags are normalized, so `EN-us` is stored as `en-US`. Use hyphens between subtags. Private language codes and tags with extensions are rejected. `unknown` and `und` both select the stored label `unknown`.
+
+Manual pins also accept `iw` for Hebrew (`he`) and `ji` for Yiddish (`yi`). These languages have no bundled detection models, so they are not included in the table.
 
 ## Stop Words and Phrase Searches
 
@@ -195,9 +201,12 @@ Use the [query language](/docs/query-language) to inspect stored classifications
 
 ```textplain
 language:en
+language:en-US
 language:(en|de)
 language:unknown
 ```
+
+Filters ignore case and include more specific tags: `language:en` matches `en`, `en-US`, and `en-GB`, while `language:en-US` selects the American English tag and any more specific variants. Both `language:nb` and `language:no` find old `no` labels and new `nb` labels. Existing index files remain searchable without rebuilding. Reprocessing normalizes old labels, so language facets can show both spellings until those documents are updated or reindexed.
 
 `language:unknown` includes documents for which detection was disabled or inconclusive, and documents manually pinned to `unknown`. It is not a reliable list of all documents in unsupported or excluded languages, since those can be misclassified.
 
@@ -207,6 +216,8 @@ You can pin a stored language through the update command, even when detection is
 hister update 'domain:english.example.com' --language en --dry
 hister update 'domain:english.example.com' --language en
 ```
+
+Use a regional tag such as `--language en-US` when that distinction is known. Detection does not infer regional tags.
 
 The first command reports the affected count; the second asks for confirmation and updates the matching documents. A language change rebuilds those documents in the appropriate index without requiring a full reindex. The choice remains pinned across server restarts, reindexing, browser resubmissions, imports, and watched file updates. Pins belong to a document and its owner, so correcting your copy does not affect another user's copy of the same URL. Pinning a document to its current language still counts as an update if it was not already pinned.
 

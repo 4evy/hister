@@ -152,7 +152,7 @@ var fields = []FieldDefinition{
 	{Name: "url_re", Label: "URL regexp", Description: "Search page addresses with a Go regular expression", Kind: FieldKindRegexp, IndexField: "url", Weight: 4, Visible: true},
 	{Name: "text", Label: "Text", Description: "Search only document content", Kind: FieldKindText, IndexField: "text", Weight: 1, Visible: true, Phrase: true, DefaultSearch: true},
 	{Name: "type", Label: "Type", Description: "Filter web, local, or remote file documents", Kind: FieldKindEnum, ValueSet: "document_types", IndexField: "type", Visible: true},
-	{Name: "language", Label: "Language", Description: "Filter by document language", Kind: FieldKindText, IndexField: "language", Weight: 1, Visible: true},
+	{Name: "language", Label: "Language", Description: "Filter by language tag, including more specific tags: en includes en-US; no aliases nb", Kind: FieldKindText, IndexField: "language", Weight: 1, Visible: true},
 	{Name: "label", Label: "Label", Description: "Search assigned labels", Kind: FieldKindText, IndexField: "label", Weight: 1, Visible: true},
 	{Name: "visits", Label: "Visits", Description: "Filter by visit count", Kind: FieldKindNumericRange, ValueSet: "visit_counts", IndexField: "add_count", Aliases: []string{"add_count"}, Visible: true},
 	{Name: "updated", Label: "Updated", Description: "Filter by last update time", Kind: FieldKindTime, ValueSet: "time_ranges", IndexField: "updated", Visible: true},

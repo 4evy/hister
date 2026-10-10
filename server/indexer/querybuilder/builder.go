@@ -13,6 +13,7 @@ import (
 
 	"github.com/asciimoo/hister/files"
 	"github.com/asciimoo/hister/server/indexer/searchschema"
+	"github.com/asciimoo/hister/server/languages"
 
 	"github.com/blevesearch/bleve/v2"
 	"github.com/blevesearch/bleve/v2/search"
@@ -230,6 +231,9 @@ func buildFieldQuery(field, v string) query.Query {
 	if !ok {
 		return bleve.NewQueryStringQuery(v)
 	}
+	if definition.Name == "language" {
+		return buildLanguageQuery(definition, v)
+	}
 	if strings.Contains(v, "*") {
 		if definition.NormalizeFilePath {
 			q := bleve.NewRegexpQuery(caseInsensitiveWildcardRegexp(v))
@@ -271,6 +275,45 @@ func caseInsensitiveWildcardRegexp(value string) string {
 		}
 	}
 	return pattern.String()
+}
+
+// Language filters use normalized tags, include more specific tags, and keep
+// historical aliases searchable without requiring an index rebuild.
+func buildLanguageQuery(field searchschema.FieldDefinition, value string) query.Query {
+	var tags []string
+	wildcard := strings.ContainsAny(value, "*?")
+	if wildcard {
+		// Normalize the base alias when it is specified, preserving the pattern.
+		base, suffix, hasSuffix := strings.Cut(strings.ToLower(value), "-")
+		if resolved, err := languages.Resolve(base); err == nil {
+			tags = languages.StoredTags(resolved.Tag)
+			if hasSuffix {
+				for i := range tags {
+					tags[i] += "-" + suffix
+				}
+			}
+		} else {
+			tags = []string{value}
+		}
+	} else {
+		resolved, err := languages.Resolve(value)
+		if err != nil {
+			return query.NewMatchNoneQuery()
+		}
+		tags = languages.StoredTags(resolved.Tag)
+	}
+	queries := make([]query.Query, 0, len(tags))
+	for _, tag := range tags {
+		pattern := "(?i)" + regexp.QuoteMeta(tag) + "(-.*)?"
+		if wildcard {
+			pattern = caseInsensitiveWildcardRegexp(tag)
+		}
+		q := bleve.NewRegexpQuery(pattern)
+		q.SetField(field.IndexField)
+		q.SetBoost(field.Weight)
+		queries = append(queries, q)
+	}
+	return bleve.NewDisjunctionQuery(queries...)
 }
 
 // buildQuotedFieldQuery preserves phrase semantics for analyzed text fields.

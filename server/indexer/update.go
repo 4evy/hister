@@ -12,7 +12,6 @@ import (
 	servertypes "github.com/asciimoo/hister/server/types"
 
 	"github.com/blevesearch/bleve/v2"
-	"github.com/blevesearch/bleve/v2/registry"
 	"github.com/blevesearch/bleve/v2/search/query"
 )
 
@@ -59,25 +58,14 @@ func normalizeDocumentChanges(changes *servertypes.DocumentChanges) error {
 		return fmt.Errorf("%w: use %q for an unknown language", ErrInvalidLanguage, document.UnknownLanguage)
 	}
 	if language != "auto" {
-		if _, err := normalizeLanguageOverride(language); err != nil {
+		var err error
+		language, err = normalizeLanguageOverride(language)
+		if err != nil {
 			return err
 		}
 	}
 	changes.Language = &language
 	return nil
-}
-
-func registeredLanguageAnalyzer(language string) bool {
-	if len(language) < 2 || len(language) > 3 {
-		return false
-	}
-	for _, r := range language {
-		if r < 'a' || r > 'z' {
-			return false
-		}
-	}
-	_, err := registry.NewCache().AnalyzerNamed(analyzerForLanguage(language))
-	return err == nil
 }
 
 func (i *Indexer) documentsForMutation(q query.Query) ([]*document.Document, error) {
@@ -221,7 +209,10 @@ func (i *Indexer) UpdateByQuery(
 			if err != nil {
 				return result, fmt.Errorf("prepare update for %s: %w", d.URL, err)
 			}
-			plan.needsEmbedding = update.embeddingContextDirty && i.embedder != nil && i.vectorStore != nil
+			// Storage can normalize a legacy language even for a label
+			// update. Keep the language included in embeddings consistent with it.
+			plan.needsEmbedding = i.embedder != nil && i.vectorStore != nil &&
+				(update.embeddingContextDirty || state.embeddingContentChanged(d))
 			if err := batch.applyDocumentWrite(d, plan); err != nil {
 				return result, fmt.Errorf("stage update for %s: %w", d.URL, err)
 			}

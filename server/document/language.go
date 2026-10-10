@@ -3,6 +3,8 @@ package document
 import (
 	"strings"
 
+	"github.com/asciimoo/hister/server/languages"
+
 	// register lingua-go language packs
 	"github.com/asciimoo/lingua-go"
 	_ "github.com/asciimoo/lingua-go/language-models/ar"
@@ -37,11 +39,11 @@ import (
 	_ "github.com/asciimoo/lingua-go/language-models/zh"
 )
 
-const UnknownLanguage = "unknown"
+const UnknownLanguage = languages.Unknown
 
 var Languages = []lingua.Language{
 	lingua.Arabic,    // ar
-	lingua.Bokmal,    // nb - Norewgian Bokmal, gets rewritten to "no" in Hister
+	lingua.Bokmal,    // nb
 	lingua.Bulgarian, // bg
 	lingua.Catalan,   // ca
 	lingua.Chinese,   // zh, uses the CJK analyzer
@@ -71,21 +73,14 @@ var Languages = []lingua.Language{
 	lingua.Russian,    // ru
 	lingua.Swedish,    // sv
 	lingua.Turkish,    // tr
-	// supported by bleve but not by lingua: gl, in
 }
 
 // languageCode returns the ISO 639-1 code Hister uses for a lingua language.
 func languageCode(l lingua.Language) string {
-	code := strings.ToLower(l.IsoCode639_1().String())
-	if code == "nb" {
-		// use generic "no" code for Norwegian
-		return "no"
-	}
-	return code
+	return strings.ToLower(l.IsoCode639_1().String())
 }
 
-// SupportedLanguages maps every code Hister accepts in indexer.languages to its
-// lingua counterpart. It is derived from Languages so the two cannot drift.
+// SupportedLanguages maps each bundled model's canonical code to lingua.
 var SupportedLanguages = func() map[string]lingua.Language {
 	m := make(map[string]lingua.Language, len(Languages))
 	for _, l := range Languages {
@@ -100,14 +95,15 @@ var SupportedLanguages = func() map[string]lingua.Language {
 func UnsupportedLanguages(codes []string) []string {
 	var unsupported []string
 	for _, code := range codes {
-		if _, ok := SupportedLanguages[strings.ToLower(strings.TrimSpace(code))]; !ok {
+		resolved, err := languages.Resolve(code)
+		if err != nil || resolved.Detector == "" {
 			unsupported = append(unsupported, code)
 		}
 	}
 	return unsupported
 }
 
-// ResolveLanguages maps ISO 639-1 codes onto lingua languages, preserving the
+// ResolveLanguages maps language tags onto lingua models, preserving the
 // order of Languages and dropping codes that are not supported. An empty list
 // resolves to every supported language.
 func ResolveLanguages(codes []string) []lingua.Language {
@@ -116,7 +112,9 @@ func ResolveLanguages(codes []string) []lingua.Language {
 	}
 	wanted := make(map[string]struct{}, len(codes))
 	for _, c := range codes {
-		wanted[strings.ToLower(strings.TrimSpace(c))] = struct{}{}
+		if resolved, err := languages.Resolve(c); err == nil && resolved.Detector != "" {
+			wanted[resolved.Detector] = struct{}{}
+		}
 	}
 	langs := make([]lingua.Language, 0, len(wanted))
 	for _, l := range Languages {
@@ -162,8 +160,8 @@ func NewLanguageDetector() LanguageDetector {
 	return NewLanguageDetectorFor(nil, true)
 }
 
-// NewLanguageDetectorFor builds a detector limited to the given ISO 639-1
-// codes, or to every supported language when codes is empty.
+// NewLanguageDetectorFor builds a detector limited to the base languages of
+// the given tags, or to every supported language when codes is empty.
 //
 // Both arguments bound memory. lingua caches decompressed n-gram models in
 // package level maps that are never evicted, so every language and every n-gram

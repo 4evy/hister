@@ -49,7 +49,7 @@ You can search within specific fields using the `field:value` syntax:
 - **site:** Match a domain and its subdomains, ignoring letter case
 - **has:** Find documents with a nonempty field or metadata value, such as `has:label` or `has:metadata.author`
 - **label:** - Search in document labels only
-- **language:** Filter by stored language, such as `en`, `de`, or `fr`. Use `unknown` for documents without an identified language.
+- **language:** Filter by stored language tag, ignoring case. `en` includes regional tags such as `en-US`; `en-US` selects that region. Use `unknown` for documents without an identified language.
 - **metadata.KEY:** - Match an exact metadata value, such as `metadata.source:linkding`
 - **type:** - Filter by document type (`web` for websites, `file` or `local` for local files)
 - **visits:** - Filter by visit count, with exact values (`visits:1`), bounded ranges (`visits:2..4`), or open ranges (`visits:10..`)
@@ -119,7 +119,7 @@ Finds pages with "GDPR compliance" in the body text.
 language:en
 ```
 
-Finds pages detected as English language.
+Finds documents labeled as English, including regional tags such as `en-US` and `en-GB`, whether detected or manually assigned. Use `language:en-US` to narrow the filter to that tag and any more specific variants. Filters normalize aliases: `language:no` and `language:nb` both match Norwegian Bokmal, including historical `no` labels. Patterns such as `language:en-*`, negation, and grouped alternatives also work.
 
 See [Language Settings and Detection](/docs/language-detection) for supported codes, accuracy options, stop words, and how language analysis affects matching.
 
