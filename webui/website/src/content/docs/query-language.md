@@ -49,7 +49,7 @@ You can search within specific fields using the `field:value` syntax:
 - **site:** Match a domain and its subdomains, ignoring letter case
 - **has:** Find documents with a nonempty field or metadata value, such as `has:label` or `has:metadata.author`
 - **label:** - Search in document labels only
-- **language:** - Filter by detected language (e.g., `en`, `de`, `fr`. Use `unknown` for languages Hister doesn't support)
+- **language:** Filter by stored language, such as `en`, `de`, or `fr`. Use `unknown` for documents without an identified language.
 - **metadata.KEY:** - Match an exact metadata value, such as `metadata.source:linkding`
 - **type:** - Filter by document type (`web` for websites, `file` or `local` for local files)
 - **visits:** - Filter by visit count, with exact values (`visits:1`), bounded ranges (`visits:2..4`), or open ranges (`visits:10..`)
@@ -120,6 +120,8 @@ language:en
 ```
 
 Finds pages detected as English language.
+
+See [Language Settings and Detection](/docs/language-detection) for supported codes, accuracy options, stop words, and how language analysis affects matching.
 
 ```textplain
 label:research

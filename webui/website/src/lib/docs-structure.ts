@@ -22,7 +22,7 @@ export const docsStructure: DocsCategory[] = [
   },
   {
     name: 'Search and Integrations',
-    slugs: ['terminal-client', 'extractors', 'mcp'],
+    slugs: ['language-detection', 'terminal-client', 'extractors', 'mcp'],
     color: 'lime',
   },
   {
