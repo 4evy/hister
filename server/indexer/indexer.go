@@ -309,19 +309,21 @@ type indexBatch struct {
 }
 
 type storedDocumentState struct {
-	ignoreSkipRules bool
-	htmlKeys        []string
-	faviconKeys     []string
-	texts           []string
-	indexNames      map[string]struct{}
-	addCount        uint
-	found           bool
-	label           string
-	added           int64
+	ignoreSkipRules  bool
+	languageOverride string
+	htmlKeys         []string
+	faviconKeys      []string
+	texts            []string
+	languages        []string
+	indexNames       map[string]struct{}
+	addCount         uint
+	found            bool
+	label            string
+	added            int64
 }
 
-func (s storedDocumentState) embeddingTextChanged(text string) bool {
-	return !s.found || !slices.Contains(s.texts, text)
+func (s storedDocumentState) embeddingContentChanged(d *document.Document) bool {
+	return !s.found || !slices.Contains(s.texts, d.Text) || !slices.Contains(s.languages, d.Language)
 }
 
 type MultiBatch struct {
@@ -1150,6 +1152,9 @@ func (i *Indexer) AddContext(ctx context.Context, d *document.Document, options 
 }
 
 func (i *Indexer) processDocument(ctx context.Context, d *document.Document) error {
+	if err := normalizeDocumentLanguageOverride(d); err != nil {
+		return err
+	}
 	return d.ProcessWithSensitivePatternContext(ctx, i.langDetector, extractor.ExtractContext, i.sensitivePattern)
 }
 
@@ -1324,12 +1329,19 @@ func (i *Indexer) prepareDocumentWrite(ctx context.Context, d *document.Document
 		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
+	} else if err := normalizeDocumentLanguageOverride(d); err != nil {
+		return nil, err
 	}
 	if d.SkipIndexing {
 		return nil, nil
 	}
 	state := i.getStoredDocumentState(d.ID())
-	needsEmbedding := i.embedder != nil && i.vectorStore != nil && state.embeddingTextChanged(d.Text)
+	// Resolve the final URL and owner before looking up a saved correction.
+	// Resubmissions cannot replace a pin; the update API changes or clears it.
+	if state.languageOverride != "" {
+		d.LanguageOverride = state.languageOverride
+		d.Language = state.languageOverride
+	}
 	applySubmissionTimestamps(d, state)
 	if incrementAddCount {
 		if state.found {
@@ -1347,7 +1359,7 @@ func (i *Indexer) prepareDocumentWrite(ctx context.Context, d *document.Document
 	if err != nil {
 		return nil, err
 	}
-	plan.needsEmbedding = needsEmbedding
+	plan.needsEmbedding = i.embedder != nil && i.vectorStore != nil && state.embeddingContentChanged(d)
 	return &plan, nil
 }
 
@@ -1381,6 +1393,9 @@ func (i *Indexer) saveWithState(d *document.Document, state storedDocumentState)
 
 func (i *Indexer) prepareStorageWrite(d *document.Document, state storedDocumentState) (documentWritePlan, error) {
 	plan := documentWritePlan{}
+	if err := normalizeDocumentLanguageOverride(d); err != nil {
+		return plan, err
+	}
 	// An ordinary update must not erase an earlier explicit indexing choice.
 	if _, supplied := d.Metadata[document.MetadataIgnoreSkipRules]; !supplied && state.ignoreSkipRules {
 		d.SetIgnoreSkipRules(true)
@@ -1453,7 +1468,7 @@ func (i *Indexer) getStoredDocumentState(id string) storedDocumentState {
 	var state storedDocumentState
 	q := bleve.NewDocIDQuery([]string{id})
 	req := bleve.NewSearchRequest(q)
-	req.Fields = []string{"html_key", "favicon_key", "language", "add_count", "label", "added", "metadata." + document.MetadataIgnoreSkipRules}
+	req.Fields = []string{"html_key", "favicon_key", "language", "language_override", "add_count", "label", "added", "metadata." + document.MetadataIgnoreSkipRules}
 	if i.embedder != nil && i.vectorStore != nil {
 		req.Fields = append(req.Fields, "text")
 	}
@@ -1474,6 +1489,11 @@ func (i *Indexer) getStoredDocumentState(id string) storedDocumentState {
 	state.found = true
 	state.addCount = 1
 	for _, h := range res.Hits {
+		language, _ := h.Fields["language"].(string)
+		state.languages = append(state.languages, language)
+		if language, _ := h.Fields["language_override"].(string); language != "" {
+			state.languageOverride = language
+		}
 		if ignore, _ := h.Fields["metadata."+document.MetadataIgnoreSkipRules].(bool); ignore {
 			state.ignoreSkipRules = true
 		}
@@ -2277,6 +2297,9 @@ func (idx *Indexer) resFromHit(h *search.DocumentMatch, include resultInclude) *
 	if s, ok := h.Fields["language"].(string); ok {
 		d.Language = s
 	}
+	if s, ok := h.Fields["language_override"].(string); ok {
+		d.LanguageOverride = s
+	}
 	if s, ok := h.Fields["label"].(string); ok {
 		d.Label = s
 	}
@@ -2453,6 +2476,7 @@ func createMapping(lang string, keepStopwords bool) mapping.IndexMapping {
 	docMapping.AddFieldMappingsAt("url", um)
 	docMapping.AddFieldMappingsAt("domain", um)
 	docMapping.AddFieldMappingsAt("language", um)
+	docMapping.AddFieldMappingsAt("language_override", noIdxMap)
 	docMapping.AddFieldMappingsAt("favicon", noIdxMap)
 	docMapping.AddFieldMappingsAt("favicon_key", um)
 	docMapping.AddFieldMappingsAt("html", noIdxMap)

@@ -51,7 +51,7 @@ func TestUpdateDocumentsAuthorizationScopeAndVersionMove(t *testing.T) {
 	label := "mine"
 	labelRequest := servertypes.UpdateDocumentsRequest{
 		Query:   "*",
-		Changes: servertypes.DocumentChanges{Label: &label},
+		Changes: servertypes.DocumentChanges{Label: &label, Language: new("de")},
 	}
 	labelBody, _ := json.Marshal(labelRequest)
 	labelRec := testutil.ServeHTTP(t, handler, http.MethodPost, "/api/update", strings.NewReader(string(labelBody)), map[string]string{
@@ -74,6 +74,19 @@ func TestUpdateDocumentsAuthorizationScopeAndVersionMove(t *testing.T) {
 	}
 	if got := idx.GetByDocID(globalURL).Label; got != "" {
 		t.Fatalf("global label = %q, want empty", got)
+	}
+	if got := idx.GetByDocID(globalURL).LanguageOverride; got != "" {
+		t.Fatalf("regular user pinned a global document to %q", got)
+	}
+	resubmit := testutil.ServeHTTP(t, handler, http.MethodPost, "/api/add",
+		strings.NewReader(fmt.Sprintf(`{"url":%q,"text":"Updated content"}`, ownedURL)), map[string]string{
+			"Content-Type": "application/json", "Origin": "hister://", "X-Access-Token": alice.Token,
+		})
+	if resubmit.Code != http.StatusCreated {
+		t.Fatalf("resubmission status = %d: %s", resubmit.Code, resubmit.Body)
+	}
+	if got := idx.GetByDocID(document.GetDocID(alice.ID, ownedURL)); got.Language != "de" || got.LanguageOverride != "de" {
+		t.Fatalf("resubmission lost the owner's language pin: %+v", got)
 	}
 
 	unauthorizedRequest := fmt.Sprintf(`{"query":"*","changes":{"user_id":%d}}`, target.ID)
@@ -101,8 +114,10 @@ func TestUpdateDocumentsAuthorizationScopeAndVersionMove(t *testing.T) {
 	if idx.GetByDocID(document.GetDocID(alice.ID, ownedURL)) != nil {
 		t.Fatal("source document remains after ownership update")
 	}
-	if idx.GetByDocID(document.GetDocID(target.ID, ownedURL)) == nil {
+	if moved := idx.GetByDocID(document.GetDocID(target.ID, ownedURL)); moved == nil {
 		t.Fatal("destination document missing after ownership update")
+	} else if moved.LanguageOverride != "de" {
+		t.Fatalf("ownership move lost language pin: %+v", moved)
 	}
 	if count, err := model.CountDocumentVersions(ownedURL, alice.ID); err != nil || count != 0 {
 		t.Fatalf("source version count = %d, error = %v", count, err)

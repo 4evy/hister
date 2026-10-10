@@ -376,11 +376,12 @@ func (i *Indexer) prepareLocalFile(path string, info fs.FileInfo, d *document.Do
 
 func (i *Indexer) reloadLocalFile(path string, info fs.FileInfo, source *document.Document) (*document.Document, error) {
 	d := &document.Document{
-		URL:      source.URL,
-		Added:    source.Added,
-		UserID:   source.UserID,
-		Label:    source.Label,
-		AddCount: source.AddCount,
+		URL:              source.URL,
+		LanguageOverride: source.LanguageOverride,
+		Added:            source.Added,
+		UserID:           source.UserID,
+		Label:            source.Label,
+		AddCount:         source.AddCount,
 	}
 	if source.IgnoreSkipRules() {
 		d.SetIgnoreSkipRules(true)

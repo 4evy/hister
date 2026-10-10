@@ -802,6 +802,10 @@ func serveAdd(c *webContext) {
 	}
 	err := c.Indexer.AddContext(c.Request.Context(), d, indexer.WithRules(rules))
 	if err != nil {
+		if errors.Is(err, indexer.ErrInvalidLanguage) {
+			http.Error(c.Response, err.Error(), http.StatusBadRequest)
+			return
+		}
 		if errors.Is(err, document.ErrSensitiveContent) {
 			log.Warn().Str("URL", d.URL).Msg("rejected document: sensitive content")
 			http.Error(c.Response, document.ErrSensitiveContent.Error(), http.StatusUnprocessableEntity)
@@ -863,6 +867,10 @@ func serveAddPDF(c *webContext) {
 	d.UserID = submittedDocumentUserID(c)
 
 	if err := c.Indexer.AddPDF(d, pdfData, indexer.WithRules(c.effectiveRules())); err != nil {
+		if errors.Is(err, indexer.ErrInvalidLanguage) {
+			http.Error(c.Response, err.Error(), http.StatusBadRequest)
+			return
+		}
 		if errors.Is(err, document.ErrSensitiveContent) {
 			log.Warn().Str("URL", d.URL).Msg("rejected pdf document: sensitive content")
 			http.Error(c.Response, document.ErrSensitiveContent.Error(), http.StatusUnprocessableEntity)
@@ -2053,7 +2061,9 @@ func serveBatch(c *webContext) {
 				continue
 			}
 			if err := batch.AddContext(c.Request.Context(), d, indexer.WithRules(c.effectiveRules())); err != nil {
-				if errors.Is(err, document.ErrSensitiveContent) {
+				if errors.Is(err, indexer.ErrInvalidLanguage) {
+					results[i] = batchOpResult{Status: http.StatusBadRequest, Error: err.Error()}
+				} else if errors.Is(err, document.ErrSensitiveContent) {
 					log.Warn().Str("URL", op.URL).Msg("rejected document: sensitive content")
 					results[i] = batchOpResult{Status: http.StatusUnprocessableEntity, Error: document.ErrSensitiveContent.Error()}
 				} else {

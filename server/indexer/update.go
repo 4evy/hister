@@ -58,8 +58,10 @@ func normalizeDocumentChanges(changes *servertypes.DocumentChanges) error {
 	if language == "" {
 		return fmt.Errorf("%w: use %q for an unknown language", ErrInvalidLanguage, document.UnknownLanguage)
 	}
-	if language != document.UnknownLanguage && !registeredLanguageAnalyzer(language) {
-		return fmt.Errorf("%w %q", ErrInvalidLanguage, language)
+	if language != "auto" {
+		if _, err := normalizeLanguageOverride(language); err != nil {
+			return err
+		}
 	}
 	changes.Language = &language
 	return nil
@@ -112,7 +114,7 @@ func (i *Indexer) documentsForMutation(q query.Query) ([]*document.Document, err
 	}
 }
 
-func applyDocumentChanges(d *document.Document, changes servertypes.DocumentChanges) (changed, embeddingContextDirty bool) {
+func (i *Indexer) applyDocumentChanges(d *document.Document, changes servertypes.DocumentChanges) (changed, embeddingContextDirty bool) {
 	if changes.UserID != nil && d.UserID != *changes.UserID {
 		d.UserID = *changes.UserID
 		changed = true
@@ -127,10 +129,21 @@ func applyDocumentChanges(d *document.Document, changes servertypes.DocumentChan
 		changed = true
 		embeddingContextDirty = true
 	}
-	if changes.Language != nil && d.Language != *changes.Language {
-		d.Language = *changes.Language
-		changed = true
-		embeddingContextDirty = true
+	if changes.Language != nil {
+		override := *changes.Language
+		if override == "auto" {
+			override = ""
+		}
+		if d.LanguageOverride != override {
+			d.LanguageOverride = override
+			changed = true
+		}
+		previous := d.Language
+		d.ResolveLanguage(i.langDetector)
+		if d.Language != previous {
+			changed = true
+			embeddingContextDirty = true
+		}
 	}
 	return changed, embeddingContextDirty
 }
@@ -164,7 +177,7 @@ func (i *Indexer) UpdateByQuery(
 	for _, d := range documents {
 		originalID := d.ID()
 		originalUserID := d.UserID
-		changed, embeddingContextDirty := applyDocumentChanges(d, changes)
+		changed, embeddingContextDirty := i.applyDocumentChanges(d, changes)
 		if !changed {
 			result.Unchanged++
 			continue

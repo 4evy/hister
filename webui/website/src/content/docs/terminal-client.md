@@ -212,7 +212,9 @@ hister update 'language:unknown' --language en
 ```
 
 The supported attributes are `user_id`, `label`, `title`, and `language`. Pass an empty label or
-title to clear it. Use `unknown` to clear a detected language. Hister reports the number of
+title to clear it. A language choice remains pinned across reindexing and resubmission. Use
+`unknown` to pin the default analyzer, or `auto` to clear the pin and classify the stored text
+using the running server's detection settings. Hister reports the number of
 matching, changed, unchanged, and conflicting documents.
 
 The command previews the operation and asks for confirmation. Use `--dry` to preview without
@@ -234,8 +236,12 @@ owner. Those documents are reported as conflicts and skipped. Stored version rec
 changed owner, while search history stays with the user who created it.
 
 For a watched local file, its configured directory `user` must match the destination owner. Future
-indexing can replace a manually changed title, language, or owner, so update the responsible
+indexing can replace a manually changed title or owner, so update the responsible
 collector or directory configuration when the change should remain permanent.
+
+Language pins also survive watched file updates and export/import. They apply only to the selected
+documents and their owners. See [Language Settings and Detection](/docs/language-detection#checking-and-correcting-languages)
+for examples of pinning and clearing languages.
 
 ### Exporting Documents
 

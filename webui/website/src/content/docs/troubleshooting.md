@@ -53,7 +53,7 @@ To also consolidate existing documents into the default index and release the re
 hister reindex
 ```
 
-The reindex operation rebuilds all indexes according to the new setting. It is optional if you only want to disable detection for newly processed documents. See [Language Settings and Detection](/docs/language-detection) for other ways to balance accuracy and memory use.
+The reindex operation rebuilds all indexes according to the new setting, while preserving manually pinned languages and their analyzers. Clear those pins with `hister update QUERY --language auto` if you want those documents to use the default analyzer too. Reindexing is optional if you only want to disable detection for newly processed documents. See [Language Settings and Detection](/docs/language-detection) for other ways to balance accuracy and memory use.
 
 ## Debugging the Web Extension
 

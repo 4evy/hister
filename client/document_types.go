@@ -20,6 +20,7 @@ type Document struct {
 	Updated            int64          `json:"updated"`
 	Type               DocType        `json:"type"`
 	Language           string         `json:"language"`
+	LanguageOverride   string         `json:"language_override,omitempty"`
 	UserID             uint           `json:"user_id"`
 	Label              string         `json:"label"`
 	AddCount           uint           `json:"add_count"`

@@ -5,9 +5,10 @@ package types
 // DocumentChanges describes mutable indexed document attributes. Pointer
 // fields distinguish an omitted change from setting a field to its zero value.
 type DocumentChanges struct {
-	UserID   *uint   `json:"user_id,omitempty"`
-	Label    *string `json:"label,omitempty"`
-	Title    *string `json:"title,omitempty"`
+	UserID *uint   `json:"user_id,omitempty"`
+	Label  *string `json:"label,omitempty"`
+	Title  *string `json:"title,omitempty"`
+	// Language pins a code or unknown. The value auto clears the pin and reruns detection.
 	Language *string `json:"language,omitempty"`
 }
 

@@ -32,7 +32,7 @@ These settings apply on the server and in service imports that process documents
 
 ## How Detection Affects Search
 
-During normal document processing, Hister runs Lingua locally on the extracted plain text in the document's `text` field. Detection itself does not call an external service. The result comes from that text, rather than the browser's language preference, the page's HTML `lang` attribute, or its title alone.
+For documents without a manual language pin, Hister runs Lingua locally on the extracted plain text in the document's `text` field. Detection itself does not call an external service. The result comes from that text, rather than the browser's language preference, the page's HTML `lang` attribute, or its title alone.
 
 Hister assigns one language to the whole document. It does not split a page into separate language regions, so mixed language pages, code, names, and very short snippets can produce an unexpected result.
 
@@ -185,7 +185,7 @@ hister reindex
 
 Use the same `detect_languages` setting for this command and the server. The command sends its configured value to the server, while the candidate list, accuracy mode, and stop word setting come from the running server. If you use a custom configuration path, pass it with `hister --config /path/to/config.yml reindex`.
 
-When detection is disabled, existing language indexes remain open and searchable with their stored analyzers and language labels. Newly processed documents use the default analyzer and receive the `unknown` language label. Reprocessing an existing document moves it into the default index without leaving a duplicate in its old language index. Run a full reindex if you want to consolidate the existing collection into the default index and release the resources used by separate language indexes.
+When detection is disabled, existing language indexes remain open and searchable with their stored analyzers and language labels. Newly processed documents without a manual language pin use the default analyzer and receive the `unknown` language label. Reprocessing an unpinned document moves it into the default index without leaving a duplicate in its old language index. Run a full reindex if you want to consolidate the unpinned collection into the default index. Manually pinned documents retain their language and analyzer, including when detection is disabled.
 
 Hister records the analyzer configuration and warns at startup when `detect_languages` or the effective `keep_stopwords` setting differs from the stored index configuration. Changes to the candidate list or accuracy mode do not trigger that warning. Reindexing also performs normal document processing and rule checks; see [Data Storage and Lifecycle](/docs/data-lifecycle) for its broader effects.
 
@@ -199,13 +199,26 @@ language:(en|de)
 language:unknown
 ```
 
-`language:unknown` includes documents for which detection was disabled or inconclusive. It is not a reliable list of all documents in unsupported or excluded languages, since those can be misclassified.
+`language:unknown` includes documents for which detection was disabled or inconclusive, and documents manually pinned to `unknown`. It is not a reliable list of all documents in unsupported or excluded languages, since those can be misclassified.
 
-With language detection enabled, you can correct a stored language through the update command. For example, to mark the documents on a known English site as English:
+You can pin a stored language through the update command, even when detection is disabled. For example, to mark the documents on a known English site as English:
 
 ```bash
 hister update 'domain:english.example.com' --language en --dry
 hister update 'domain:english.example.com' --language en
 ```
 
-The first command reports the affected count; the second asks for confirmation and updates the matching documents. A language change rebuilds those documents in the appropriate index without requiring a full reindex. Use `--language unknown` to select the default analyzer. Manual corrections are not permanent detection overrides: reindexing or processing the source again can replace them.
+The first command reports the affected count; the second asks for confirmation and updates the matching documents. A language change rebuilds those documents in the appropriate index without requiring a full reindex. The choice remains pinned across server restarts, reindexing, browser resubmissions, imports, and watched file updates. Pins belong to a document and its owner, so correcting your copy does not affect another user's copy of the same URL. Pinning a document to its current language still counts as an update if it was not already pinned.
+
+Use `--language unknown` to pin the default analyzer. To clear a pin and classify the stored text using the running server's detection settings:
+
+```bash
+hister update 'domain:english.example.com' --language auto --dry
+hister update 'domain:english.example.com' --language auto
+```
+
+With detection disabled, `auto` clears the pin and sets the language to `unknown`. Future processing follows the configured detector again. This operation uses stored text without fetching the page or rereading the source file. A dry run leaves the pin and document unchanged.
+
+The JSON document field `language_override` records the pin separately from the resulting `language`. Exports and imports preserve it. An ordinary resubmission cannot replace or clear an existing pin; use `hister update` or `/api/update` for that. The API accepts `{"language":"auto"}` in the update request's `changes` object.
+
+Language corrections made before persistent pins were introduced have no saved override marker. Reapply those corrections once to pin them; existing language labels alone are not treated as manual choices.

@@ -1,6 +1,11 @@
 package indexer
 
 import (
+	"fmt"
+	"strings"
+
+	"github.com/asciimoo/hister/server/document"
+
 	_ "github.com/blevesearch/bleve/v2/analysis/lang/ar"
 	"github.com/blevesearch/bleve/v2/analysis/lang/cjk"
 	_ "github.com/blevesearch/bleve/v2/analysis/lang/da"
@@ -23,6 +28,27 @@ import (
 	_ "github.com/blevesearch/bleve/v2/analysis/lang/sv"
 	_ "github.com/blevesearch/bleve/v2/analysis/lang/tr"
 )
+
+func normalizeLanguageOverride(language string) (string, error) {
+	language = strings.ToLower(strings.TrimSpace(language))
+	if language != document.UnknownLanguage && !registeredLanguageAnalyzer(language) {
+		return "", fmt.Errorf("%w %q", ErrInvalidLanguage, language)
+	}
+	return language, nil
+}
+
+func normalizeDocumentLanguageOverride(d *document.Document) error {
+	if d.LanguageOverride == "" {
+		return nil
+	}
+	language, err := normalizeLanguageOverride(d.LanguageOverride)
+	if err != nil {
+		return err
+	}
+	d.LanguageOverride = language
+	d.Language = language
+	return nil
+}
 
 func analyzerForLanguage(language string) string {
 	switch language {

@@ -16,7 +16,9 @@ var updateDocumentsCmd = &cobra.Command{
 	Long: `Update mutable attributes of every document matching a search query.
 
 Supported attributes are owner user ID, label, title, and language. An empty
-label or title clears that value. Use "unknown" to clear a detected language.
+label or title clears that value. A language choice is pinned across reindexing
+and resubmission. Use "unknown" to pin the default analyzer, or "auto" to clear
+the pin and detect the language of the stored text using the server settings.
 
 User ID 0 is reserved for global documents and does not represent a user
 account. The query "user_id:0" selects global documents, while "--user-id 0"
@@ -30,6 +32,7 @@ Examples:
   hister update "user_id:0" --user-id 2
   hister update "domain:example.com" --label research
   hister update "language:unknown" --language en
+  hister update "domain:example.com" --language auto
   hister update "label:old" --label ""`,
 	Args: cobra.ExactArgs(1),
 	Run: func(cmd *cobra.Command, args []string) {

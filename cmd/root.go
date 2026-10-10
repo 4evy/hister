@@ -397,7 +397,7 @@ func init() {
 	updateDocumentsCmd.Flags().Uint("user-id", 0, "new owner user ID; 0 makes documents global")
 	updateDocumentsCmd.Flags().String("label", "", "new label; an empty value clears the label")
 	updateDocumentsCmd.Flags().String("title", "", "new title; an empty value clears the title")
-	updateDocumentsCmd.Flags().String("language", "", "new supported language code, or unknown")
+	updateDocumentsCmd.Flags().String("language", "", "pin a supported language code or unknown; use auto to resume detection")
 	updateDocumentsCmd.Flags().Bool("dry", false, "display the number of affected documents without updating them")
 	updateDocumentsCmd.Flags().BoolP("yes", "y", false, "update without prompting for confirmation")
 

@@ -19,8 +19,55 @@ import (
 	"github.com/asciimoo/hister/server/document"
 	"github.com/asciimoo/hister/server/model"
 	"github.com/asciimoo/hister/server/testutil"
+	servertypes "github.com/asciimoo/hister/server/types"
 	"github.com/asciimoo/hister/server/vectorstore"
 )
+
+func TestLanguageOverridesRefreshEmbeddingContext(t *testing.T) {
+	var requests atomic.Int64
+	server := embeddingTestServer(t, &requests)
+	defer server.Close()
+	cfg := testutil.Config(t)
+	cfg.Indexer.DetectLanguages = false
+	cfg.Server.Database = "hister-test.sqlite3"
+	cfg.SemanticSearch.Enable = true
+	cfg.SemanticSearch.EmbeddingEndpoint = server.URL
+	cfg.SemanticSearch.EmbeddingModel = "test"
+	cfg.SemanticSearch.Dimensions = 2
+	cfg.SemanticSearch.MaxContextLength = 512
+	cfg.SemanticSearch.MaxEmbeddingConcurrency = 1
+	testutil.InitModelWithConfig(t, cfg)
+	idx := newTestIndexer(t, cfg)
+	defer idx.Close()
+	const url = "https://example.com/language-context"
+	if err := idx.Add(&document.Document{URL: url, Text: "original text", Language: "en", Processed: true}); err != nil {
+		t.Fatal(err)
+	}
+	waitForEmbeddingJobs(t, &requests, 1)
+
+	// Pinning the already stored language only changes provenance.
+	if _, err := idx.UpdateByQuery("*", nil, servertypes.DocumentChanges{Language: new("en")}, false); err != nil {
+		t.Fatal(err)
+	}
+	waitForEmbeddingJobs(t, &requests, 1)
+	if _, err := idx.UpdateByQuery("*", nil, servertypes.DocumentChanges{Language: new("de")}, false); err != nil {
+		t.Fatal(err)
+	}
+	waitForEmbeddingJobs(t, &requests, 2)
+	if err := idx.Add(&document.Document{URL: url, Text: "original text", Language: "en", Processed: true}); err != nil {
+		t.Fatal(err)
+	}
+	waitForEmbeddingJobs(t, &requests, 2)
+
+	if _, err := idx.UpdateByQuery("*", nil, servertypes.DocumentChanges{Language: new("auto")}, false); err != nil {
+		t.Fatal(err)
+	}
+	waitForEmbeddingJobs(t, &requests, 3)
+	if err := idx.Add(&document.Document{URL: url, Text: "original text", LanguageOverride: "en", Processed: true}); err != nil {
+		t.Fatal(err)
+	}
+	waitForEmbeddingJobs(t, &requests, 4)
+}
 
 func embeddingTestServer(t *testing.T, requests *atomic.Int64) *httptest.Server {
 	t.Helper()

@@ -132,6 +132,18 @@ type LanguageDetector interface {
 	DetectLanguage(string) string
 }
 
+// ResolveLanguage applies an explicit choice or detects the current text.
+// Overrides are validated by the indexer before storage.
+func (d *Document) ResolveLanguage(ld LanguageDetector) {
+	if d.LanguageOverride != "" {
+		d.Language = d.LanguageOverride
+	} else if ld == nil {
+		d.Language = UnknownLanguage
+	} else {
+		d.Language = ld.DetectLanguage(d.Text)
+	}
+}
+
 type nullLangDetector struct{}
 
 type langDetector struct {

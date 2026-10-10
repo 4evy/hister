@@ -45,6 +45,8 @@ type Document struct {
 	Label      string         `json:"label"`
 	AddCount   uint           `json:"add_count"`
 	Metadata   map[string]any `json:"metadata"`
+	// LanguageOverride records an explicit language choice. Empty follows detection settings.
+	LanguageOverride string `json:"language_override,omitempty"`
 	// ExtraDocuments can be populated by extractors to create new documents during the extraction
 	ExtraDocuments []*Document `json:"-"`
 	// SkipIndexing can be set by extractors to mark the document to exclude from indexing. Useful when populating ExtraDocuments
@@ -288,7 +290,7 @@ func (d *Document) processFile(ld LanguageDetector, sensitivePattern *regexp.Reg
 
 // finalizeDocument sets the document language and marks it as processed.
 func (d *Document) finalizeDocument(ld LanguageDetector) {
-	d.Language = ld.DetectLanguage(d.Text)
+	d.ResolveLanguage(ld)
 	d.Processed = true
 }
 

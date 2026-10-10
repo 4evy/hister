@@ -27,6 +27,7 @@ func clientDocument(d *document.Document) *client.Document {
 		Updated:            d.Updated,
 		Type:               client.DocType(d.Type),
 		Language:           d.Language,
+		LanguageOverride:   d.LanguageOverride,
 		UserID:             d.UserID,
 		Label:              d.Label,
 		AddCount:           d.AddCount,
