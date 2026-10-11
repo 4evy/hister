@@ -99,6 +99,15 @@ func DefaultRegistry() *Registry {
 	return defaultRegistry
 }
 
+// Replace publishes fresh, already configured extractor instances. Existing
+// callers keep their old snapshot until their operation completes.
+func (r *Registry) Replace(next *Registry) {
+	extractors := next.Extractors()
+	r.mu.Lock()
+	r.extractors = extractors
+	r.mu.Unlock()
+}
+
 // Extractors returns a snapshot of the registered instances in chain order.
 func (r *Registry) Extractors() []Extractor {
 	r.mu.RLock()

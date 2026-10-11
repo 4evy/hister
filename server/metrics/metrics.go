@@ -40,6 +40,7 @@ type Metrics struct {
 	registry    *prometheus.Registry
 	gaugeSource GaugeSource
 	cancel      context.CancelFunc
+	done        chan struct{}
 }
 
 const gaugeRefreshInterval = 30 * time.Second
@@ -99,6 +100,7 @@ func New(ctx context.Context, src GaugeSource) *Metrics {
 
 		gaugeSource: src,
 		cancel:      cancel,
+		done:        make(chan struct{}),
 	}
 
 	m.registry = prometheus.NewRegistry()
@@ -124,12 +126,14 @@ func (m *Metrics) Handler() http.Handler {
 	return promhttp.HandlerFor(m.registry, promhttp.HandlerOpts{EnableOpenMetrics: true})
 }
 
-// Stop cancels the background gauge-refresh ticker.
+// Stop cancels the ticker and waits until it stops accessing the indexer.
 func (m *Metrics) Stop() {
 	m.cancel()
+	<-m.done
 }
 
 func (m *Metrics) runTicker(ctx context.Context) {
+	defer close(m.done)
 	m.refreshGauges()
 
 	ticker := time.NewTicker(gaugeRefreshInterval)

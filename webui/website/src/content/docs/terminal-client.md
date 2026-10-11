@@ -75,9 +75,16 @@ hister config create ~/.config/hister/config.yml
 hister config path
 hister config show
 hister --config /etc/hister/config.yml config validate
+hister reload
 hister doctor
 hister --server-url https://hister.example.com --token "$HISTER_TOKEN" doctor --format json
 ```
+
+`reload` asks the running server to reread configuration and reopen the HTTP runtime, database,
+indexer, and background workers. This briefly interrupts service and disconnects search WebSockets.
+It waits for completion without a client timeout by default and requires an admin token in multi
+user mode. See [Reloading a Running Server](configuration#reloading-a-running-server) for settings,
+recovery behavior, and connection examples.
 
 `config create [FILENAME]` writes default configuration to a new file, or prints YAML when no
 filename is given. It refuses to overwrite existing files. The deprecated `create-config` alias

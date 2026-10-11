@@ -5,7 +5,6 @@
 package cmd
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"image/color"
@@ -25,7 +24,6 @@ import (
 
 	"github.com/asciimoo/hister/client"
 	"github.com/asciimoo/hister/config"
-	"github.com/asciimoo/hister/files"
 	"github.com/asciimoo/hister/server"
 	"github.com/asciimoo/hister/server/extractor"
 	"github.com/asciimoo/hister/server/indexer"
@@ -183,9 +181,8 @@ var listenCmd = &cobra.Command{
 			exit(1, "Failed to initialize config: "+err.Error())
 		}
 	},
-	Run: func(cmd *cobra.Command, _ []string) {
+	RunE: func(cmd *cobra.Command, _ []string) error {
 		idx := initIndex(model.ReadWrite)
-		defer idx.Close()
 		if a, err := cmd.Flags().GetString("address"); err == nil && cmd.Flags().Changed("address") {
 			if err := cfg.UpdateListenAddress(a); err != nil {
 				exit(1, `Failed to set server address: `+err.Error())
@@ -196,34 +193,8 @@ var listenCmd = &cobra.Command{
 		}
 		ctx, stop := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
 		defer stop()
-		if len(cfg.Indexer.Directories) > 0 {
-			fileQueue := idx.NewFileIndexQueue()
-			go func() {
-				if err := fileQueue.Run(ctx); err != nil && !errors.Is(err, context.Canceled) {
-					log.Error().Err(err).Msg("File index queue failed")
-				}
-			}()
-			go fileQueue.EnqueueAll(cfg.Indexer.Directories)
-			go func() {
-				if err := files.WatchDirectories(ctx, cfg.Indexer.Directories, func(path string) {
-					userID, err := files.FindDirUser(cfg.Indexer.Directories, path)
-					if err != nil {
-						log.Error().Err(err).Str("path", path).Msg("Failed to resolve user for file")
-						return
-					} else if userID != 0 && !cfg.App.UserHandling {
-						log.Error().Str("path", path).Msg("user field set but user_handling is not enabled")
-						return
-					}
-					fileQueue.EnqueueIndex(path, userID)
-				}, func(path string) {
-					fileQueue.EnqueueDelete(path)
-				}); err != nil && !errors.Is(err, context.Canceled) {
-					log.Error().Err(err).Msg("File watcher failed")
-				}
-			}()
-		}
 		server.Version = Version
-		server.Listen(ctx, cfg, idx)
+		return server.Listen(ctx, cfg, idx, listenConfigOverrides(cmd))
 	},
 }
 
@@ -307,6 +278,7 @@ func init() {
 	rootCmd.AddCommand(searchCmd)
 	rootCmd.AddCommand(reindexCmd)
 	rootCmd.AddCommand(cleanupCmd)
+	rootCmd.AddCommand(reloadCmd)
 	rootCmd.AddCommand(checkUpdateCmd)
 	rootCmd.AddCommand(deleteCmd)
 	rootCmd.AddCommand(updateDocumentsCmd)

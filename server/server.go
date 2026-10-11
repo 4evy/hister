@@ -17,7 +17,6 @@ import (
 
 	"github.com/asciimoo/hister/config"
 	"github.com/asciimoo/hister/server/indexer"
-	"github.com/asciimoo/hister/server/metrics"
 	"github.com/asciimoo/hister/server/model"
 	"github.com/asciimoo/hister/server/static"
 
@@ -78,6 +77,8 @@ type webContext struct {
 	IsAdmin       bool
 	Authenticated bool
 	userRules     *config.Rules
+	reloader      *configReloader
+	releaseConfig func()
 }
 
 func (c *webContext) effectiveRules() *config.Rules {
@@ -143,39 +144,10 @@ func recParseStaticFiles(entries []iofs.DirEntry, dir, baseDir string) error {
 	return nil
 }
 
-func Listen(ctx context.Context, cfg *config.Config, idx *indexer.Indexer) {
-	sessionStore = newSessionStore(cfg.SecretKey(), cfg.BaseURL(""), sessionMaxAge)
-
-	if cfg.Server.Metrics {
-		m := metrics.New(ctx, idx)
-		idx.SetMetrics(m)
-		log.Info().Msg("Prometheus metrics endpoint enabled")
-		defer m.Stop()
-	}
-
-	// This is an ugly hack required to set the base path dynamically in svelte files.
-	// Svelte only supports build time specification of the base path and it accepts
-	// only absolute paths: https://github.com/sveltejs/kit/issues/9569#issuecomment-3202269382
-	//
-	// Related issues for more details:
-	//  - https://codeberg.org/asciimoo/hister/issues/7
-	//  - https://github.com/asciimoo/hister/issues/147
-	if err := parseStaticFiles(cfg.BasePathPrefix()); err != nil {
-		panic(err)
-	}
-
-	handler := registerEndpoints(cfg, idx)
-	handler = withLogging(handler)
-
-	listener, err := newListener(cfg.Server)
-	if err != nil {
-		log.Error().Err(err).Msg("Webserver failed to listen on " + cfg.Server.Address)
-		return
-	}
-	log.Info().Str("Address", cfg.Server.Address).Str("Version", Version).Str("URL", cfg.BaseURL("/")).Msg("Starting webserver")
-	if err := serveListener(ctx, listener, handler); err != nil {
-		log.Error().Err(err).Msg("Webserver failed")
-	}
+// Listen owns idx and the database connection until the server stops. Reloads
+// close and recreate runtime components after active requests have drained.
+func Listen(ctx context.Context, cfg *config.Config, idx *indexer.Indexer, overrides ...func(*config.Config) error) error {
+	return listenRuntime(ctx, cfg, idx, overrides...)
 }
 
 func newListener(cfg config.Server) (net.Listener, error) {
@@ -210,18 +182,28 @@ func serveListener(ctx context.Context, listener net.Listener, handler http.Hand
 	return err
 }
 
-func createHandler(cfg *config.Config, idx *indexer.Indexer, h func(*webContext)) func(w http.ResponseWriter, r *http.Request) {
+func createHandler(cfg *config.Config, idx *indexer.Indexer, h func(*webContext), reloaders ...*configReloader) func(w http.ResponseWriter, r *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
-		c := &webContext{
-			Request:  r,
-			Response: w,
-			Config:   cfg,
-			Indexer:  idx,
-			nonce:    rand.Text(),
+		requestConfig := cfg
+		var reloader *configReloader
+		release := func() {}
+		if len(reloaders) > 0 {
+			reloader = reloaders[0]
+			requestConfig, release = reloader.beginRequest(r)
+			defer release()
 		}
-		if cfg.App.UserHandling {
+		c := &webContext{
+			Request:       r,
+			Response:      w,
+			Config:        requestConfig,
+			Indexer:       idx,
+			nonce:         rand.Text(),
+			reloader:      reloader,
+			releaseConfig: release,
+		}
+		if requestConfig.App.UserHandling {
 			populateUserContext(c)
-		} else if cfg.App.AccessToken != "" {
+		} else if requestConfig.App.AccessToken != "" {
 			populateTokenContext(c)
 		} else {
 			c.Authenticated = true

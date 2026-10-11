@@ -47,6 +47,7 @@ func configureCommandScopes() {
 	setCommandScope(searchCmd, executionScopeRemote, "client-timeout", "search-url")
 	setCommandScope(reindexCmd, executionScopeRemote)
 	setCommandScope(cleanupCmd, executionScopeRemote)
+	setCommandScope(reloadCmd, executionScopeRemote, "client-timeout")
 	setCommandScope(deleteCmd, executionScopeRemote, "client-timeout")
 	setCommandScope(updateDocumentsCmd, executionScopeRemote, "client-timeout")
 

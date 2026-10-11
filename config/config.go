@@ -1138,7 +1138,11 @@ func (c *Config) LoadRules() error {
 			return err
 		}
 	}
-	err = json.Unmarshal(b, &c.Rules)
+	return c.parseRules(b)
+}
+
+func (c *Config) parseRules(b []byte) error {
+	err := json.Unmarshal(b, &c.Rules)
 	if err != nil {
 		return err
 	}

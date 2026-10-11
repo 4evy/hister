@@ -160,7 +160,7 @@ func ShouldSkipDir(name string, excludes []string, includeHidden bool) bool {
 }
 
 func WatchDirectories(ctx context.Context, dirs []*config.Directory, callback func(string), onRemove func(string)) error {
-	watcher, err := newWatcher(dirs, nil, false)
+	watcher, err := NewDirectoryWatcher(dirs)
 	if err != nil {
 		return err
 	}

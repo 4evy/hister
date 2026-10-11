@@ -680,7 +680,51 @@ You can also specify a custom config location using the `--config` flag:
 hister listen --config /path/to/my/config.yml
 ```
 
-**Important**: Restart the Hister server after modifying the configuration file.
+## Reloading a Running Server
+
+After editing the main configuration or `rules.json`, run:
+
+```bash
+hister reload
+```
+
+The server rereads its original configuration file and `rules.json` in its data directory.
+The command's local configuration selects the server URL and credentials; it does not send
+configuration contents or a file path to the server. The server keeps its startup command line
+overrides and uses its own environment variables. An admin token is required in multi user mode.
+
+Reload validates the configuration, briefly pauses incoming requests, and waits up to 30 seconds
+for active requests to finish. Search WebSockets disconnect, and requests during the pause receive
+HTTP 503 with `Retry-After: 1`. The server stops directory watchers, file indexing, semantic workers,
+and metrics before closing the index and database. It then opens the configured database and index,
+rebuilds HTTP routes and authentication, and starts the workers using the new settings.
+
+This supports server addresses, base URLs, authentication, database connections, data directories,
+indexer options, watched directories, extractors, semantic search, UI settings, rules, and log level.
+Changing `app.log_file` or `app.log_format` still requires a process restart. Existing terminal
+clients keep their own `tui.yaml` settings.
+
+Invalid configuration is rejected before stopping the runtime. A changed listener address must
+be available for binding. If the new database or index cannot open, the server attempts to reopen
+the previous configuration and reports an error. If recovery also fails, the server stops and must
+be restarted. Reloading does not undo database migrations or other storage initialization writes.
+
+Changing the data directory or database selects that storage without copying existing data.
+The chosen database and index must belong to the same dataset, especially in multi user mode.
+An unchanged data directory retains its session secret; a new directory uses its own secret and
+`rules.json`. Reload does not rebuild existing documents or embeddings. Changes to analyzers or
+embedding models can still require `hister reindex`; the server logs compatibility warnings.
+
+Refresh open web pages after reload. Update the URL or credentials in clients if you changed them.
+The command waits for completion without a client timeout by default; use `--client-timeout N` to
+set one. Once storage has started reopening, reload finishes or attempts recovery even if the
+requesting client disconnects.
+
+Use the running server's current URL and token if you have edited connection settings locally:
+
+```bash
+hister reload --server-url http://127.0.0.1:4433 --token CURRENT_TOKEN
+```
 
 ## Environment Variables
 

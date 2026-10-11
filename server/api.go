@@ -1015,6 +1015,15 @@ func init() {
 			},
 		},
 		{
+			Name:         "Reload",
+			Path:         "/api/reload",
+			Method:       POST,
+			CSRFRequired: true,
+			AdminOnly:    true,
+			Handler:      serveReload,
+			Description:  "Reload configuration, drain requests, disconnect search WebSockets, and reopen the server runtime, database, indexer, and workers. Attempts to restore the previous runtime if reopening fails. Log file and log format changes require a process restart (admin only).",
+		},
+		{
 			Name:         "Cleanup",
 			Path:         "/api/cleanup",
 			Method:       POST,

@@ -43,6 +43,12 @@ func NewWatcher(dirs []*config.Directory, paths []string) (*Watcher, error) {
 	return newWatcher(dirs, paths, true)
 }
 
+// NewDirectoryWatcher installs the server's directory watches before its
+// initial scan starts. Missing paths retain WatchDirectories' tolerant behavior.
+func NewDirectoryWatcher(dirs []*config.Directory) (*Watcher, error) {
+	return newWatcher(dirs, nil, false)
+}
+
 func newWatcher(dirs []*config.Directory, paths []string, strict bool) (*Watcher, error) {
 	native, err := fsnotify.NewWatcher()
 	if err != nil {

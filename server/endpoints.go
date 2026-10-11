@@ -2,6 +2,7 @@ package server
 
 import (
 	"bytes"
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"encoding/xml"
@@ -62,8 +63,9 @@ var ws = websocket.Upgrader{
 	},
 }
 
-func registerEndpoints(cfg *config.Config, idx *indexer.Indexer) http.Handler {
+func registerEndpoints(cfg *config.Config, idx *indexer.Indexer, overrides ...func(*config.Config) error) http.Handler {
 	mux := http.NewServeMux()
+	reloader := &configReloader{current: cfg, overrides: overrides}
 	tokenAuth := cfg.App.AccessToken != ""
 	userHandling := cfg.App.UserHandling
 
@@ -82,16 +84,16 @@ func registerEndpoints(cfg *config.Config, idx *indexer.Indexer) http.Handler {
 				h = withUserAuth(h)
 			}
 		}
-		mux.HandleFunc(e.Pattern(), createHandler(cfg, idx, h))
+		mux.HandleFunc(e.Pattern(), createHandler(cfg, idx, h, reloader))
 	}
 	if cfg.App.Profiler {
-		registerDebugEndpoints(mux, cfg, idx)
+		registerDebugEndpoints(mux, cfg, idx, reloader)
 	}
 	// SPA catch-all: serve index.html for any path not matched above
-	mux.HandleFunc("GET /static/", createHandler(cfg, idx, serveStatic))
-	mux.HandleFunc("GET /favicon.ico", createHandler(cfg, idx, serveFavicon))
-	mux.HandleFunc("GET /opensearch.xml", createHandler(cfg, idx, serveOpensearch))
-	mux.HandleFunc("/", createHandler(cfg, idx, serveSPA))
+	mux.HandleFunc("GET /static/", createHandler(cfg, idx, serveStatic, reloader))
+	mux.HandleFunc("GET /favicon.ico", createHandler(cfg, idx, serveFavicon, reloader))
+	mux.HandleFunc("GET /opensearch.xml", createHandler(cfg, idx, serveOpensearch, reloader))
+	mux.HandleFunc("/", createHandler(cfg, idx, serveSPA, reloader))
 	// If base_url contains a path prefix, require it for application routes.
 	appHandler := withExtensionCORS(http.Handler(mux))
 	basePrefix := cfg.BasePathPrefix()
@@ -112,7 +114,7 @@ func serveHealth(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 }
 
-func registerDebugEndpoints(mux *http.ServeMux, cfg *config.Config, idx *indexer.Indexer) {
+func registerDebugEndpoints(mux *http.ServeMux, cfg *config.Config, idx *indexer.Indexer, reloader *configReloader) {
 	register := func(pattern string, handler http.HandlerFunc) {
 		h := endpointHandler(func(c *webContext) {
 			handler(c.Response, c.Request)
@@ -122,7 +124,7 @@ func registerDebugEndpoints(mux *http.ServeMux, cfg *config.Config, idx *indexer
 		} else if cfg.App.AccessToken != "" {
 			h = withTokenAuth(h)
 		}
-		mux.HandleFunc(pattern, createHandler(cfg, idx, h))
+		mux.HandleFunc(pattern, createHandler(cfg, idx, h, reloader))
 	}
 	register("GET /debug/pprof", pprof.Index)
 	register("GET /debug/pprof/", pprof.Index)
@@ -538,6 +540,10 @@ func serveSearchWebSocket(c *webContext) {
 			log.Warn().Err(err).Msg("failed to close websocket connection")
 		}
 	}()
+	if lease, ok := c.Request.Context().Value(runtimeRequestKey{}).(*runtimeRequest); ok {
+		stop := context.AfterFunc(lease.sockets, func() { _ = conn.Close() })
+		defer stop()
+	}
 	for {
 		_, msg, err := conn.ReadMessage()
 		if err != nil {
@@ -550,6 +556,9 @@ func serveSearchWebSocket(c *webContext) {
 		if err = json.Unmarshal(msg, &query); err != nil {
 			log.Error().Err(err).Msg("failed to parse query")
 			continue
+		}
+		if c.reloader != nil {
+			c.Config = c.reloader.snapshot()
 		}
 		// Semantic search is only available when the server has it enabled;
 		// otherwise honour the client's per-request flag.
