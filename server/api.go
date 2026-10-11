@@ -1021,7 +1021,7 @@ func init() {
 			CSRFRequired: true,
 			AdminOnly:    true,
 			Handler:      serveReload,
-			Description:  "Reload configuration, drain requests, disconnect search WebSockets, and reopen the server runtime, database, indexer, and workers. Attempts to restore the previous runtime if reopening fails. Log file and log format changes require a process restart (admin only).",
+			Description:  "Apply updated settings to the running server, including rules and logging. Briefly interrupts service. Requires administrator access in multi user mode.",
 		},
 		{
 			Name:         "Cleanup",

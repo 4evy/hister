@@ -7,8 +7,6 @@ package cmd
 import (
 	"errors"
 	"fmt"
-	"image/color"
-	"io"
 	"maps"
 	"net/http"
 	"net/url"
@@ -24,13 +22,13 @@ import (
 
 	"github.com/asciimoo/hister/client"
 	"github.com/asciimoo/hister/config"
+	"github.com/asciimoo/hister/logging"
 	"github.com/asciimoo/hister/server"
 	"github.com/asciimoo/hister/server/extractor"
 	"github.com/asciimoo/hister/server/indexer"
 	"github.com/asciimoo/hister/server/model"
 
 	"charm.land/lipgloss/v2"
-	"github.com/charmbracelet/colorprofile"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
@@ -395,44 +393,7 @@ func init() {
 		_, subdir := filepath.Split(strings.TrimSuffix(dir, "/"))
 		return subdir + "/" + fn + ":" + strconv.Itoa(line)
 	}
-	log.Logger = log.With().Caller().Logger()
-	log.Logger = log.Output(newConsoleWriter(os.Stderr, false))
-}
-
-func newConsoleWriter(out io.Writer, noColor bool) zerolog.ConsoleWriter {
-	_, noColorEnv := os.LookupEnv("NO_COLOR")
-	noColor = noColor || noColorEnv || colorprofile.Detect(out, os.Environ()) <= colorprofile.NoTTY
-	return zerolog.ConsoleWriter{
-		Out:     out,
-		NoColor: noColor,
-		FormatTimestamp: func(i any) string {
-			return i.(string)
-		},
-		FormatLevel: func(i any) string {
-			level := strings.ToUpper(fmt.Sprintf("%-6s", i))
-			if noColor {
-				return fmt.Sprintf("| %s |", level)
-			}
-			var color color.Color
-			switch i {
-			case "trace":
-				color = lipgloss.Color("240") // dark gray
-			case "debug":
-				color = lipgloss.Color("12") // bright blue
-			case "info":
-				color = lipgloss.Color("10") // bright green
-			case "warn", "warning":
-				color = lipgloss.Color("11") // bright yellow
-			case "error":
-				color = lipgloss.Color("9") // bright red
-			case "fatal", "panic":
-				color = lipgloss.Color("196") // bold red
-			default:
-				color = lipgloss.Color("15") // white
-			}
-			return fmt.Sprintf("| %s |", lipgloss.NewStyle().Foreground(color).Bold(true).Render(level))
-		},
-	}
+	log.Logger = log.With().Caller().Logger().Output(logging.Default)
 }
 
 func initialize() {
@@ -484,42 +445,32 @@ func initConfig() {
 }
 
 func initLog() {
-	switch cfg.App.LogLevel {
-	case "error", "err":
-		zerolog.SetGlobalLevel(zerolog.ErrorLevel)
-	case "warning", "warn":
-		zerolog.SetGlobalLevel(zerolog.WarnLevel)
-	case "info":
-		zerolog.SetGlobalLevel(zerolog.InfoLevel)
-	case "debug":
-		zerolog.SetGlobalLevel(zerolog.DebugLevel)
-	case "trace":
-		zerolog.SetGlobalLevel(zerolog.TraceLevel)
+	settings := cfg.App
+	switch settings.LogLevel {
+	case "error", "err", "warning", "warn", "info", "debug", "trace":
 	default:
-		zerolog.SetGlobalLevel(zerolog.DebugLevel)
-		log.Warn().Str("Invalid config log level", cfg.App.LogLevel)
+		settings.LogLevel = "debug"
+		log.Warn().Str("log_level", cfg.App.LogLevel).Msg("Invalid log level, using debug")
 	}
-
-	var out io.Writer = os.Stderr
-	noColor := false
-	if cfg.App.LogFile != "" {
-		f, err := os.OpenFile(cfg.App.LogFile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o640)
-		if err != nil {
-			log.Error().Err(err).Str("log_file", cfg.App.LogFile).Msg("Failed to open log file, falling back to stderr")
-		} else {
-			out = f
-			noColor = true
-		}
-	}
-
-	switch cfg.App.LogFormat {
-	case "json":
-		log.Logger = log.Logger.Output(out)
-	case "text", "":
-		log.Logger = log.Logger.Output(newConsoleWriter(out, noColor))
+	switch settings.LogFormat {
+	case "json", "text", "":
 	default:
+		settings.LogFormat = "text"
 		log.Warn().Str("log_format", cfg.App.LogFormat).Msg("Invalid log format, using text")
-		log.Logger = log.Logger.Output(newConsoleWriter(out, noColor))
+	}
+	change, err := logging.Default.Prepare(settings)
+	if err != nil {
+		log.Error().Err(err).Str("log_file", settings.LogFile).Msg("Failed to open log file, falling back to stderr")
+		settings.LogFile = ""
+		change, err = logging.Default.Prepare(settings)
+	}
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to configure logging")
+		return
+	}
+	defer change.Close()
+	if err := change.Apply(); err != nil {
+		log.Warn().Err(err).Msg("Failed to close previous log file")
 	}
 }
 
@@ -639,5 +590,6 @@ func newClientForConfig(c *config.Config, extraOpts ...client.Option) *client.Cl
 }
 
 func Execute() error {
+	defer func() { _ = logging.Default.Close() }()
 	return rootCmd.Execute()
 }

@@ -14,13 +14,13 @@ import (
 
 	"github.com/asciimoo/hister/config"
 	"github.com/asciimoo/hister/files"
+	"github.com/asciimoo/hister/logging"
 	"github.com/asciimoo/hister/server/diagnostics"
 	"github.com/asciimoo/hister/server/extractor"
 	"github.com/asciimoo/hister/server/indexer"
 	"github.com/asciimoo/hister/server/metrics"
 	"github.com/asciimoo/hister/server/model"
 
-	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 )
 
@@ -236,9 +236,6 @@ func (r *serverRuntime) reload(req *http.Request, lease *runtimeRequest, next *c
 	if stale {
 		return http.StatusConflict, errors.New("server configuration changed; retry reload")
 	}
-	if next.App.LogFile != old.cfg.App.LogFile || next.App.LogFormat != old.cfg.App.LogFormat {
-		return http.StatusBadRequest, errors.New("app.log_file and app.log_format changes require a process restart")
-	}
 	registry, err := diagnostics.Extractors(next)
 	if err != nil {
 		return http.StatusBadRequest, errors.New("invalid extractor configuration; active configuration retained")
@@ -267,6 +264,12 @@ func (r *serverRuntime) reload(req *http.Request, lease *runtimeRequest, next *c
 			}
 		}()
 	}
+	logChange, err := logging.Default.Prepare(next.App)
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to prepare logging for reload")
+		return http.StatusBadRequest, errors.New("cannot open app.log_file; active configuration retained")
+	}
+	defer logChange.Close()
 	r.mu.Lock()
 	r.paused = true
 	old.closeSockets()
@@ -327,15 +330,8 @@ func (r *serverRuntime) reload(req *http.Request, lease *runtimeRequest, next *c
 			}
 		}()
 	}
-	logLevel := next.App.LogLevel
-	if logLevel == "warning" {
-		logLevel = "warn"
-	}
-	if logLevel == "err" {
-		logLevel = "error"
-	}
-	if level, err := zerolog.ParseLevel(logLevel); err == nil {
-		zerolog.SetGlobalLevel(level)
+	if err := logChange.Apply(); err != nil {
+		log.Warn().Err(err).Msg("Failed to close previous log file")
 	}
 	r.mu.Lock()
 	r.current, r.paused = g, false

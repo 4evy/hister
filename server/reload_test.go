@@ -117,9 +117,9 @@ func TestReloadRejectsInvalidConfigurationWithoutChangingServer(t *testing.T) {
 			case "missing rules":
 				err = os.Remove(cfg.RulesPath())
 			case "log file":
-				write("  title: Must not apply\n  log_file: replacement.log\n")
+				write(fmt.Sprintf("  title: Must not apply\n  log_file: %q\n", filepath.Join(t.TempDir(), "missing", "hister.log")))
 			case "log format":
-				write("  title: Must not apply\n  log_format: json\n")
+				write("  title: Must not apply\n  log_format: invalid\n")
 			case "invalid extractor":
 				write("  title: Must not apply\nextractors:\n  nonexistent:\n    enabled: true\n")
 			case "invalid sensitive pattern":
@@ -132,8 +132,8 @@ func TestReloadRejectsInvalidConfigurationWithoutChangingServer(t *testing.T) {
 			if rec.Code != http.StatusBadRequest {
 				t.Fatalf("reload status = %d, want 400: %s", rec.Code, rec.Body)
 			}
-			if strings.HasPrefix(failure, "log ") && !strings.Contains(rec.Body.String(), "process restart") {
-				t.Fatalf("missing restart explanation: %s", rec.Body)
+			if strings.HasPrefix(failure, "log ") && !strings.Contains(rec.Body.String(), "app.log_") {
+				t.Fatalf("missing logging error explanation: %s", rec.Body)
 			}
 			rec = testutil.ServeHTTP(t, handler, http.MethodGet, "/hister/api/config", nil, nil)
 			if !strings.Contains(rec.Body.String(), `"title":"Original"`) {

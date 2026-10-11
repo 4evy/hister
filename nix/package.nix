@@ -46,6 +46,7 @@ buildGoModule (finalAttrs: {
       ../server
       ../config
       ../files
+      ../logging
       ../cmd
     ];
   };
