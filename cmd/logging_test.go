@@ -7,10 +7,11 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/asciimoo/hister/config"
-	"github.com/asciimoo/hister/logging"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
+
+	"github.com/asciimoo/hister/config"
+	"github.com/asciimoo/hister/logging"
 )
 
 func TestInitLogUsesReloadableOutput(t *testing.T) {
@@ -33,7 +34,11 @@ func TestInitLogUsesReloadableOutput(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer change.Close()
+	defer func() {
+		if err := change.Close(); err != nil {
+			t.Error(err)
+		}
+	}()
 	if err := change.Apply(); err != nil {
 		t.Fatal(err)
 	}

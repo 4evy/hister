@@ -160,28 +160,6 @@ func newListener(cfg config.Server) (net.Listener, error) {
 	return net.Listen(network, address)
 }
 
-func serveListener(ctx context.Context, listener net.Listener, handler http.Handler) error {
-	defer func() { _ = listener.Close() }()
-	srv := &http.Server{Handler: handler}
-	shutdownDone := make(chan struct{})
-	stop := context.AfterFunc(ctx, func() {
-		defer close(shutdownDone)
-		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-		if err := srv.Shutdown(shutdownCtx); err != nil {
-			_ = srv.Close()
-		}
-	})
-	err := srv.Serve(listener)
-	if !stop() {
-		<-shutdownDone
-	}
-	if errors.Is(err, http.ErrServerClosed) {
-		return nil
-	}
-	return err
-}
-
 func createHandler(cfg *config.Config, idx *indexer.Indexer, h func(*webContext), reloaders ...*configReloader) func(w http.ResponseWriter, r *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		requestConfig := cfg

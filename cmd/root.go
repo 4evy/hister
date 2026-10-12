@@ -468,7 +468,11 @@ func initLog() {
 		log.Error().Err(err).Msg("Failed to configure logging")
 		return
 	}
-	defer change.Close()
+	defer func() {
+		if err := change.Close(); err != nil {
+			log.Warn().Err(err).Msg("Failed to close prepared log file")
+		}
+	}()
 	if err := change.Apply(); err != nil {
 		log.Warn().Err(err).Msg("Failed to close previous log file")
 	}

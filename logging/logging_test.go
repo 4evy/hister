@@ -12,8 +12,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/asciimoo/hister/config"
 	"github.com/rs/zerolog"
+
+	"github.com/asciimoo/hister/config"
 )
 
 func testManager(t *testing.T, stderr io.Writer) *Manager {
@@ -35,7 +36,11 @@ func applyLogging(t *testing.T, m *Manager, c config.App) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer change.Close()
+	defer func() {
+		if err := change.Close(); err != nil {
+			t.Error(err)
+		}
+	}()
 	if err := change.Apply(); err != nil {
 		t.Fatal(err)
 	}
@@ -83,7 +88,11 @@ func TestApplyWaitsForActiveWrite(t *testing.T) {
 		close(output.release)
 		t.Fatal(err)
 	}
-	defer change.Close()
+	defer func() {
+		if err := change.Close(); err != nil {
+			t.Error(err)
+		}
+	}()
 	applied := make(chan error, 1)
 	go func() { applied <- change.Apply() }()
 	select {
@@ -124,7 +133,7 @@ func TestConcurrentLoggingSurvivesOutputChanges(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		for _, line := range strings.Split(strings.TrimSpace(string(raw)), "\n") {
+		for line := range strings.SplitSeq(strings.TrimSpace(string(raw)), "\n") {
 			if line == "" {
 				continue
 			}

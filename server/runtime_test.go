@@ -3,7 +3,6 @@ package server
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"io"
 	"net"
 	"net/http"
@@ -16,6 +15,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/gorilla/websocket"
+	"gopkg.in/yaml.v3"
+
 	"github.com/asciimoo/hister/config"
 	"github.com/asciimoo/hister/files"
 	"github.com/asciimoo/hister/server/document"
@@ -23,8 +25,6 @@ import (
 	"github.com/asciimoo/hister/server/indexer"
 	"github.com/asciimoo/hister/server/model"
 	"github.com/asciimoo/hister/server/types"
-	"github.com/gorilla/websocket"
-	"gopkg.in/yaml.v3"
 )
 
 func runtimeTestAddress(t *testing.T) string {
@@ -75,13 +75,16 @@ func startRuntimeTestServer(t *testing.T) (*config.Config, func(), func(string, 
 		t.Fatal(err)
 	}
 	ctx, cancel := context.WithCancel(context.Background())
-	done := make(chan struct{})
-	go func() { defer close(done); Listen(ctx, active, idx) }()
+	done := make(chan error, 1)
+	go func() { done <- Listen(ctx, active, idx) }()
 	hc := &http.Client{Timeout: 10 * time.Second}
 	t.Cleanup(func() {
 		cancel()
 		select {
-		case <-done:
+		case err := <-done:
+			if err != nil {
+				t.Error("server failed: ", err)
+			}
 		case <-time.After(15 * time.Second):
 			t.Error("server did not stop")
 		}
@@ -116,7 +119,11 @@ func startRuntimeTestServer(t *testing.T) (*config.Config, func(), func(string, 
 		if err != nil {
 			t.Fatal(err)
 		}
-		defer resp.Body.Close()
+		defer func() {
+			if err := resp.Body.Close(); err != nil {
+				t.Error(err)
+			}
+		}()
 		raw, err := io.ReadAll(resp.Body)
 		if err != nil {
 			t.Fatal(err)
@@ -195,7 +202,7 @@ func TestFullReloadRestoresPreviousRuntimeOnOpenFailure(t *testing.T) {
 	c.App.Title = "Recovered"
 	write()
 	if status, body := request(base, "/api/reload", "secret", ""); status != http.StatusOK {
-		t.Fatal(fmt.Sprintf("retry failed: %d %s", status, body))
+		t.Fatalf("retry failed: %d %s", status, body)
 	}
 }
 
@@ -226,12 +233,20 @@ func TestFullReloadClosesWebSockets(t *testing.T) {
 	c, _, request := startRuntimeTestServer(t)
 	conn, resp, err := websocket.DefaultDialer.Dial("ws"+strings.TrimPrefix(c.Server.BaseURL, "http")+"/search", http.Header{"Origin": {c.Server.BaseURL}, "X-Access-Token": {"secret"}})
 	if resp != nil {
-		defer resp.Body.Close()
+		defer func() {
+			if err := resp.Body.Close(); err != nil {
+				t.Error(err)
+			}
+		}()
 	}
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer conn.Close()
+	defer func() {
+		if err := conn.Close(); err != nil {
+			t.Error(err)
+		}
+	}()
 	if status, body := request(c.Server.BaseURL, "/api/reload", "secret", ""); status != http.StatusOK {
 		t.Fatalf("reload with open WebSocket: %d %s", status, body)
 	}
@@ -250,7 +265,11 @@ func TestFullReloadRetainsRuntimeWhenListenerUnavailable(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer occupied.Close()
+	defer func() {
+		if err := occupied.Close(); err != nil {
+			t.Error(err)
+		}
+	}()
 	c.Server.Address = occupied.Addr().String()
 	c.App.AccessToken = "replacement"
 	write()

@@ -7,8 +7,9 @@ import (
 	"os"
 	"sync"
 
-	"github.com/asciimoo/hister/config"
 	"github.com/rs/zerolog"
+
+	"github.com/asciimoo/hister/config"
 )
 
 var Default = New(os.Stderr)

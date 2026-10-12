@@ -150,7 +150,11 @@ func (r *serverRuntime) generation(cfg *config.Config, idx *indexer.Indexer) (*r
 		})
 		g.workers.Go(func() { queue.EnqueueAll(cfg.Indexer.Directories) })
 		g.workers.Go(func() {
-			defer watcher.Close()
+			defer func() {
+				if err := watcher.Close(); err != nil {
+					log.Error().Err(err).Msg("Failed to close file watcher")
+				}
+			}()
 			err := watcher.Run(ctx, func(path string) {
 				userID, err := files.FindDirUser(cfg.Indexer.Directories, path)
 				if err != nil || (userID != 0 && !cfg.App.UserHandling) {
@@ -269,7 +273,11 @@ func (r *serverRuntime) reload(req *http.Request, lease *runtimeRequest, next *c
 		log.Error().Err(err).Msg("Failed to prepare logging for reload")
 		return http.StatusBadRequest, errors.New("cannot open app.log_file; active configuration retained")
 	}
-	defer logChange.Close()
+	defer func() {
+		if err := logChange.Close(); err != nil {
+			log.Warn().Err(err).Msg("Failed to close prepared log file")
+		}
+	}()
 	r.mu.Lock()
 	r.paused = true
 	old.closeSockets()

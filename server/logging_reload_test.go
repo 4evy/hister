@@ -8,9 +8,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/asciimoo/hister/logging"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
+
+	"github.com/asciimoo/hister/logging"
 )
 
 func useReloadLogger(t *testing.T) {
@@ -45,7 +46,7 @@ func TestFullReloadLogFileAndFormat(t *testing.T) {
 		t.Fatalf("configure logging: %d %s", status, body)
 	}
 	log.Info().Msg("before-rotation")
-	for _, line := range strings.Split(strings.TrimSpace(readLog(t, c.App.LogFile)), "\n") {
+	for line := range strings.SplitSeq(strings.TrimSpace(readLog(t, c.App.LogFile)), "\n") {
 		if !json.Valid([]byte(line)) {
 			t.Fatalf("expected JSON log record: %s", line)
 		}
