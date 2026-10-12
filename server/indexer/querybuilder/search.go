@@ -25,18 +25,33 @@ func ParseSearch(input string) SearchExpression {
 
 	runes := []rune(input)
 	parts := make([]string, 0, len(tokens))
-	for _, token := range tokens {
-		if sortMode, ok := sortDirective(token); ok {
-			expression.Sort = sortMode
-			expression.HasSort = true
+	depth, consumed := 0, 0
+	for i, token := range tokens {
+		switch token.Type {
+		case TokenLeftParen:
+			depth++
+		case TokenRightParen:
+			depth--
+		}
+		if depth != 0 || (i > 0 && (tokens[i-1].Type == TokenNot || tokens[i-1].Type == TokenField)) {
 			continue
 		}
-		parts = append(parts, string(runes[token.start:token.end]))
+		if sortMode, ok := sortDirective(token); ok {
+			if before := strings.TrimSpace(string(runes[consumed:token.start])); before != "" {
+				parts = append(parts, before)
+			}
+			consumed = token.end
+			expression.Sort = sortMode
+			expression.HasSort = true
+		}
 	}
 	if !expression.HasSort {
 		return expression
 	}
 
+	if after := strings.TrimSpace(string(runes[consumed:])); after != "" {
+		parts = append(parts, after)
+	}
 	expression.Text = strings.Join(parts, " ")
 	if strings.TrimSpace(expression.Text) == "" {
 		expression.Text = "*"

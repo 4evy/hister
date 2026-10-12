@@ -46,6 +46,19 @@
       query: '(go|golang) template',
       description: 'Match either "go" or "golang", and require "template".',
     },
+    {
+      query: 'title:("privacy policy" OR security)',
+      description:
+        'Match a phrase or a word in the title. Spaces around alternatives are optional.',
+    },
+    {
+      query: '(privacy OR security) NOT (archived OR deprecated)',
+      description: 'Require either topic and exclude either unwanted term.',
+    },
+    {
+      query: 'title:(privacy AND (policy OR protection))',
+      description: 'Nest groups and apply the title field to every term.',
+    },
     { query: '*', description: 'Show all documents available to you.' },
   ];
 
@@ -200,6 +213,11 @@
         <p class="section-intro">
           Separate terms with spaces to require all of them. Select any query example on this page
           to run it against your index.
+        </p>
+        <p class="section-intro">
+          Use uppercase <code>AND</code>, <code>OR</code>, and <code>NOT</code> to combine
+          conditions. Negation is evaluated first, then AND, then OR. Parentheses change that order.
+          Quote operator words to search for them as text. Put <code>sort:</code> outside groups.
         </p>
         {@render queryExamples(basicExamples)}
         <div class="mt-4">

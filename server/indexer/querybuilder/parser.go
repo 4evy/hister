@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"strings"
 	"unicode"
+
+	"github.com/asciimoo/hister/server/indexer/searchschema"
 )
 
 type TokenType int
@@ -11,245 +13,191 @@ type TokenType int
 const (
 	TokenWord TokenType = iota
 	TokenQuoted
-	TokenAlternation
+	TokenField
+	TokenAnd
+	TokenOr
+	TokenNot
+	TokenLeftParen
+	TokenRightParen
 	TokenEOF
 )
 
 type Token struct {
 	Type  TokenType
 	Value string
-	Parts []Token
 	start int
 	end   int
 }
 
 type Lexer struct {
-	input []rune
-	pos   int
-	char  rune
+	input        []rune
+	pos          int
+	depth        int
+	pendingField string
 }
 
 func New(input string) *Lexer {
-	l := &Lexer{input: []rune(input)}
-	l.readChar()
-	return l
+	return &Lexer{input: []rune(input)}
 }
 
 func (t Token) String() string {
-	var tn string
-	switch t.Type {
-	case TokenWord:
-		tn = "Word"
-	case TokenQuoted:
-		tn = "Quoted"
-	case TokenAlternation:
-		tn = "Alternation"
-	case TokenEOF:
-		tn = "EOF"
-	default:
-		tn = "Unknown"
-	}
-	return fmt.Sprintf("[%s: %s (%q)]", tn, t.Value, t.Parts)
-}
-
-func (l *Lexer) readChar() {
-	if l.pos >= len(l.input) {
-		l.char = 0
-	} else {
-		l.char = l.input[l.pos]
-	}
-	l.pos++
-}
-
-func (l *Lexer) peekChar() rune {
-	if l.pos >= len(l.input) {
-		return 0
-	}
-	return l.input[l.pos]
-}
-
-func (l *Lexer) skipWhitespace() {
-	for unicode.IsSpace(l.char) {
-		l.readChar()
-	}
+	return fmt.Sprintf("[%d: %q]", t.Type, t.Value)
 }
 
 func (l *Lexer) NextToken() (Token, error) {
-	l.skipWhitespace()
-
-	start := l.offset()
-	var (
-		token Token
-		err   error
-	)
-	switch l.char {
-	case 0:
-		token = Token{Type: TokenEOF}
-	case '"':
-		token, err = l.readQuoted()
-	case '(':
-		token, err = l.readAlternation()
+	for l.pos < len(l.input) && unicode.IsSpace(l.input[l.pos]) {
+		l.pos++
+	}
+	start := l.pos
+	if start == len(l.input) {
+		return Token{Type: TokenEOF, start: start, end: start}, nil
+	}
+	field := l.pendingField
+	l.pendingField = ""
+	var token Token
+	switch ch := l.input[l.pos]; {
+	case ch == '"':
+		token = l.readQuoted(field == "url_re")
+	case field == "url_re":
+		token = l.readRawValue(true)
+	case ch == '-' && l.pos+1 < len(l.input) && !unicode.IsSpace(l.input[l.pos+1]) && !strings.ContainsRune(")|", l.input[l.pos+1]):
+		l.pos++
+		token = Token{Type: TokenNot, Value: "-"}
+		l.pendingField = field
+	case ch == '(':
+		l.pos++
+		l.depth++
+		token = Token{Type: TokenLeftParen, Value: "("}
+	case ch == ')':
+		l.pos++
+		l.depth--
+		token = Token{Type: TokenRightParen, Value: ")"}
+	case ch == '|':
+		l.pos++
+		token = Token{Type: TokenOr, Value: "|"}
+	case field == "url":
+		token = l.readRawValue(false)
 	default:
-		token, err = l.readWord()
+		token = l.readWord(field != "")
 	}
-	if err != nil {
-		return Token{}, err
-	}
-	token.start = start
-	token.end = l.offset()
+	token.start, token.end = start, l.pos
 	return token, nil
 }
 
-func (l *Lexer) offset() int {
-	offset := l.pos - 1
-	if offset < 0 {
-		return 0
+func (l *Lexer) readQuoted(regexp bool) Token {
+	l.pos++
+	var value strings.Builder
+	for l.pos < len(l.input) {
+		ch := l.input[l.pos]
+		l.pos++
+		if ch == '"' {
+			break
+		}
+		if ch == '\\' && l.pos < len(l.input) {
+			next := l.input[l.pos]
+			l.pos++
+			if next != '"' && (next != '\\' || regexp) {
+				value.WriteRune(ch)
+			}
+			ch = next
+		}
+		value.WriteRune(ch)
 	}
-	if offset > len(l.input) {
-		return len(l.input)
-	}
-	return offset
+	return Token{Type: TokenQuoted, Value: value.String()}
 }
 
-func (l *Lexer) readQuoted() (Token, error) {
-	l.readChar()
-	var builder strings.Builder
-
-	for l.char != '"' && l.char != 0 {
-		if l.char == '\\' && l.peekChar() == '"' {
-			l.readChar()
-			builder.WriteRune('"')
-			l.readChar()
+// URL and regexp values keep their own parentheses. An unmatched closing
+// parenthesis ends the surrounding query group. Pipes in an unquoted regexp
+// belong to the regexp; quote the pattern to separate it from a Boolean pipe.
+func (l *Lexer) readRawValue(regexp bool) Token {
+	var value strings.Builder
+	depth := 0
+	inClass := false
+	for l.pos < len(l.input) && !unicode.IsSpace(l.input[l.pos]) {
+		ch := l.input[l.pos]
+		if ch == '\\' && l.pos+1 < len(l.input) {
+			if regexp {
+				value.WriteRune(ch)
+			}
+			l.pos++
+			value.WriteRune(l.input[l.pos])
+			l.pos++
 			continue
 		}
-		builder.WriteRune(l.char)
-		l.readChar()
-	}
-
-	if l.char == 0 {
-		return Token{Type: TokenQuoted, Value: builder.String()}, nil
-	}
-
-	if l.char != '"' {
-		return Token{}, fmt.Errorf("unclosed quoted string")
-	}
-
-	l.readChar()
-	return Token{Type: TokenQuoted, Value: builder.String()}, nil
-}
-
-func (l *Lexer) readAlternation() (Token, error) {
-	l.readChar()
-	var builder strings.Builder
-	depth := 1
-
-	for depth > 0 && l.char != 0 {
-		if l.char == '(' {
-			depth++
-		} else if l.char == ')' {
-			depth--
-			if depth == 0 {
+		if regexp && ch == '[' {
+			inClass = true
+		} else if ch == ']' {
+			inClass = false
+		}
+		if !inClass {
+			if ch == '(' {
+				depth++
+			} else if ch == ')' {
+				if depth == 0 && l.depth > 0 {
+					break
+				}
+				depth--
+			} else if ch == '|' && depth == 0 && !regexp {
 				break
 			}
 		}
-		builder.WriteRune(l.char)
-		l.readChar()
+		value.WriteRune(ch)
+		l.pos++
 	}
-
-	if l.char != ')' {
-		return Token{}, fmt.Errorf("unclosed alternation string")
-	}
-
-	l.readChar()
-	value := builder.String()
-
-	parts, err := parseAlternationParts(value)
-	if err != nil {
-		return Token{}, err
-	}
-
-	return Token{Type: TokenAlternation, Value: value, Parts: parts}, nil
+	return Token{Type: TokenWord, Value: value.String()}
 }
 
-func parseAlternationParts(value string) ([]Token, error) {
-	parts := []Token{}
-	var sb strings.Builder
-	depth := 0
-
-	for _, ch := range value {
-		if ch == '(' {
-			depth++
-			sb.WriteRune(ch)
-		} else if ch == ')' {
-			depth--
-			sb.WriteRune(ch)
-		} else if ch == '|' && depth == 0 {
-			optStr := strings.TrimSpace(sb.String())
-			if optStr != "" {
-				token := Token{Type: TokenWord, Value: optStr}
-				parts = append(parts, token)
-			}
-			sb.Reset()
-		} else {
-			sb.WriteRune(ch)
-		}
-	}
-
-	optStr := strings.TrimSpace(sb.String())
-	if optStr != "" {
-		token := Token{Type: TokenWord, Value: optStr}
-		parts = append(parts, token)
-	}
-
-	return parts, nil
-}
-
-func (l *Lexer) readWord() (Token, error) {
-	var builder strings.Builder
-	tt := TokenWord
-	remaining := string(l.input[l.pos-1:])
-	preserveBackslashes := strings.HasPrefix(remaining, "url_re:") || strings.HasPrefix(remaining, "-url_re:")
-
-	quote := false
+func (l *Lexer) readWord(fieldValue bool) Token {
+	var value strings.Builder
 	escaped := false
-	for (quote || !unicode.IsSpace(l.char)) && l.char != 0 {
-		skip := false
-		if l.char == '"' && !escaped {
-			tt = TokenQuoted
-			skip = true
-			quote = !quote
+	for l.pos < len(l.input) {
+		ch := l.input[l.pos]
+		if unicode.IsSpace(ch) || strings.ContainsRune("()|\"", ch) {
+			break
 		}
-		if l.char == '\\' && !escaped {
+		l.pos++
+		if ch == '\\' && l.pos < len(l.input) {
 			escaped = true
-			if preserveBackslashes {
-				builder.WriteRune(l.char)
-			}
-		} else {
-			escaped = false
-			if !skip {
-				builder.WriteRune(l.char)
-			}
+			value.WriteRune(l.input[l.pos])
+			l.pos++
+			continue
 		}
-		l.readChar()
+		if ch == ':' && !fieldValue && !escaped && isQueryField(value.String()) {
+			l.pendingField = value.String()
+			return Token{Type: TokenField, Value: value.String()}
+		}
+		value.WriteRune(ch)
 	}
+	token := Token{Type: TokenWord, Value: value.String()}
+	if !escaped && !fieldValue {
+		switch token.Value {
+		case "AND":
+			token.Type = TokenAnd
+		case "OR":
+			token.Type = TokenOr
+		case "NOT":
+			token.Type = TokenNot
+		}
+	}
+	return token
+}
 
-	return Token{Type: tt, Value: builder.String()}, nil
+func isQueryField(name string) bool {
+	_, ok := searchschema.Field(name)
+	return ok || (strings.HasPrefix(name, "metadata.") && len(name) > len("metadata."))
 }
 
 func Tokenize(input string) ([]Token, error) {
 	lexer := New(input)
-	tokens := []Token{}
-
+	var tokens []Token
 	for {
 		token, err := lexer.NextToken()
 		if err != nil {
-			return nil, err
+			return tokens, err
 		}
 		if token.Type == TokenEOF {
-			break
+			return tokens, nil
 		}
 		tokens = append(tokens, token)
 	}
-
-	return tokens, nil
 }

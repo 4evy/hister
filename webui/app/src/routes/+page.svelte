@@ -203,7 +203,7 @@
   let loadingMoreForQuery = $state('');
   let sentinelEl = $state<HTMLElement | undefined>();
   let highlightIdx = $state(0);
-  const currentSort = $derived(sortValueFromQuery(query, config.search.sort));
+  const currentSort = $derived(sortValueFromQuery(query, config.search));
   const currentSortLabel = $derived(
     config.search.sort.options.find((option) =>
       currentSort ? option.value === currentSort : option.default,
@@ -578,7 +578,7 @@
       ...config.search.fields.filter((field) => field.kind === 'time').map((field) => field.name),
     ]),
   ]);
-  const activeQueryFilters = $derived(queryFilters(query, filterFields));
+  const activeQueryFilters = $derived(queryFilters(query, filterFields, config.search));
   const activeFilterChips = $derived(
     activeQueryFilters.map((filter) => {
       const facet = config.search.facets.find((facet) => facet.queryField === filter.field);
@@ -609,7 +609,9 @@
       ]),
     ),
   );
-  const activeTimeFilters = $derived(timeFilters(query, dateFacetDefinition?.queryField ?? ''));
+  const activeTimeFilters = $derived(
+    timeFilters(query, dateFacetDefinition?.queryField ?? '', config.search),
+  );
   const activeDateBucket = $derived(
     activeTimeFilters.length === 1
       ? (dateFacetValues.find(
@@ -622,7 +624,7 @@
   const activeFilterCount = $derived(activeQueryFilters.length);
 
   function removeFilters(filters: QueryFilter[]) {
-    query = removeQueryFilters(query, filters) || '*';
+    query = removeQueryFilters(query, filters, config.search) || '*';
     querySuggestionOpen = false;
   }
 
@@ -660,17 +662,17 @@
   const showFiltersButton = $derived(config.search.facets.length > 0 || activeFilterCount > 0);
 
   function toggleQueryToken(prefix: string, value: string) {
-    query = toggleQueryFilter(query, prefix, value);
+    query = toggleQueryFilter(query, prefix, value, config.search);
     querySuggestionOpen = false;
   }
 
   function toggleDateBucket(name: string) {
     const field = dateFacetDefinition?.queryField ?? '';
     if (activeDateBucket === name) {
-      query = removeTimeFilters(query, field);
+      query = removeTimeFilters(query, field, config.search);
     } else {
       const filter = dateFacetValues.find((value) => value.facetBucket === name)?.value;
-      if (filter) query = replaceTimeFilters(query, field, [filter]);
+      if (filter) query = replaceTimeFilters(query, field, [filter], config.search);
     }
   }
 
@@ -683,11 +685,16 @@
     if (shiftISODate(from, 0)) filters.push(`>=${from}`);
     const exclusiveTo = shiftISODate(to, 1);
     if (exclusiveTo) filters.push(`<${exclusiveTo}`);
-    query = replaceTimeFilters(query, dateFacetDefinition?.queryField ?? '', filters);
+    query = replaceTimeFilters(
+      query,
+      dateFacetDefinition?.queryField ?? '',
+      filters,
+      config.search,
+    );
   }
 
   $effect(() => {
-    const dates = customDatesFromQuery(query, dateFacetDefinition?.queryField ?? '');
+    const dates = customDatesFromQuery(query, dateFacetDefinition?.queryField ?? '', config.search);
     untrack(() => {
       dateFrom = dates.from;
       dateTo = dates.to;
@@ -769,9 +776,9 @@
     if (
       legacySort &&
       sortValues.has(legacySort) &&
-      sortDirectiveFromQuery(value, config.search.sort) === null
+      sortDirectiveFromQuery(value, config.search) === null
     ) {
-      value = replaceSortDirective(value, legacySort, config.search.sort);
+      value = replaceSortDirective(value, legacySort, config.search);
     }
     return value;
   }
@@ -894,7 +901,7 @@
 
   function setSort(sortId: string) {
     if (currentSort === sortId) return;
-    query = replaceSortDirective(query, sortId, config.search.sort);
+    query = replaceSortDirective(query, sortId, config.search);
   }
 
   function setDeleteError(msg: string) {

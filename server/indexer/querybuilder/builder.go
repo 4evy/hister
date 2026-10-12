@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"path/filepath"
 	"regexp"
-	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -28,29 +27,34 @@ var (
 
 const MaxURLRegexpLength = 4096
 
-// BuildValidated builds a query after validating URL regular expression
-// filters. Other query syntax retains Build's existing fallback behavior.
+// BuildValidated validates URL regular expressions before compiling the query.
+// Other invalid syntax retains the existing fallback behavior.
 func BuildValidated(s string) (query.Query, error) {
-	qt, err := Tokenize(s)
-	if err == nil {
-		if err := validateURLRegexps(qt); err != nil {
+	tokens, err := Tokenize(s)
+	if err != nil {
+		return createSimpleQuery(s), nil
+	}
+	if err := validateURLRegexps(tokens); err != nil {
+		return nil, err
+	}
+	root, err := parseExpression(tokens)
+	if err != nil {
+		if errors.Is(err, errExpressionDepth) {
 			return nil, err
 		}
+		return createSimpleQuery(s), nil
 	}
-	return Build(s), nil
+	return buildExpression(root), nil
 }
 
 func validateURLRegexps(tokens []Token) error {
-	for _, token := range tokens {
-		if token.Type == TokenAlternation {
-			if err := validateURLRegexps(token.Parts); err != nil {
-				return err
-			}
+	for i, token := range tokens {
+		if token.Type != TokenField || token.Value != "url_re" {
 			continue
 		}
-		pattern, ok := urlRegexpToken(token)
-		if !ok {
-			continue
+		pattern := ""
+		if i+1 < len(tokens) && (tokens[i+1].Type == TokenWord || tokens[i+1].Type == TokenQuoted) {
+			pattern = tokens[i+1].Value
 		}
 		if pattern == "" {
 			return fmt.Errorf("%w: expression is empty", ErrInvalidRegexp)
@@ -65,123 +69,32 @@ func validateURLRegexps(tokens []Token) error {
 	return nil
 }
 
-func urlRegexpToken(token Token) (string, bool) {
-	if token.Type != TokenWord && token.Type != TokenQuoted {
-		return "", false
-	}
-	value := strings.TrimPrefix(token.Value, "-")
-	field, pattern, ok := fieldFilterValue(value)
-	return pattern, ok && field.Kind == searchschema.FieldKindRegexp
-}
-
 func Build(s string) query.Query {
-	if strings.TrimSpace(s) == "" {
-		return query.NewMatchNoneQuery()
-	}
-
-	qt, err := Tokenize(s)
+	tokens, err := Tokenize(s)
 	if err != nil {
 		return createSimpleQuery(s)
 	}
-	if slices.ContainsFunc(qt, isNegatedStandaloneWildcard) {
-		return query.NewMatchNoneQuery()
-	}
-	qt = slices.DeleteFunc(qt, isMatchAllToken)
-	if len(qt) == 0 {
-		return query.NewMatchAllQuery()
-	}
-
-	qs := []query.Query{}
-	nqs := []query.Query{}
-	now := time.Now()
-
-	for _, t := range qt {
-		q, negated := getTokenQuery(t, now)
-		if negated {
-			nqs = append(nqs, q)
-		} else {
-			qs = append(qs, q)
+	root, err := parseExpression(tokens)
+	if err != nil {
+		if errors.Is(err, errExpressionDepth) {
+			return query.NewMatchNoneQuery()
 		}
+		return createSimpleQuery(s)
 	}
-	q := query.NewBooleanQuery(qs, nil, nqs)
-	// Ranking bonuses must not provide an alternative to the required clauses.
-	// With no positive clause, a should clause would become required instead.
-	if len(qt) > 1 && len(qs) > 0 && !anyFieldSpecific(qt) {
-		q.AddShould(createCombinedMatchQuery(s, 2))
-	}
-	// Only for a positive term: with no must clause the should clause becomes
-	// required, so a negated term would only return documents whose URL
-	// starts with it.
-	if len(qt) == 1 && len(qs) == 1 && !isFieldSpecific(qt[0]) {
-		// prioritize base url matches if there is only one non field specific search term for easier retrieval of websites.
-		uq := bleve.NewRegexpQuery(fmt.Sprintf("https?://(www\\.)?%s[^/]*/", regexp.QuoteMeta(strings.ToLower(qt[0].Value))))
-		uq.SetField("url")
-		uq.SetBoost(100)
-		q.AddShould(uq)
-	}
-	return q
-}
-
-func isStandaloneWildcard(t Token) bool {
-	return t.Type == TokenWord && t.Value == "*"
-}
-
-func isMatchAllToken(t Token) bool {
-	if isStandaloneWildcard(t) {
-		return true
-	}
-	return t.Type == TokenAlternation && slices.ContainsFunc(t.Parts, isStandaloneWildcard)
-}
-
-func isNegatedStandaloneWildcard(t Token) bool {
-	return t.Type == TokenWord && t.Value == "-*"
+	return buildExpression(root)
 }
 
 // RemoveStandaloneWildcards returns text suitable for semantic embedding.
 func RemoveStandaloneWildcards(s string) string {
-	qt, err := Tokenize(s)
+	tokens, err := Tokenize(s)
 	if err != nil {
 		return s
 	}
-	if slices.ContainsFunc(qt, isNegatedStandaloneWildcard) {
-		return ""
+	root, err := parseExpression(tokens)
+	if err != nil {
+		return s
 	}
-	qt = slices.DeleteFunc(qt, isMatchAllToken)
-	parts := make([]string, len(qt))
-	for i, t := range qt {
-		parts[i] = t.Value
-	}
-	return strings.Join(parts, " ")
-}
-
-// anyFieldSpecific returns true when at least one token in qt is an explicit
-// field query (e.g. url:..., domain:..., user_id:...).  When any token is
-// field-specific, the caller skips the full query ranking bonus so field
-// syntax is not used as relevance text.
-func anyFieldSpecific(qt []Token) bool {
-	return slices.ContainsFunc(qt, isFieldSpecific)
-}
-
-// isFieldSpecific reports whether t carries an explicit field: prefix and
-// therefore represents a targeted field query rather than free text.
-func isFieldSpecific(t Token) bool {
-	v := t.Value
-	switch t.Type {
-	case TokenWord, TokenQuoted:
-		v = strings.TrimPrefix(v, "-")
-		if strings.HasPrefix(v, "metadata.") && strings.Contains(v, ":") {
-			return true
-		}
-		field, value, ok := fieldFilterValue(v)
-		if !ok {
-			return false
-		}
-		if field.Kind == searchschema.FieldKindTime {
-			return validTimeFilter(value)
-		}
-		return true
-	}
-	return false
+	return simplifyExpression(root, "").embeddingText()
 }
 
 func createSimpleQuery(s string) query.Query {
@@ -346,15 +259,6 @@ func buildURLRegexpQuery(field searchschema.FieldDefinition, pattern string) que
 	)
 }
 
-func fieldFilterValue(value string) (searchschema.FieldDefinition, string, bool) {
-	name, filterValue, ok := strings.Cut(value, ":")
-	if !ok {
-		return searchschema.FieldDefinition{}, "", false
-	}
-	field, ok := searchschema.Field(name)
-	return field, filterValue, ok
-}
-
 func buildNumericRangeQuery(field searchschema.FieldDefinition, v string) (query.Query, bool) {
 	parseBound := func(s string) (*float64, bool) {
 		if s == "" {
@@ -434,14 +338,6 @@ func parseAbsoluteDateFilter(v string) (string, int64, bool) {
 		return "", 0, false
 	}
 	return parts[1], date.Unix(), true
-}
-
-func validTimeFilter(v string) bool {
-	if _, _, ok := parseRelativeTimeFilter(v); ok {
-		return true
-	}
-	_, _, ok := parseAbsoluteDateFilter(v)
-	return ok
 }
 
 // BuildTimestampRange creates a numeric timestamp range for an indexed time
@@ -530,144 +426,70 @@ func createMatchPhraseQuery(s string, boost float64) query.Query {
 	return q
 }
 
-func buildFieldAlternationQuery(field, value string, now time.Time) (query.Query, bool) {
-	if !strings.HasPrefix(value, "(") || !strings.HasSuffix(value, ")") {
-		return nil, false
+func buildValueQuery(fieldName, value string, phrase bool, now time.Time) query.Query {
+	if strings.HasPrefix(fieldName, "metadata.") {
+		q := bleve.NewTermQuery(value)
+		q.SetField(fieldName)
+		return q
 	}
-	parts, err := parseAlternationParts(value[1 : len(value)-1])
-	if err != nil || len(parts) == 0 {
-		return nil, false
+	if field, ok := searchschema.Field(fieldName); ok {
+		switch field.Kind {
+		case searchschema.FieldKindSite:
+			return buildSiteQuery(field, value)
+		case searchschema.FieldKindExists:
+			return buildPresenceQuery(value)
+		case searchschema.FieldKindRegexp:
+			return buildURLRegexpQuery(field, value)
+		case searchschema.FieldKindEnum:
+			if v, ok := searchschema.Value(field.ValueSet, value); ok {
+				q := bleve.NewNumericRangeQuery(v.Min, v.Max)
+				q.SetField(field.IndexField)
+				return q
+			}
+		case searchschema.FieldKindNumericRange:
+			if q, ok := buildNumericRangeQuery(field, value); ok {
+				return q
+			}
+		case searchschema.FieldKindTime:
+			if q, ok := buildTimeQuery(field.Name, value, now); ok {
+				return q
+			}
+		case searchschema.FieldKindInteger:
+			if number, err := strconv.ParseUint(value, 10, 64); err == nil {
+				v := float64(number)
+				q := bleve.NewNumericRangeInclusiveQuery(&v, &v, new(true), new(true))
+				q.SetField(field.IndexField)
+				return q
+			}
+		case searchschema.FieldKindText, searchschema.FieldKindKeyword:
+			if phrase {
+				return buildQuotedFieldQuery(field.Name, value)
+			}
+			return buildFieldQuery(field.Name, value)
+		}
+		// Unknown values keep the existing fallback to ordinary search text.
+		value = fieldName + ":" + value
 	}
-	queries := make([]query.Query, 0, len(parts))
-	for _, part := range parts {
-		partQuery, _ := getTokenQuery(Token{Type: TokenWord, Value: field + ":" + part.Value}, now)
-		queries = append(queries, partQuery)
+	if phrase {
+		return createMatchPhraseQuery(value, 1)
 	}
-	if len(queries) == 1 {
-		return queries[0], true
+	wildcard := value
+	if !strings.HasPrefix(wildcard, "*") {
+		wildcard = "*" + wildcard
 	}
-	return bleve.NewDisjunctionQuery(queries...), true
-}
-
-func getTokenQuery(t Token, now time.Time) (query.Query, bool) {
-	negated := false
-	switch t.Type {
-	case TokenQuoted:
-		v := t.Value
-		if strings.HasPrefix(v, "-") {
-			negated = true
-			v = v[1:]
-		}
-		field, value, hasField := fieldFilterValue(v)
-		if hasField {
-			switch field.Kind {
-			case searchschema.FieldKindSite:
-				return buildSiteQuery(field, value), negated
-			case searchschema.FieldKindExists:
-				return buildPresenceQuery(value), negated
-			}
-		}
-		if hasField && (field.Kind == searchschema.FieldKindText || field.Kind == searchschema.FieldKindKeyword || field.Kind == searchschema.FieldKindRegexp) {
-			v := value
-			if field.Kind == searchschema.FieldKindRegexp {
-				return buildURLRegexpQuery(field, v), negated
-			}
-			if strings.HasPrefix(v, "-") && len(v) > 1 {
-				negated = true
-				v = v[1:]
-			}
-			return buildQuotedFieldQuery(field.Name, v), negated
-		}
-		return createMatchPhraseQuery(v, 1), negated
-	case TokenWord:
-		if strings.HasPrefix(t.Value, "-") && len(t.Value) > 1 {
-			negated = true
-			t.Value = t.Value[1:]
-		}
-		if t.Value == "*" {
-			return query.NewMatchAllQuery(), negated
-		}
-		if strings.HasPrefix(t.Value, "metadata.") && strings.Contains(t.Value, ":") {
-			metadataField, v, _ := strings.Cut(t.Value, ":")
-			if q, ok := buildFieldAlternationQuery(metadataField, v, now); ok {
-				return q, negated
-			}
-			q := bleve.NewTermQuery(v)
-			q.SetField(metadataField)
-			return q, negated
-		}
-		field, v, hasField := fieldFilterValue(t.Value)
-		if hasField {
-			if field.Kind != searchschema.FieldKindRegexp {
-				if q, ok := buildFieldAlternationQuery(field.Name, v, now); ok {
-					return q, negated
-				}
-			}
-			switch field.Kind {
-			case searchschema.FieldKindSite:
-				return buildSiteQuery(field, v), negated
-			case searchschema.FieldKindExists:
-				return buildPresenceQuery(v), negated
-			case searchschema.FieldKindRegexp:
-				return buildURLRegexpQuery(field, v), negated
-			case searchschema.FieldKindEnum:
-				if value, ok := searchschema.Value(field.ValueSet, v); ok {
-					q := bleve.NewNumericRangeQuery(value.Min, value.Max)
-					q.SetField(field.IndexField)
-					return q, negated
-				}
-			case searchschema.FieldKindNumericRange:
-				if q, ok := buildNumericRangeQuery(field, v); ok {
-					return q, negated
-				}
-			case searchschema.FieldKindTime:
-				if q, ok := buildTimeQuery(field.Name, v, now); ok {
-					return q, negated
-				}
-			case searchschema.FieldKindInteger:
-				if number, err := strconv.ParseUint(v, 10, 64); err == nil {
-					value := float64(number)
-					q := bleve.NewNumericRangeInclusiveQuery(&value, &value, new(true), new(true))
-					q.SetField(field.IndexField)
-					return q, negated
-				}
-			}
-		}
-		if hasField && (field.Kind == searchschema.FieldKindText || field.Kind == searchschema.FieldKindKeyword) {
-			if strings.HasPrefix(v, "-") && len(v) > 1 {
-				negated = true
-				v = v[1:]
-			}
-			return buildFieldQuery(field.Name, v), negated
-		}
-
-		qs := []query.Query{}
-		wcq := t.Value
-		if !strings.HasPrefix(wcq, "*") {
-			wcq = "*" + wcq
-		}
-		if !strings.HasSuffix(wcq, "*") {
-			wcq = wcq + "*"
-		}
-		for _, field := range searchschema.Fields() {
-			switch {
-			case field.DefaultSearch:
-				qs = append(qs, buildFieldQuery(field.Name, t.Value))
-			case field.DefaultWildcard:
-				qs = append(qs, buildFieldQuery(field.Name, wcq))
-			}
-		}
-		return bleve.NewDisjunctionQuery(qs...), negated
-
-	case TokenAlternation:
-		qs := []query.Query{}
-		for _, p := range t.Parts {
-			r, _ := getTokenQuery(p, now)
-			qs = append(qs, r)
-		}
-		return bleve.NewDisjunctionQuery(qs...), negated
+	if !strings.HasSuffix(wildcard, "*") {
+		wildcard += "*"
 	}
-	return bleve.NewQueryStringQuery(t.Value), negated
+	var queries []query.Query
+	for _, field := range searchschema.Fields() {
+		switch {
+		case field.DefaultSearch:
+			queries = append(queries, buildFieldQuery(field.Name, value))
+		case field.DefaultWildcard:
+			queries = append(queries, buildFieldQuery(field.Name, wildcard))
+		}
+	}
+	return bleve.NewDisjunctionQuery(queries...)
 }
 
 func normalizeFileURL(v string) string {

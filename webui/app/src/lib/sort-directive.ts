@@ -1,58 +1,40 @@
-import type { SearchSortCapabilities } from '#lib/search-schema.js';
+import { queryTokens, type QuerySyntax } from './query-tokens.js';
 
-function escapeRegularExpression(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
-
-function sortDirectivePattern(sort: SearchSortCapabilities): RegExp | null {
-  if (!sort.field || sort.options.length === 0) return null;
-  const values = sort.options
-    .map((option) => option.value)
-    .sort((left, right) => right.length - left.length)
-    .map(escapeRegularExpression)
-    .join('|');
-  return new RegExp(`(?:^|\\s)${escapeRegularExpression(sort.field)}:(${values})(?=\\s|$)`, 'g');
-}
-
-function isInsideQuotedText(text: string, offset: number): boolean {
-  return [...text.slice(0, offset).matchAll(/(?<!\\)(?:\\\\)*"/g)].length % 2 === 1;
-}
-
-export function sortDirectiveFromQuery(text: string, sort: SearchSortCapabilities): string | null {
-  const pattern = sortDirectivePattern(sort);
-  if (!pattern) return null;
-  const matches = [...text.matchAll(pattern)].filter((match) => {
-    const tokenOffset = (match.index ?? 0) + match[0].indexOf(`${sort.field}:`);
-    return !isInsideQuotedText(text, tokenOffset);
+function sortDirectives(text: string, syntax: QuerySyntax) {
+  const { sort } = syntax;
+  const tokens = queryTokens(text, syntax);
+  return tokens.flatMap((token, index) => {
+    if (tokens[index - 1]?.text === 'NOT') return [];
+    const prefix = `${sort.field}:`;
+    if (!sort.field || !token.text.startsWith(prefix)) return [];
+    const value = token.text.slice(prefix.length);
+    return sort.options.some((option) => option.value === value) ? [{ ...token, value }] : [];
   });
-  return matches.at(-1)?.[1] ?? null;
 }
 
-export function sortValueFromQuery(text: string, sort: SearchSortCapabilities): string {
-  const directive = sortDirectiveFromQuery(text, sort);
+export function sortDirectiveFromQuery(text: string, syntax: QuerySyntax): string | null {
+  return sortDirectives(text, syntax).at(-1)?.value ?? null;
+}
+
+export function sortValueFromQuery(text: string, syntax: QuerySyntax): string {
+  const directive = sortDirectiveFromQuery(text, syntax);
   if (directive === null) return '';
-  return sort.options.find((option) => option.value === directive)?.default ? '' : directive;
+  return syntax.sort.options.find((option) => option.value === directive)?.default ? '' : directive;
 }
 
-export function removeSortDirectives(text: string, sort: SearchSortCapabilities): string {
-  const pattern = sortDirectivePattern(sort);
-  if (!pattern) return text.trim();
-  return text
-    .replace(pattern, (match, _sort, offset) => {
-      const tokenOffset = offset + match.indexOf(`${sort.field}:`);
-      return isInsideQuotedText(text, tokenOffset) ? match : '';
-    })
-    .trim();
+export function removeSortDirectives(text: string, syntax: QuerySyntax): string {
+  let remaining = text;
+  for (const token of sortDirectives(text, syntax).reverse()) {
+    remaining = remaining.slice(0, token.start) + remaining.slice(token.end);
+  }
+  return remaining.trim();
 }
 
-export function replaceSortDirective(
-  text: string,
-  value: string,
-  sort: SearchSortCapabilities,
-): string {
+export function replaceSortDirective(text: string, value: string, syntax: QuerySyntax): string {
+  const { sort } = syntax;
   const definition = sort.options.find((option) => option.value === value);
   if (value && !definition) return text;
-  const remaining = removeSortDirectives(text, sort);
+  const remaining = removeSortDirectives(text, syntax);
   if (!value || definition?.default) return remaining;
   return `${remaining ? `${remaining} ` : ''}${sort.field}:${value}`;
 }

@@ -82,6 +82,37 @@ func TestParseSearch(t *testing.T) {
 			sort:    "date",
 			hasSort: true,
 		},
+		{
+			name:    "Boolean group is preserved",
+			input:   `title:("privacy policy" OR (security -archived)) sort:date`,
+			text:    `title:("privacy policy" OR (security -archived))`,
+			sort:    "date",
+			hasSort: true,
+		},
+		{
+			name:    "top level OR is preserved",
+			input:   `sort:date title:privacy OR title:security`,
+			text:    `title:privacy OR title:security`,
+			sort:    "date",
+			hasSort: true,
+		},
+		{
+			name:  "sort inside a group remains text",
+			input: `(sort:date OR privacy)`,
+			text:  `(sort:date OR privacy)`,
+		},
+		{
+			name:    "sort inside a field remains text",
+			input:   `title:sort:date sort:domain`,
+			text:    `title:sort:date`,
+			sort:    "domain",
+			hasSort: true,
+		},
+		{
+			name:  "NOT applies to text instead of a directive",
+			input: `NOT sort:date`,
+			text:  `NOT sort:date`,
+		},
 	}
 
 	for _, test := range tests {

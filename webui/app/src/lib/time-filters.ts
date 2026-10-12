@@ -1,18 +1,9 @@
+import { appendQueryFilters, queryFilters, removeQueryFilters } from './query-filters.js';
+import type { QuerySyntax } from './query-tokens.js';
+
 interface TimeFilter {
   comparison: string;
   value: string;
-}
-
-function escapeRegularExpression(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
-
-function timeFilterPattern(field: string): RegExp | null {
-  if (!field) return null;
-  return new RegExp(
-    `(?:^|\\s)${escapeRegularExpression(field)}:(<=|>=|<|>)(\\d+[smhdwSMHDW]|\\d{4}-\\d{2}-\\d{2})(?=\\s|$)`,
-    'g',
-  );
 }
 
 export function shiftISODate(value: string, days: number): string {
@@ -27,44 +18,49 @@ function isValidTimeValue(value: string): boolean {
   return /^\d+[smhdw]$/i.test(value) || shiftISODate(value, 0) !== '';
 }
 
-function isInsideQuotedText(text: string, offset: number): boolean {
-  return [...text.slice(0, offset).matchAll(/(?<!\\)(?:\\\\)*"/g)].length % 2 === 1;
+function validTimeFilters(text: string, field: string, syntax?: QuerySyntax) {
+  return queryFilters(text, [field], syntax).flatMap((filter) => {
+    const match = filter.value.match(/^(<=|>=|<|>)(\d+[smhdwSMHDW]|\d{4}-\d{2}-\d{2})$/);
+    if (filter.negated || !match || !isValidTimeValue(match[2])) return [];
+    return [{ filter, comparison: match[1], value: match[2] }];
+  });
 }
 
-export function timeFilters(text: string, field: string): TimeFilter[] {
-  const pattern = timeFilterPattern(field);
-  if (!pattern) return [];
-  return [...text.matchAll(pattern)]
-    .filter((match) => {
-      const tokenOffset = (match.index ?? 0) + match[0].indexOf(`${field}:`);
-      return !isInsideQuotedText(text, tokenOffset) && isValidTimeValue(match[2]);
-    })
-    .map((match) => ({ comparison: match[1], value: match[2] }));
+export function timeFilters(text: string, field: string, syntax?: QuerySyntax): TimeFilter[] {
+  return validTimeFilters(text, field, syntax).map(({ comparison, value }) => ({
+    comparison,
+    value,
+  }));
 }
 
-export function removeTimeFilters(text: string, field: string): string {
-  const pattern = timeFilterPattern(field);
-  if (!pattern) return text.trim();
-  return text
-    .replace(pattern, (match, _comparison, value, offset) => {
-      const tokenOffset = offset + match.indexOf(`${field}:`);
-      return !isInsideQuotedText(text, tokenOffset) && isValidTimeValue(value) ? ' ' : match;
-    })
-    .replace(/\s+/g, ' ')
-    .trim();
+export function removeTimeFilters(text: string, field: string, syntax?: QuerySyntax): string {
+  return removeQueryFilters(
+    text,
+    validTimeFilters(text, field, syntax).map(({ filter }) => filter),
+    syntax,
+  );
 }
 
-export function replaceTimeFilters(text: string, field: string, filters: string[]): string {
+export function replaceTimeFilters(
+  text: string,
+  field: string,
+  filters: string[],
+  syntax?: QuerySyntax,
+): string {
   if (!field) return text;
-  const remaining = removeTimeFilters(text, field);
+  const remaining = removeTimeFilters(text, field, syntax);
   const tokens = filters.map((filter) => `${field}:${filter}`);
-  return [...(remaining ? [remaining] : []), ...tokens].join(' ');
+  return appendQueryFilters(remaining, tokens, syntax);
 }
 
-export function customDatesFromQuery(text: string, field: string): { from: string; to: string } {
+export function customDatesFromQuery(
+  text: string,
+  field: string,
+  syntax?: QuerySyntax,
+): { from: string; to: string } {
   let from = '';
   let to = '';
-  for (const filter of timeFilters(text, field)) {
+  for (const filter of timeFilters(text, field, syntax)) {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(filter.value)) continue;
     if (filter.comparison === '>=') from = filter.value;
     if (filter.comparison === '<') to = shiftISODate(filter.value, -1);

@@ -2,7 +2,7 @@
 date: '2026-02-25T00:00:00+00:00'
 draft: false
 title: 'Query Language Guide'
-description: 'Build precise searches with fields, phrases, dates, wildcards, negation, sorting, and alternatives.'
+description: 'Build precise searches with fields, phrases, Boolean groups, dates, wildcards, negation, and sorting.'
 ---
 
 Hister provides a query language that allows you to search through your content with precision. This guide explains the different query types and search techniques available.
@@ -26,6 +26,10 @@ Use double quotes to search for exact phrases:
 ```
 
 This finds pages containing the exact phrase "privacy policy" (not just pages with both words separately).
+
+Quotes also keep query operators literal. For example, `"domain:example.com"` searches for that
+phrase in document content, and `"-archived"` does not exclude documents. To exclude a phrase,
+put the minus sign before the opening quote: `-"privacy policy"`.
 
 **Examples:**
 
@@ -232,6 +236,7 @@ sort:date
 
 When a query contains more than one valid sort directive, the final directive takes precedence.
 Quoted text such as `"sort:date"` remains searchable text rather than changing the result order.
+Put sort directives outside Boolean groups. Inside a group, `sort:date` is searchable text.
 
 ## Wildcard Searches
 
@@ -282,6 +287,16 @@ example with `(?i)`.
 url_re:(?i)/readme\.md$
 ```
 
+When combining a regular expression with other alternatives, quote the expression so that its
+pipes and parentheses stay part of the pattern:
+
+```textplain
+(url_re:"/docs/|/manual/" OR site:example.com) security
+```
+
+Pipes in an unquoted `url_re:` value belong to the regular expression. Use a quoted value before
+a Boolean pipe, or separate alternatives with a space and `OR`.
+
 ## Negation
 
 Prefix terms with a minus sign (`-`) to exclude results:
@@ -298,6 +313,15 @@ encryption title:-tutorial
 
 Finds pages about encryption but not those with "tutorial" in the title.
 
+Use `NOT` as an alternative to a minus sign. Either form can exclude a whole group:
+
+```textplain
+privacy NOT (facebook OR twitter)
+privacy -(facebook|twitter)
+```
+
+Both examples exclude pages mentioning either Facebook or Twitter.
+
 **Field-specific negation:**
 
 ```textplain
@@ -310,7 +334,7 @@ privacy -"social media"
 
 ## Alternation Expressions
 
-Use parentheses with pipe (`|`) to create OR conditions:
+Use pipe (`|`) or uppercase `OR` to match alternatives. Parentheses keep an expression together:
 
 ```textplain
 (security|privacy|encryption)
@@ -323,6 +347,39 @@ title:(firewall|vpn|proxy)
 ```
 
 Finds pages with firewall, VPN, or proxy in the title.
+
+Groups can contain phrases, negation, and other groups. Spaces around pipes and parentheses
+are optional:
+
+```textplain
+title:("privacy policy" OR security)
+title:(privacy AND (policy OR protection))
+(domain:github.com OR domain:gitlab.com) NOT title:(archived OR deprecated)
+```
+
+A field before a group applies to every term in that group, including nested groups. An explicit
+field inside the group overrides it. For example, `title:(privacy OR text:encryption)` matches
+privacy in the title or encryption in the body.
+
+### Boolean Operators and Precedence
+
+Spaces between terms mean `AND`. You can also write uppercase `AND` explicitly:
+
+```textplain
+privacy security
+privacy AND security
+```
+
+Negation is evaluated first, then `AND`, then `OR`. For example, `privacy OR security guide`
+means `privacy OR (security AND guide)`. Use `(privacy OR security) guide` to require guide
+for both alternatives. These rules also apply to `|` and `-`.
+
+Only uppercase `AND`, `OR`, and `NOT` are operators. To search for an operator as text, quote it
+or escape it with a backslash, such as `"OR"` or `\OR`. Quotes or backslashes also protect
+parentheses and pipes in values: `label:"a|b"` and `label:a\|b` match the label `a|b`.
+
+The web UI applies a newly selected facet or date filter to the whole query. Filters inside an
+OR branch or a group stay in the query text rather than appearing as removable filter chips.
 
 ### Combining with Other Queries
 

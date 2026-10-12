@@ -261,7 +261,7 @@ func Test_build_quoted_phrase(t *testing.T) {
 }
 
 func Test_build_negated_quoted_phrase(t *testing.T) {
-	bq := buildBoolQ(t, `"-hello world"`)
+	bq := buildBoolQ(t, `-"hello world"`)
 	// Single negated token: Must is nil.
 	if bq.Must != nil {
 		t.Fatalf("negated-only phrase: expected Must to be nil, got %T", bq.Must)
