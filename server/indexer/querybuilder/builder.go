@@ -1,7 +1,6 @@
 package querybuilder
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"path/filepath"
@@ -15,7 +14,6 @@ import (
 	"github.com/asciimoo/hister/server/languages"
 
 	"github.com/blevesearch/bleve/v2"
-	"github.com/blevesearch/bleve/v2/search"
 	"github.com/blevesearch/bleve/v2/search/query"
 )
 
@@ -236,27 +234,6 @@ func buildQuotedFieldQuery(field, v string) query.Query {
 		return q
 	}
 	return buildFieldQuery(field, v)
-}
-
-// buildURLRegexpQuery applies the same Go regexp MatchString semantics used by
-// indexing rules. URL doc values contain the complete normalized URL.
-func buildURLRegexpQuery(field searchschema.FieldDefinition, pattern string) query.Query {
-	re, err := regexp.Compile(pattern)
-	if err != nil {
-		return query.NewMatchNoneQuery()
-	}
-	return query.NewCustomFilterQueryWithFilter(
-		query.NewMatchAllQuery(),
-		func(ctx context.Context, match *search.DocumentMatch) (bool, error) {
-			if err := ctx.Err(); err != nil {
-				return false, err
-			}
-			urlValue, ok := match.Fields[field.IndexField].(string)
-			return ok && re.MatchString(urlValue), nil
-		},
-		[]string{field.IndexField},
-		nil,
-	)
 }
 
 func buildNumericRangeQuery(field searchschema.FieldDefinition, v string) (query.Query, bool) {

@@ -287,6 +287,9 @@ example with `(?i)`.
 url_re:(?i)/readme\.md$
 ```
 
+For faster searches on large collections, use a specific starting prefix when possible, such as
+`url_re:^https://example\.com/docs/`. Patterns that match many URLs can still take longer.
+
 When combining a regular expression with other alternatives, quote the expression so that its
 pipes and parentheses stay part of the pattern:
 

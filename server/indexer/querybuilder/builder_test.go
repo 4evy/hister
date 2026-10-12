@@ -349,35 +349,27 @@ func Test_build_quoted_url_field(t *testing.T) {
 	}
 }
 
-func Test_build_url_regexp_field_uses_custom_filter(t *testing.T) {
+func Test_build_url_regexp_matches_quoted_and_unquoted_patterns(t *testing.T) {
+	idx := newRankingTestIndex(t, map[string]map[string]string{
+		"private": {"url": "https://example.com/private"},
+		"login":   {"url": "http://example.com/login"},
+		"other":   {"url": "https://example.org/private"},
+	})
 	for _, input := range []string{
 		`url_re:^https?://example\.com/(private|login)$`,
 		`url_re:"^https?://example\.com/(private|login)$"`,
 	} {
-		bq := buildBoolQ(t, input)
-		clauses := mustClauses(t, bq)
-		if len(clauses) != 1 {
-			t.Fatalf("Build(%q) produced %d must clauses, want 1", input, len(clauses))
-		}
-		custom, ok := clauses[0].(*query.CustomFilterQuery)
-		if !ok {
-			t.Fatalf("Build(%q) produced %T, want *query.CustomFilterQuery", input, clauses[0])
-		}
-		if len(custom.Fields) != 1 || custom.Fields[0] != "url" {
-			t.Fatalf("Build(%q) custom filter fields = %#v, want url", input, custom.Fields)
-		}
+		assertGroupMatches(t, idx, input, []string{"login", "private"})
 	}
 }
 
 func Test_build_url_regexp_keeps_parenthesized_alternation(t *testing.T) {
-	bq := buildBoolQ(t, `url_re:(example\.com|example\.org)`)
-	clauses := mustClauses(t, bq)
-	if len(clauses) != 1 {
-		t.Fatalf("expected 1 must clause, got %d", len(clauses))
-	}
-	if _, ok := clauses[0].(*query.CustomFilterQuery); !ok {
-		t.Fatalf("expected regexp custom filter, got %T", clauses[0])
-	}
+	idx := newRankingTestIndex(t, map[string]map[string]string{
+		"com":   {"url": "https://example.com/"},
+		"org":   {"url": "https://example.org/"},
+		"other": {"url": "https://other.test/"},
+	})
+	assertGroupMatches(t, idx, `url_re:(example\.com|example\.org)`, []string{"com", "org"})
 }
 
 func Test_build_validated_rejects_invalid_url_regexp(t *testing.T) {
