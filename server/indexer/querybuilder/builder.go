@@ -103,19 +103,12 @@ func Build(s string) query.Query {
 			qs = append(qs, q)
 		}
 	}
-	// A query made only of negated terms has nothing to wrap: the phrase
-	// would become a required clause and match nothing.
-	if len(qt) > 1 && len(qs) > 0 && !anyFieldSpecific(qt) {
-		// create a full phrase query from the query string to get exact matches for the full query
-		pq := createCombinedMatchQuery(s, 2)
-		qs = []query.Query{
-			bleve.NewDisjunctionQuery(
-				bleve.NewConjunctionQuery(qs...),
-				pq,
-			),
-		}
-	}
 	q := query.NewBooleanQuery(qs, nil, nqs)
+	// Ranking bonuses must not provide an alternative to the required clauses.
+	// With no positive clause, a should clause would become required instead.
+	if len(qt) > 1 && len(qs) > 0 && !anyFieldSpecific(qt) {
+		q.AddShould(createCombinedMatchQuery(s, 2))
+	}
 	// Only for a positive term: with no must clause the should clause becomes
 	// required, so a negated term would only return documents whose URL
 	// starts with it.
@@ -163,8 +156,8 @@ func RemoveStandaloneWildcards(s string) string {
 
 // anyFieldSpecific returns true when at least one token in qt is an explicit
 // field query (e.g. url:..., domain:..., user_id:...).  When any token is
-// field-specific, adding a full-string phrase query would produce semantically
-// wrong results, so the caller skips the phrase-wrapping optimisation.
+// field-specific, the caller skips the full query ranking bonus so field
+// syntax is not used as relevance text.
 func anyFieldSpecific(qt []Token) bool {
 	return slices.ContainsFunc(qt, isFieldSpecific)
 }

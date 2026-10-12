@@ -119,52 +119,6 @@ func asNumericRange(t *testing.T, q query.Query) *query.NumericRangeQuery {
 	return nq
 }
 
-// asConjunction type-asserts q to *query.ConjunctionQuery.
-func asConjunction(t *testing.T, q query.Query) *query.ConjunctionQuery {
-	t.Helper()
-	cq, ok := q.(*query.ConjunctionQuery)
-	if !ok {
-		t.Fatalf("expected *query.ConjunctionQuery, got %T", q)
-	}
-	return cq
-}
-
-// Build() wraps token queries in a DisjunctionQuery only for multi-token (len(qt) > 1) queries
-// where NO token is field-specific:
-//
-//	Must → ConjunctionQuery{
-//	  DisjunctionQuery{                ← "outer disjunction"
-//	    ConjunctionQuery{tokens...},   ← "token conjunction"  [0]
-//	    DisjunctionQuery{phrases...},  ← full-string phrase   [1]
-//	  }
-//	}
-//
-// For single-token queries Must contains the token query directly:
-//
-//	Must → ConjunctionQuery{ token-query }
-//
-// For queries where any token is field-specific (e.g. url:... user_id:..., or
-// python domain:example.com) the phrase wrapping is skipped; Must contains the
-// token queries directly:
-//
-//	Must → ConjunctionQuery{ query-1, query-2, ... }
-//
-// For negated-only queries Must is nil.
-//
-// tokenConjFromBool navigates to the inner token ConjunctionQuery (multi-token only).
-func tokenConjFromBool(t *testing.T, bq *query.BooleanQuery) *query.ConjunctionQuery {
-	t.Helper()
-	clauses := mustClauses(t, bq)
-	if len(clauses) != 1 {
-		t.Fatalf("expected 1 must clause, got %d", len(clauses))
-	}
-	outerDisj := asDisjunction(t, clauses[0])
-	if len(outerDisj.Disjuncts) != 2 {
-		t.Fatalf("outer disjunction: expected 2 disjuncts (token-conj + phrase), got %d", len(outerDisj.Disjuncts))
-	}
-	return asConjunction(t, outerDisj.Disjuncts[0])
-}
-
 // --- Build() tests ---
 
 func Test_build_empty_string(t *testing.T) {
@@ -883,9 +837,9 @@ func Test_build_title_alternation(t *testing.T) {
 
 func Test_build_multiple_words(t *testing.T) {
 	bq := buildBoolQ(t, "foo bar")
-	tokenConj := tokenConjFromBool(t, bq)
-	if len(tokenConj.Conjuncts) != 2 {
-		t.Fatalf("expected 2 token conjuncts (one per word), got %d", len(tokenConj.Conjuncts))
+	clauses := mustClauses(t, bq)
+	if len(clauses) != 2 {
+		t.Fatalf("expected 2 must clauses (one per word), got %d", len(clauses))
 	}
 }
 
