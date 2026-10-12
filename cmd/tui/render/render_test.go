@@ -5,6 +5,7 @@
 package render
 
 import (
+	"encoding/json"
 	"maps"
 	"strings"
 	"testing"
@@ -18,6 +19,32 @@ import (
 	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/charmbracelet/x/ansi"
 )
+
+func TestSearchQueryDiagnostic(t *testing.T) {
+	m := renderModel()
+	m.WsReady = true
+	m.TextInput.SetValue("needle OR")
+	m.Results = &client.SearchResults{}
+	if err := json.Unmarshal([]byte(`{"error":"invalid query at character 8: expected a term after OR"}`), m.Results); err != nil {
+		t.Fatal(err)
+	}
+	prepareSearchRender(m)
+	content := ansi.Strip(m.Viewport.View())
+	if !strings.Contains(content, "at character 8") || !strings.Contains(content, "expected a term after OR") || strings.Contains(content, "No results") {
+		t.Fatalf("query diagnostic missing or misleading: %s", content)
+	}
+	m.TextInput.SetValue("alias")
+	m.Results.Query = &client.SearchQuery{Text: "needle OR"}
+	RefreshViewport(m)
+	if !strings.Contains(ansi.Strip(m.Viewport.View()), "Expanded query: needle OR") {
+		t.Fatal("query error did not explain the expanded alias")
+	}
+	m.Results = &client.SearchResults{}
+	RefreshViewport(m)
+	if strings.Contains(ansi.Strip(m.Viewport.View()), "at character") {
+		t.Fatal("query error remained after a successful search")
+	}
+}
 
 func renderModel() *model.Model {
 	cfg := config.CreateDefaultConfig()

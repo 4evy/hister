@@ -2,7 +2,6 @@ package querybuilder
 
 import (
 	"errors"
-	"fmt"
 	"strings"
 )
 
@@ -48,14 +47,15 @@ func parseExpression(tokens []Token) (*expression, error) {
 		return nil, err
 	}
 	if p.pos != len(tokens) {
-		return nil, fmt.Errorf("unexpected %q at character %d", p.current().Value, p.current().start+1)
+		return nil, diagnostic(p.current(), "unexpected closing parenthesis; remove it or add an opening parenthesis")
 	}
 	return root, nil
 }
 
 func (p *expressionParser) current() Token {
 	if p.pos == len(p.tokens) {
-		return Token{Type: TokenEOF}
+		end := p.tokens[len(p.tokens)-1].end
+		return Token{Type: TokenEOF, start: end, end: end}
 	}
 	return p.tokens[p.pos]
 }
@@ -67,7 +67,11 @@ func (p *expressionParser) parseOr() (*expression, error) {
 	}
 	children := []*expression{first}
 	for p.current().Type == TokenOr {
+		operator := p.current()
 		p.pos++
+		if err := p.requireOperand(operator); err != nil {
+			return nil, err
+		}
 		next, err := p.parseAnd()
 		if err != nil {
 			return nil, err
@@ -88,7 +92,11 @@ func (p *expressionParser) parseAnd() (*expression, error) {
 		case TokenEOF, TokenRightParen, TokenOr:
 			return compoundExpression(expressionAnd, children), nil
 		case TokenAnd:
+			operator := p.current()
 			p.pos++
+			if err := p.requireOperand(operator); err != nil {
+				return nil, err
+			}
 		}
 		next, err := p.parseUnary()
 		if err != nil {
@@ -98,32 +106,42 @@ func (p *expressionParser) parseAnd() (*expression, error) {
 	}
 }
 
+func (p *expressionParser) requireOperand(operator Token) error {
+	switch p.current().Type {
+	case TokenEOF, TokenRightParen, TokenAnd, TokenOr:
+		if operator.Type == TokenField {
+			return diagnostic(operator, "expected a value after %s:", operator.Value)
+		}
+		return diagnostic(operator, "expected a term after %s", operator.Value)
+	default:
+		return nil
+	}
+}
+
 func (p *expressionParser) parseUnary() (*expression, error) {
 	if p.depth >= maxExpressionDepth {
-		return nil, errExpressionDepth
+		return nil, diagnostic(p.current(), "%w", errExpressionDepth)
 	}
 	p.depth++
 	defer func() { p.depth-- }()
 	token := p.current()
 	if token.Type == TokenEOF {
-		return nil, errors.New("expected a term at end of query")
+		return nil, diagnostic(token, "expected a term at end of query")
 	}
 	p.pos++
 	switch token.Type {
 	case TokenWord:
 		return &expression{kind: expressionTerm, value: token.Value}, nil
 	case TokenQuoted:
+		if token.Value == "" {
+			return nil, diagnostic(token, "empty quoted value; add text between the quotes")
+		}
 		return &expression{kind: expressionPhrase, value: token.Value}, nil
 	case TokenNot, TokenField:
-		// Preserve empty field values for the existing field validation and
-		// fallback rules. In particular, url_re: must report an invalid regexp.
-		var child *expression
-		var err error
-		if token.Type == TokenField && (p.current().Type == TokenEOF || p.current().Type == TokenRightParen || p.current().Type == TokenOr) {
-			child = &expression{kind: expressionTerm}
-		} else {
-			child, err = p.parseUnary()
+		if err := p.requireOperand(token); err != nil {
+			return nil, err
 		}
+		child, err := p.parseUnary()
 		if err != nil {
 			return nil, err
 		}
@@ -133,17 +151,23 @@ func (p *expressionParser) parseUnary() (*expression, error) {
 		}
 		return &expression{kind: kind, value: token.Value, children: []*expression{child}}, nil
 	case TokenLeftParen:
+		if p.current().Type == TokenEOF {
+			return nil, diagnostic(token, "unclosed group; add a term and a closing parenthesis")
+		}
+		if p.current().Type == TokenRightParen {
+			return nil, diagnostic(token, "empty group; add a term between the parentheses")
+		}
 		child, err := p.parseOr()
 		if err != nil {
 			return nil, err
 		}
 		if p.current().Type != TokenRightParen {
-			return nil, fmt.Errorf("unclosed group at character %d", token.start+1)
+			return nil, diagnostic(token, "unclosed group; add a closing parenthesis")
 		}
 		p.pos++
 		return child, nil
 	default:
-		return nil, fmt.Errorf("expected a term, found %q at character %d", token.Value, token.start+1)
+		return nil, diagnostic(token, "expected a term, found %q", token.Value)
 	}
 }
 

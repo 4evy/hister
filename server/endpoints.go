@@ -262,6 +262,11 @@ func serveSPA(c *webContext) {
 			Text:   c.effectiveRules().ResolveAliases(q),
 			UserID: c.UserID,
 		})
+		if errors.Is(err, querybuilder.ErrInvalidQuery) {
+			// Let the app display the diagnostic and keep the query editable.
+			serveIndex(c)
+			return
+		}
 		if err != nil {
 			res = &indexer.Results{}
 		}
@@ -509,7 +514,7 @@ func parseSearchQueryParams(r *http.Request) (*indexer.Query, error) {
 func serveSearchHTTP(c *webContext, query *indexer.Query) {
 	r, err := doSearch(c.Indexer, query, c.effectiveRules(), c.UserID, historyEnabled(c))
 	if err != nil {
-		if errors.Is(err, querybuilder.ErrInvalidRegexp) {
+		if errors.Is(err, querybuilder.ErrInvalidQuery) {
 			http.Error(c.Response, err.Error(), http.StatusBadRequest)
 			return
 		}
@@ -567,8 +572,9 @@ func serveSearchWebSocket(c *webContext) {
 		}
 		res, err := doSearch(c.Indexer, query, c.effectiveRules(), c.UserID, historyEnabled(c))
 		if err != nil {
-			if errors.Is(err, querybuilder.ErrInvalidRegexp) {
+			if errors.Is(err, querybuilder.ErrInvalidQuery) {
 				res = &indexer.Results{
+					Error:     err.Error(),
 					Query:     query,
 					Documents: []*document.Document{},
 					History:   []*model.URLCount{},
@@ -951,6 +957,7 @@ func serveUpdateDocuments(c *webContext) {
 	if err != nil {
 		switch {
 		case errors.Is(err, indexer.ErrEmptyFilter),
+			errors.Is(err, querybuilder.ErrInvalidQuery),
 			errors.Is(err, indexer.ErrEmptyUpdate),
 			errors.Is(err, indexer.ErrInvalidLanguage):
 			http.Error(c.Response, err.Error(), http.StatusBadRequest)
@@ -1505,6 +1512,10 @@ func serveGetFacets(c *webContext) {
 		}
 	}
 	res, err := doSearch(c.Indexer, q, c.effectiveRules(), c.UserID, historyEnabled(c))
+	if errors.Is(err, querybuilder.ErrInvalidQuery) {
+		http.Error(c.Response, err.Error(), http.StatusBadRequest)
+		return
+	}
 	if err != nil || res.Facets == nil {
 		c.JSON(map[string]any{})
 		return
@@ -1986,7 +1997,7 @@ func serveDelete(c *webContext) {
 		})
 	}
 	if err != nil {
-		if errors.Is(err, indexer.ErrEmptyFilter) || errors.Is(err, querybuilder.ErrInvalidRegexp) {
+		if errors.Is(err, indexer.ErrEmptyFilter) || errors.Is(err, querybuilder.ErrInvalidQuery) {
 			http.Error(c.Response, err.Error(), http.StatusBadRequest)
 			return
 		}

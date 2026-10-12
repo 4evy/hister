@@ -55,9 +55,10 @@ func (l *Lexer) NextToken() (Token, error) {
 	field := l.pendingField
 	l.pendingField = ""
 	var token Token
+	var err error
 	switch ch := l.input[l.pos]; {
 	case ch == '"':
-		token = l.readQuoted(field == "url_re")
+		token, err = l.readQuoted(field == "url_re")
 	case field == "url_re":
 		token = l.readRawValue(true)
 	case ch == '-' && l.pos+1 < len(l.input) && !unicode.IsSpace(l.input[l.pos+1]) && !strings.ContainsRune(")|", l.input[l.pos+1]):
@@ -81,17 +82,18 @@ func (l *Lexer) NextToken() (Token, error) {
 		token = l.readWord(field != "")
 	}
 	token.start, token.end = start, l.pos
-	return token, nil
+	return token, err
 }
 
-func (l *Lexer) readQuoted(regexp bool) Token {
+func (l *Lexer) readQuoted(regexp bool) (Token, error) {
+	start := l.pos
 	l.pos++
 	var value strings.Builder
 	for l.pos < len(l.input) {
 		ch := l.input[l.pos]
 		l.pos++
 		if ch == '"' {
-			break
+			return Token{Type: TokenQuoted, Value: value.String()}, nil
 		}
 		if ch == '\\' && l.pos < len(l.input) {
 			next := l.input[l.pos]
@@ -103,7 +105,7 @@ func (l *Lexer) readQuoted(regexp bool) Token {
 		}
 		value.WriteRune(ch)
 	}
-	return Token{Type: TokenQuoted, Value: value.String()}
+	return Token{}, diagnostic(Token{start: start}, "unclosed quote; add a closing double quote")
 }
 
 // URL and regexp values keep their own parentheses. An unmatched closing

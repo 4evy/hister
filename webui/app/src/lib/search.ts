@@ -64,6 +64,7 @@ export interface FacetsResult {
 }
 
 export interface SearchResults {
+  error?: string;
   documents?: SearchResult[];
   history?: SearchResult[];
   total?: number;

@@ -14,6 +14,7 @@ package server
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -23,6 +24,7 @@ import (
 	"github.com/asciimoo/hister/server/document"
 	"github.com/asciimoo/hister/server/extractor"
 	"github.com/asciimoo/hister/server/indexer"
+	"github.com/asciimoo/hister/server/indexer/querybuilder"
 	"github.com/asciimoo/hister/server/indexer/searchschema"
 	"github.com/asciimoo/hister/server/model"
 
@@ -435,6 +437,10 @@ func mcpToolSearch(c *webContext, id json.RawMessage, rawArgs json.RawMessage) {
 	}
 	res, err := doSearch(c.Indexer, q, c.effectiveRules(), c.UserID, historyEnabled(c))
 	if err != nil {
+		if errors.Is(err, querybuilder.ErrInvalidQuery) {
+			mcpWriteError(c, id, mcpErrInvalidParam, err.Error())
+			return
+		}
 		log.Error().Err(err).Str("query", args.Query).Msg("MCP search failed")
 		mcpWriteError(c, id, mcpErrInternal, "search failed")
 		return

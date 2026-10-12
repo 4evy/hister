@@ -64,6 +64,7 @@ type SemanticHit struct {
 
 // SearchResults contains the response to an HTTP or WebSocket search.
 type SearchResults struct {
+	Error           string               `json:"error,omitempty"`
 	Total           uint64               `json:"total"`
 	Query           *SearchQuery         `json:"query"`
 	Documents       []*Document          `json:"documents"`

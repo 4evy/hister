@@ -333,6 +333,9 @@ func workspaceStatus(m *model.Model) string {
 	if m.Results == nil {
 		return m.Styles.Status.Render("No results")
 	}
+	if m.Results.Error != "" {
+		return m.Styles.Status.Render("Invalid query")
+	}
 	visibleCount := len(m.Results.History) + len(m.VisibleDocuments())
 	total := max(int(m.Results.Total)+len(m.Results.History), visibleCount)
 	count := itemCount(total, "result")

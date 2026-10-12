@@ -27,6 +27,13 @@ func Results(m *model.Model) string {
 		if !m.WsReady {
 			return emptyState(m, "Search is offline", "Hister is reconnecting automatically. Your query will stay here.")
 		}
+		if m.Results != nil && m.Results.Error != "" {
+			detail := sanitizeTerminalLine(m.Results.Error)
+			if m.Results.Query != nil && m.Results.Query.Text != m.TextInput.Value() {
+				detail += "\nExpanded query: " + sanitizeTerminalLine(m.Results.Query.Text)
+			}
+			return emptyState(m, "Invalid query", detail)
+		}
 		if query != "" {
 			title := "No results for “" + truncateLine(query, max(8, m.Viewport.Width()-22)) + "”"
 			detail := "Try fewer words or check the spelling."

@@ -2074,6 +2074,8 @@
               <span class="font-outfit text-text-brand text-sm font-bold md:text-base">
                 {#if isSearchLoading}
                   Searching…
+                {:else if !searchPending && lastResults?.error}
+                  Invalid query
                 {:else if !searchPending && lastResults}
                   {lastResults?.total && lastResults.total > totalResults
                     ? lastResults.total
@@ -2490,6 +2492,20 @@
 
             {#if isSearchLoading}
               <SearchLoading />
+            {:else if !searchPending && lastResults?.error}
+              <section class="px-4 py-8 md:px-12">
+                <p role="alert" class="font-inter text-hister-rose mb-4 break-words">
+                  {lastResults.error}
+                </p>
+                {#if lastResults.query && lastResults.query.text !== query}
+                  <p class="font-inter text-text-brand-muted mb-4 text-sm break-words">
+                    Expanded query: <code class="font-fira">{lastResults.query.text}</code>
+                  </p>
+                {/if}
+                <a href="help" class="font-inter text-hister-indigo text-sm underline">
+                  Query syntax help
+                </a>
+              </section>
             {:else if hasResults}
               {#if lastResults?.query && lastResults.query.text.length > query.length}
                 <p class="font-inter text-text-brand-muted text-sm">

@@ -2,7 +2,6 @@ package querybuilder
 
 import (
 	"errors"
-	"fmt"
 	"path/filepath"
 	"regexp"
 	"strconv"
@@ -25,22 +24,19 @@ var (
 
 const MaxURLRegexpLength = 4096
 
-// BuildValidated validates URL regular expressions before compiling the query.
-// Other invalid syntax retains the existing fallback behavior.
+// BuildValidated rejects malformed syntax and URL regular expressions before
+// compiling the query. It never falls back to a different query language.
 func BuildValidated(s string) (query.Query, error) {
 	tokens, err := Tokenize(s)
 	if err != nil {
-		return createSimpleQuery(s), nil
+		return nil, err
 	}
 	if err := validateURLRegexps(tokens); err != nil {
 		return nil, err
 	}
 	root, err := parseExpression(tokens)
 	if err != nil {
-		if errors.Is(err, errExpressionDepth) {
-			return nil, err
-		}
-		return createSimpleQuery(s), nil
+		return nil, err
 	}
 	return buildExpression(root), nil
 }
@@ -51,35 +47,31 @@ func validateURLRegexps(tokens []Token) error {
 			continue
 		}
 		pattern := ""
+		location := token
 		if i+1 < len(tokens) && (tokens[i+1].Type == TokenWord || tokens[i+1].Type == TokenQuoted) {
 			pattern = tokens[i+1].Value
+			location = tokens[i+1]
 		}
 		if pattern == "" {
-			return fmt.Errorf("%w: expression is empty", ErrInvalidRegexp)
+			return diagnostic(location, "%w: expression is empty", ErrInvalidRegexp)
 		}
 		if len(pattern) > MaxURLRegexpLength {
-			return fmt.Errorf("%w: expression exceeds %d bytes", ErrInvalidRegexp, MaxURLRegexpLength)
+			return diagnostic(location, "%w: expression exceeds %d bytes", ErrInvalidRegexp, MaxURLRegexpLength)
 		}
 		if _, err := regexp.Compile(pattern); err != nil {
-			return fmt.Errorf("%w %q: %v", ErrInvalidRegexp, pattern, err)
+			return diagnostic(location, "%w: %v", ErrInvalidRegexp, err)
 		}
 	}
 	return nil
 }
 
+// Build matches nothing on invalid input. Use BuildValidated to report errors.
 func Build(s string) query.Query {
-	tokens, err := Tokenize(s)
+	q, err := BuildValidated(s)
 	if err != nil {
-		return createSimpleQuery(s)
+		return query.NewMatchNoneQuery()
 	}
-	root, err := parseExpression(tokens)
-	if err != nil {
-		if errors.Is(err, errExpressionDepth) {
-			return query.NewMatchNoneQuery()
-		}
-		return createSimpleQuery(s)
-	}
-	return buildExpression(root)
+	return q
 }
 
 // RemoveStandaloneWildcards returns text suitable for semantic embedding.
@@ -93,10 +85,6 @@ func RemoveStandaloneWildcards(s string) string {
 		return s
 	}
 	return simplifyExpression(root, "").embeddingText()
-}
-
-func createSimpleQuery(s string) query.Query {
-	return bleve.NewQueryStringQuery(s)
 }
 
 func createCombinedMatchQuery(s string, boost float64) query.Query {

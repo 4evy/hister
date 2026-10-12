@@ -39,6 +39,24 @@ put the minus sign before the opening quote: `-"privacy policy"`.
 "end-to-end encryption"
 ```
 
+## Query Errors
+
+An incomplete query shows an error explaining what needs fixing and where. Positions start at
+character 1. Non-English letters count as characters, not multiple bytes. If an alias expands
+your query, the position refers to the expanded query.
+
+For example, `privacy OR` reports `expected a term after OR` at character 9. Complete it as
+`privacy OR security`, or use `privacy "OR"` to search for the word OR.
+
+Close every quote and group, supply a value after a field name, and put a term on each side of
+`AND`, `OR`, or `|`. `NOT` must be followed by a term or group. Empty quotes and groups are
+rejected. Quote literal operators or escape punctuation, for example `"OR"` or `\(example\)`.
+Invalid URL regular expressions also report an error.
+
+Search, update, and delete operations reject these invalid queries. In the web and terminal
+clients, correct the query to resume searching. Text containing an unknown field name, such
+as `unknown:value`, remains ordinary search text.
+
 ## Field-Specific Searches
 
 You can search within specific fields using the `field:value` syntax:

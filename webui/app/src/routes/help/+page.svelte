@@ -219,6 +219,13 @@
           conditions. Negation is evaluated first, then AND, then OR. Parentheses change that order.
           Quote operator words to search for them as text. Put <code>sort:</code> outside groups.
         </p>
+        <p class="section-intro">
+          Incomplete queries show an error with a character position, counted from one. Close quotes
+          and parentheses, give each field a value, and add a term after each operator. For example,
+          complete <code>privacy OR</code> as <code>privacy OR security</code>. Quote literal
+          operators, such as <code>"OR"</code>. If an alias expands your query, the position refers
+          to the expanded query.
+        </p>
         {@render queryExamples(basicExamples)}
         <div class="mt-4">
           {@render docLink('query-language#combining-query-types', 'Combining queries')}

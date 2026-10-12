@@ -11,6 +11,16 @@ type SearchExpression struct {
 	Text    string
 	Sort    string
 	HasSort bool
+	source  string
+}
+
+// QueryText excludes search directives while keeping source positions intact
+// for diagnostics. Text remains the compact form used for semantic input.
+func (e SearchExpression) QueryText() string {
+	if e.HasSort {
+		return e.source
+	}
+	return e.Text
 }
 
 // ParseSearch separates supported search directives while preserving the
@@ -43,6 +53,9 @@ func ParseSearch(input string) SearchExpression {
 			consumed = token.end
 			expression.Sort = sortMode
 			expression.HasSort = true
+			for j := token.start; j < token.end; j++ {
+				runes[j] = ' '
+			}
 		}
 	}
 	if !expression.HasSort {
@@ -53,8 +66,10 @@ func ParseSearch(input string) SearchExpression {
 		parts = append(parts, after)
 	}
 	expression.Text = strings.Join(parts, " ")
+	expression.source = string(runes)
 	if strings.TrimSpace(expression.Text) == "" {
 		expression.Text = "*"
+		expression.source = "*"
 	}
 	return expression
 }

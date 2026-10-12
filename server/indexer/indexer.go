@@ -273,6 +273,7 @@ type SemanticHit struct {
 }
 
 type Results struct {
+	Error           string               `json:"error,omitempty"`
 	Total           uint64               `json:"total"`
 	Query           *Query               `json:"query"`
 	Documents       []*document.Document `json:"documents"`
@@ -1969,7 +1970,7 @@ func (i *Indexer) search(semanticConfig config.SemanticSearch, q *Query) (*Resul
 	if expression.HasSort {
 		q.Sort = expression.Sort
 	}
-	searchQuery, err := q.create(expression.Text)
+	searchQuery, err := q.create(expression.QueryText())
 	if err != nil {
 		return nil, err
 	}
