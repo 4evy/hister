@@ -5,16 +5,56 @@ title: 'Troubleshooting'
 description: 'Diagnose server startup, interface, extension, import, memory, and browser debugging problems.'
 ---
 
-We are sorry that you are here. 🙁 Fingers crossed it won't be for long?
+Start with the diagnostic commands below to identify configuration, connection, and indexing problems.
 
-If all else fails, you can try asking for help&mdash;see the Community links in this page's footer.
+If you still need help, use the Community links in this page's footer.
+
+## Run Diagnostics First
+
+```bash
+hister doctor
+```
+
+Doctor checks configuration, required extractor programs, server connectivity, authentication, and index compatibility. It reports problems without repairing data. The server must be running for the server checks to complete.
+
+Read the message beside each result:
+
+| Status    | What to do                                                                             |
+| --------- | -------------------------------------------------------------------------------------- |
+| `ok`      | This check passed. Continue to any warnings or errors.                                 |
+| `warning` | Review the message for checks that could not be completed.                             |
+| `error`   | Follow the suggested action, then run `hister doctor` again to check whether it helps. |
+
+Use the same `--config`, `--server-url`, and authentication settings as the command you are troubleshooting. In multi user mode, checking the server's index and extractor programs requires an admin token. Older servers may report that diagnostics are unavailable; updating the server enables those checks.
+
+### Locate and Validate Configuration
+
+If the server will not start, or you suspect Hister is using different settings than expected, run:
+
+```bash
+hister config path
+hister config validate
+```
+
+`config path` prints the selected configuration file, even if its YAML is invalid. If it prints `(defaults)`, no configuration file was found and Hister is using its defaults. Environment variables and command line options can still override those defaults.
+
+`config validate` checks configuration without needing a running server. A successful check prints `Configuration valid:` followed by the selected path or `(defaults)`. If it reports an error, correct the named setting and run the command again. A valid configuration does not confirm that the server is reachable or required programs are installed; use `doctor` for those checks.
+
+These commands inspect configuration on the computer where you run them. To check a remote server's configuration file, run them on that server. For a custom file, use the same path you pass when starting Hister:
+
+```bash
+hister --config /path/to/config.yml config path
+hister --config /path/to/config.yml config validate
+```
+
+See [Configuration and Diagnostics](/docs/terminal-client#configuration-and-diagnostics) for more options and output formats.
 
 ## Common Issues
 
 ### Server won't start
 
 - Check if port 4433 (or whatever was configured instead) is already in use
-- Verify the configuration file syntax
+- Run `hister config validate` and correct any reported settings
 
 ### Web interface loads, but looks broken
 
