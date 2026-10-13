@@ -46,6 +46,19 @@
     }
   });
 
+  function submissionErrorMessage(status: number): string {
+    switch (status) {
+      case 400:
+        return 'The document is invalid. Check the URL and document details, then try again.';
+      case 413:
+        return 'The document is too large. Reduce the content and try again.';
+      case 422:
+        return 'The document contains sensitive data. Remove it from the content and try again.';
+      default:
+        return 'Failed to add document. Please try again.';
+    }
+  }
+
   async function handleSubmit(e: Event) {
     e.preventDefault();
     if (submitting) return;
@@ -71,7 +84,7 @@
         message = 'URL skipped (matches skip rules or is a local URL).';
         isError = false;
       } else {
-        message = 'Failed to add document.';
+        message = submissionErrorMessage(res.status);
         isError = true;
       }
     } catch (err) {
