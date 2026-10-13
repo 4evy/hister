@@ -189,6 +189,10 @@ cases:
       text_contains:
         - Pass an offset to the server
       min_text_length: 50
+      preview_contains:
+        - Implement infinite scroll for results
+        - Pass an offset to the server
+      min_preview_length: 100
       metadata:
         type: Issue
         repo: asciimoo/hister

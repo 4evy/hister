@@ -67,14 +67,14 @@ var (
 	ownerPattern = `[a-zA-Z0-9-]+`
 	repoPattern  = `[a-zA-Z0-9-._]+`
 
-	urlPattern = fmt.Sprintf(`%s(%s)/(%s)`, githubURLPrefix, ownerPattern, repoPattern)
+	urlPattern = fmt.Sprintf(`%s(%s)/(%s)`, regexp.QuoteMeta(githubURLPrefix), ownerPattern, repoPattern)
 
 	// /owner/repo/...
 	repoRe = regexp.MustCompile(fmt.Sprintf(`^%s`, urlPattern))
 	// /owner/repo/? OR /owner/repo?... OR /owner/repo#...
 	fullRepoRe = regexp.MustCompile(fmt.Sprintf(`^%s(?:#[^/]*|\?[^/]*)?/?$`, urlPattern))
 	// /owner/repo/:id/? OR /owner/repo/:id#...
-	issueRe = regexp.MustCompile(fmt.Sprintf(`^%s/issues/(\d+)(?:#[^/])?/?$`, urlPattern))
+	issueRe = regexp.MustCompile(fmt.Sprintf(`^%s/issues/(\d+)/?(?:\?[^#]*)?(?:#.*)?$`, urlPattern))
 	// /owner/repo/issues
 	issuesRe = regexp.MustCompile(fmt.Sprintf(`^%s/issues/?$`, urlPattern))
 	// /owner/repo/pull/:id/? OR /owner/repo/:id#...
@@ -403,106 +403,7 @@ func richTextFromFiles(v any) string {
 	return ""
 }
 
-// --- Issues --------------------------------------------------------------
-func extractIssue(d *sdk.Document) sdk.ExtractResult {
-	doc, err := goquery.NewDocumentFromReader(strings.NewReader(d.HTML))
-	if err != nil {
-		return sdk.ExtractFallback(err)
-	}
-
-	d.Title = strings.TrimSpace(doc.Find("title").First().Text())
-
-	var b strings.Builder
-	if d.Metadata == nil {
-		d.Metadata = make(map[string]any)
-	}
-	d.Metadata["type"] = "Issue"
-
-	if repo, err := getRepo(d.URL); err == nil {
-		d.Metadata["repo"] = repo
-	}
-
-	info := parseIssue(doc)
-	if info == nil {
-		return sdk.ExtractFallback(nil)
-	}
-
-	if info.title != "" {
-		d.Metadata["title"] = info.title
-		fmt.Fprintf(&b, "title: %s\n\n", info.title)
-	}
-	if dateOpened := doc.Find(`[data-testid="issue-body"] relative-time`).AttrOr("datetime", ""); dateOpened != "" {
-		d.Metadata["date"] = dateOpened
-	}
-
-	if info.body != "" {
-		fmt.Fprintf(&b, "body: %s\n\n", info.body)
-	}
-
-	if len(info.commentBodies) > 0 {
-		fmt.Fprintf(&b, "comments: %s\n", strings.Join(info.commentBodies, ", "))
-	}
-
-	d.Text = strings.TrimSpace(b.String())
-	if d.Text == "" && d.Title == "" {
-		return sdk.ExtractFallback(fmt.Errorf("no content found"))
-	}
-	return sdk.Extracted()
-}
-
-func previewIssue(d *sdk.Document) sdk.PreviewResult {
-	doc, err := goquery.NewDocumentFromReader(strings.NewReader(d.HTML))
-	if err != nil {
-		return sdk.PreviewFallback(err)
-	}
-
-	info := parseIssue(doc)
-	if info == nil {
-		return sdk.PreviewFallback(nil)
-	}
-
-	var b strings.Builder
-
-	fmt.Println(info.title)
-	fmt.Println(info.body)
-	if info.title != "" {
-		fmt.Fprintf(&b, "<h1>%s</h1>", info.title)
-	}
-
-	if info.body != "" {
-		fmt.Fprintf(&b, "<hr>%s", info.body)
-	}
-
-	if len(info.commentBodies) > 0 {
-		fmt.Fprintf(&b, "<hr>%s", strings.Join(info.commentBodies, "<br><br>"))
-	}
-
-	return sdk.Previewed(sdk.PreviewResponse{Content: b.String()})
-}
-
-type issueInfo struct {
-	title         string
-	body          string
-	commentBodies []string
-}
-
-func parseIssue(doc *goquery.Document) *issueInfo {
-	info := &issueInfo{}
-
-	if title := doc.Find(`bdi[data-testid="issue-title"]`).Text(); title != "" {
-		info.title = title
-	}
-	if body := doc.Find(`#issue-body-viewer`).Text(); body != "" {
-		info.body = body
-	}
-
-	doc.Find(`[data-testid="issue-viewer-comments-container"] [data-testid="markdown-body"]`).Each(func(_ int, s *goquery.Selection) {
-		info.commentBodies = append(info.commentBodies, strings.TrimSpace(s.Text()))
-	})
-
-	return info
-}
-
+// --- Issue lists ---------------------------------------------------------
 func extractIssues(d *sdk.Document) sdk.ExtractResult {
 	doc, err := goquery.NewDocumentFromReader(strings.NewReader(d.HTML))
 	if err != nil {

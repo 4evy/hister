@@ -1,6 +1,8 @@
 <!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
 <script lang="ts">
   import VideoPreview from './VideoPreview.svelte';
+  import IssuePreview from './IssuePreview.svelte';
+  import { parseIssuePreview, type IssuePreviewData } from '#lib/issue-preview.js';
   import PreviewLoadError from './PreviewLoadError.svelte';
   import { apiFetch } from '#lib/api.js';
   import {
@@ -60,6 +62,7 @@
   let content = $state('');
   let template = $state('');
   let templateData = $state<any>(null);
+  let issueData = $state<IssuePreviewData | null>(null);
   let meta = $state<PreviewMetadata | null>(null);
   let documentDetails = $state<PreviewDocumentDetails | null>(null);
   let added = $state<number | null>(null);
@@ -207,6 +210,7 @@
     content = '';
     template = '';
     templateData = null;
+    issueData = null;
     documentDetails = null;
     showEmbeddedVideos = false;
     showVersions = false;
@@ -234,7 +238,11 @@
       if (requestId !== contentRequestId) return;
       template = data.template || '';
       templateData = template === 'video' ? parseTemplateData(data.content) : null;
-      content = template === 'video' ? '' : data.content || '<p>No content available</p>';
+      issueData = template === 'issue' ? parseIssuePreview(data.content) : null;
+      content =
+        template === 'video' || template === 'issue'
+          ? ''
+          : data.content || '<p>No content available</p>';
       // Always update metadata (server always returns current doc's metadata regardless of version).
       title = data.title || hint;
       added = data.added ?? null;
@@ -345,7 +353,7 @@
         <span role="status" class="font-inter text-text-brand-muted text-sm">Loading…</span>
       {/if}
     </div>
-  {:else if content || templateData}
+  {:else if content || templateData || issueData}
     <div
       class="preview-header border-border-brand-muted flex shrink-0 flex-col gap-0.5 border-b-[2px] px-4 py-2.5"
     >
@@ -682,6 +690,8 @@
           {/if}
           {#if template === 'video' && templateData}
             <VideoPreview data={templateData} />
+          {:else if template === 'issue' && issueData}
+            <IssuePreview data={issueData} />
           {:else}
             {@html content}
           {/if}

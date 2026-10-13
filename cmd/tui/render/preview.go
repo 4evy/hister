@@ -134,6 +134,9 @@ func formatPreviewDate(raw string) string {
 }
 
 func previewPlainText(template, content string) string {
+	if template == "issue" {
+		return issuePreviewText(content)
+	}
 	if template == "video" {
 		return videoPreviewText(content)
 	}
@@ -141,6 +144,54 @@ func previewPlainText(template, content string) string {
 		return strings.TrimSpace(content)
 	}
 	return htmlPreviewText(content)
+}
+
+func issuePreviewText(content string) string {
+	type comment struct {
+		Author    string `json:"author"`
+		CreatedAt string `json:"createdAt"`
+		BodyHTML  string `json:"bodyHTML"`
+	}
+	var issue struct {
+		Title      string    `json:"title"`
+		Number     string    `json:"number"`
+		Repository string    `json:"repository"`
+		State      string    `json:"state"`
+		Labels     []string  `json:"labels"`
+		Body       comment   `json:"body"`
+		Comments   []comment `json:"comments"`
+	}
+	if err := json.Unmarshal([]byte(content), &issue); err != nil {
+		return "Issue preview unavailable."
+	}
+	var sections []string
+	facts := []string{issue.Repository}
+	if issue.Number != "" {
+		facts = append(facts, "#"+issue.Number)
+	}
+	if issue.State != "" {
+		facts = append(facts, issue.State)
+	}
+	sections = append(sections, strings.TrimSpace(strings.Join(facts, " ")), issue.Title)
+	if len(issue.Labels) > 0 {
+		sections = append(sections, "Labels: "+strings.Join(issue.Labels, ", "))
+	}
+	appendComment := func(c comment) {
+		author := c.Author
+		if author == "" {
+			author = "Unknown author"
+		}
+		if c.CreatedAt != "" {
+			author += " · " + formatPreviewDate(c.CreatedAt)
+		}
+		sections = append(sections, author+"\n"+htmlPreviewText(c.BodyHTML))
+	}
+	appendComment(issue.Body)
+	sections = append(sections, fmt.Sprintf("Comments (%d) from the saved page", len(issue.Comments)))
+	for _, c := range issue.Comments {
+		appendComment(c)
+	}
+	return strings.TrimSpace(strings.Join(sections, "\n\n"))
 }
 
 func videoPreviewText(content string) string {

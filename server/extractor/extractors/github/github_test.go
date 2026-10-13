@@ -1,6 +1,7 @@
 package github
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 
@@ -350,7 +351,10 @@ func TestPreviewIssue(t *testing.T) {
 	if c == "" {
 		t.Fatalf("content is empty")
 	}
-	if !strings.Contains(c, `<h1>Extractors wanted!</h1>`) {
+	var data struct {
+		Title string `json:"title"`
+	}
+	if json.Unmarshal([]byte(c), &data) != nil || data.Title != "Extractors wanted!" {
 		t.Error("Preview should contain the issue title")
 	}
 	if !strings.Contains(c, `This is a meta issue raising awareness to contribute to existing extractors or add new ones`) {
