@@ -26,6 +26,7 @@
     isIMEKeyboardEvent,
   } from '#lib/search.js';
   import { fetchConfig, apiFetch, getUserId } from '#lib/api.js';
+  import { createDebouncer } from '#lib/debounce.js';
   import { ResultState } from '#lib/result-state.svelte.js';
   import { mergeSearchResults, removeSearchResults } from '#lib/search-results.js';
   import { showHelp } from '#lib/stores.js';
@@ -726,6 +727,7 @@
 
   beforeNavigate(({ willUnload, complete, shallow }) => {
     if (shallow) return;
+    debouncedURLUpdate.cancel();
     if (!willUnload) return;
     unloading = true;
     complete.catch(() => {
@@ -767,6 +769,7 @@
 
   const skipUrl = { value: false };
   let lastPushedEmpty = true;
+  const debouncedURLUpdate = createDebouncer(updateURL, 1000);
 
   // --- URL builders ---
 
@@ -816,6 +819,7 @@
   }
 
   function handlePopState(event: PopStateEvent) {
+    debouncedURLUpdate.cancel();
     const state = event.state as {
       type?: string;
       id?: string;
@@ -879,6 +883,7 @@
   }
 
   function openResult(url: string, title: string, newWindow = false, sourceUrl = url) {
+    debouncedURLUpdate.flush();
     if (config.openResultsOnNewTab) newWindow = true;
     sendHistoryBeacon(sourceUrl, title, query);
     openURL(url, newWindow);
@@ -1052,6 +1057,7 @@
   function openReadable(e: Event, url: string, title: string, documentId = '') {
     e.preventDefault();
     if (e.stopPropagation) e.stopPropagation();
+    debouncedURLUpdate.flush();
     if (isDesktop) {
       if (!panelOpen) {
         panelOpen = true;
@@ -1072,6 +1078,7 @@
   }
 
   function enterFullscreen() {
+    debouncedURLUpdate.flush();
     previewFullscreen = true;
     withSkipUrl(skipUrl, () =>
       pushPreviewHistory(panelUrl, panelHintTitle, panelViewingVersion, panelDocumentId),
@@ -1109,6 +1116,7 @@
   function openSelectedResult(e?: KeyboardEvent, isInputFocus?: boolean, newWindow = false) {
     if (e) e.preventDefault();
     if (query.startsWith('!!')) {
+      debouncedURLUpdate.flush();
       openURL(getSearchUrl(config.searchUrl, query.substring(2)), newWindow);
       return;
     }
@@ -1279,6 +1287,7 @@
 
   function openQueryInSearchEngine(e?: KeyboardEvent) {
     if (e) e.preventDefault();
+    debouncedURLUpdate.flush();
     openURL(getSearchUrl(config.searchUrl, query));
   }
   function focusSearchInput(e?: KeyboardEvent, isInputFocus?: boolean) {
@@ -1617,7 +1626,12 @@
     }
   });
   $effect(() => {
-    updateURL();
+    // Read the query synchronously so each edit restarts the URL debounce.
+    const url = buildSearchUrl();
+    if (skipUrl.value || previewFullscreen) return;
+    if (url === window.location.pathname + window.location.search + window.location.hash) return;
+    debouncedURLUpdate.schedule();
+    return debouncedURLUpdate.cancel;
   });
   $effect.pre(() => {
     const urlParams = new URLSearchParams(window.location.search);
@@ -2547,11 +2561,14 @@
                           title={r.title || '*title*'}
                           target={config.openResultsOnNewTab ? '_blank' : undefined}
                           onclick={() => {
+                            debouncedURLUpdate.flush();
                             sendHistoryBeacon(r.url, r.title || '*title*', query);
                           }}
                           onauxclick={(e) => {
-                            if (e.button === 1)
+                            if (e.button === 1) {
+                              debouncedURLUpdate.flush();
                               sendHistoryBeacon(r.url, r.title || '*title*', query);
+                            }
                           }}
                         >
                           {r.title || '*title*'}
