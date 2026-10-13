@@ -30,7 +30,6 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 
-	"charm.land/lipgloss/v2"
 	"github.com/blevesearch/bleve/v2"
 	"github.com/blevesearch/bleve/v2/analysis/analyzer/custom"
 	"github.com/blevesearch/bleve/v2/analysis/token/lowercase"
@@ -38,11 +37,7 @@ import (
 	"github.com/blevesearch/bleve/v2/analysis/tokenizer/unicode"
 	"github.com/blevesearch/bleve/v2/index/scorch"
 	"github.com/blevesearch/bleve/v2/mapping"
-	"github.com/blevesearch/bleve/v2/registry"
 	"github.com/blevesearch/bleve/v2/search"
-	"github.com/blevesearch/bleve/v2/search/highlight"
-	simpleFragmenter "github.com/blevesearch/bleve/v2/search/highlight/fragmenter/simple"
-	simpleHighlighter "github.com/blevesearch/bleve/v2/search/highlight/highlighter/simple"
 	"github.com/blevesearch/bleve/v2/search/query"
 	"github.com/rs/zerolog/log"
 )
@@ -77,6 +72,8 @@ type Indexer struct {
 	maxFileSize       int64
 	sensitivePattern  *regexp.Regexp
 	semanticConfig    config.SemanticSearch
+	snippetLength     int
+	snippetStyles     map[string]string
 	metricsMu         sync.RWMutex
 	metrics           *metrics.Metrics
 }
@@ -380,8 +377,6 @@ func (i *Indexer) indexByName(name string) (bleve.Index, bool) {
 }
 
 var (
-	registerHighlightersOnce sync.Once
-	registerHighlightersErr  error
 	// allFields      []string       = []string{"url", "title", "text", "favicon", "html", "domain", "added", "updated", "type", "user_id"}
 	allFields            []string       = []string{"*"}
 	ErrEmptyFilter                      = errors.New("query must not be empty")
@@ -419,6 +414,10 @@ func handleBleveAsyncError(err error, path string) {
 
 // New creates an independent indexer instance from cfg.
 func New(cfg *config.Config) (*Indexer, error) {
+	styles, err := snippetStyles(cfg.App.SnippetLength)
+	if err != nil {
+		return nil, err
+	}
 	sp := make([]string, 0, len(cfg.SensitiveContentPatterns))
 	for _, v := range cfg.SensitiveContentPatterns {
 		sp = append(sp, v)
@@ -439,6 +438,8 @@ func New(cfg *config.Config) (*Indexer, error) {
 	idx.maxFileSize = defaultMaxFileSize
 	idx.sensitivePattern = sensitivePattern
 	idx.semanticConfig = cfg.SemanticSearch
+	idx.snippetLength = cfg.App.SnippetLength
+	idx.snippetStyles = styles
 	if cfg.Indexer.MaxFileSize > 0 {
 		idx.maxFileSize = cfg.Indexer.MaxFileSize * 1024 * 1024 // bytes
 	}
@@ -469,25 +470,8 @@ func New(cfg *config.Config) (*Indexer, error) {
 			log.Info().Msg("semantic search enabled")
 		}
 	}
-	if err := registerHighlighters(); err != nil {
-		idx.Close()
-		return nil, err
-	}
 	idx.startMaintenance()
 	return idx, nil
-}
-
-func registerHighlighters() error {
-	registerHighlightersOnce.Do(func() {
-		if err := registry.RegisterHighlighter("ansi", invertedAnsiHighlighter); err != nil && !strings.Contains(err.Error(), "duplicate highlighter") {
-			registerHighlightersErr = err
-			return
-		}
-		if err := registry.RegisterHighlighter("tui", tuiHighlighter); err != nil && !strings.Contains(err.Error(), "duplicate highlighter") {
-			registerHighlightersErr = err
-		}
-	})
-	return registerHighlightersErr
 }
 
 func initializeIndexer(basePath string, opts indexOptions, embeddingFingerprint string) (*Indexer, error) {
@@ -1055,20 +1039,6 @@ func validDataKey(key string) bool {
 
 func (i *Indexer) SemanticSearchEnabled() bool {
 	return i != nil && i.embedder != nil && i.vectorStore != nil
-}
-
-// semanticTextPreviewLen is the maximum number of runes returned in
-// MatchedChunk and semantic-only Document.Text fields. Keeps response payloads
-// comparable to Bleve's keyword result snippets.
-const semanticTextPreviewLen = 500
-
-// truncateText trims s to at most maxRunes runes, appending "…" when cut.
-func truncateText(s string, maxRunes int) string {
-	runes := []rune(s)
-	if len(runes) <= maxRunes {
-		return s
-	}
-	return string(runes[:maxRunes]) + "…"
 }
 
 func documentMetadataString(d *document.Document, key string) string {
@@ -1986,14 +1956,11 @@ func (i *Indexer) search(semanticConfig config.SemanticSearch, q *Query) (*Resul
 		req.Size = 100
 	}
 
-	switch q.Highlight {
-	case "HTML":
-		req.Highlight = bleve.NewHighlight()
-		req.Highlight.Fields = []string{"text"}
-	case "text":
-		req.Highlight = bleve.NewHighlightWithStyle("ansi")
-	case "tui":
-		req.Highlight = bleve.NewHighlightWithStyle("tui")
+	if style, ok := i.snippetStyles[q.Highlight]; ok {
+		req.Highlight = bleve.NewHighlightWithStyle(style)
+		if q.Highlight == "HTML" {
+			req.Highlight.Fields = []string{"text"}
+		}
 	}
 
 	// TODO / question: should we store the length of the URL path and sort by it,
@@ -2104,13 +2071,13 @@ func (i *Indexer) search(semanticConfig config.SemanticSearch, q *Query) (*Resul
 					hit := SemanticHit{
 						DocID:        docID,
 						Similarity:   dh.similarity,
-						MatchedChunk: truncateText(dh.chunkText, semanticTextPreviewLen),
+						MatchedChunk: truncateText(dh.chunkText, i.snippetLength),
 					}
 					// For semantic-only hits, populate the document with a truncated text preview.
 					d := i.getByDocID(docID, resultIncludeText|resultIncludeHTML)
 					if d != nil {
 						if _, inKeyword := keywordURLs[d.URL]; !inKeyword {
-							d.Text = truncateText(d.Text, semanticTextPreviewLen)
+							d.Text = truncateText(d.Text, i.snippetLength)
 							hit.Document = d
 						}
 					}
@@ -2521,65 +2488,6 @@ func createMapping(lang string, keepStopwords bool) mapping.IndexMapping {
 func (q *Query) ToJSON() []byte {
 	r, _ := json.Marshal(q)
 	return r
-}
-
-type lipglossFormatter struct {
-	style lipgloss.Style
-}
-
-func newLipglossFormatter(style lipgloss.Style) *lipglossFormatter {
-	return &lipglossFormatter{style: style}
-}
-
-func (f *lipglossFormatter) Format(fragment *highlight.Fragment, orderedTermLocations highlight.TermLocations) string {
-	var sb strings.Builder
-	curr := fragment.Start
-
-	for _, tl := range orderedTermLocations {
-		if tl == nil || !tl.ArrayPositions.Equals(fragment.ArrayPositions) || tl.Start < curr || tl.End > fragment.End {
-			continue
-		}
-		sb.WriteString(string(fragment.Orig[curr:tl.Start]))
-		sb.WriteString(f.style.Render(string(fragment.Orig[tl.Start:tl.End])))
-		curr = tl.End
-	}
-	sb.WriteString(string(fragment.Orig[curr:fragment.End]))
-
-	return sb.String()
-}
-
-func invertedAnsiHighlighter(config map[string]any, cache *registry.Cache) (highlight.Highlighter, error) {
-	fragmenter, err := cache.FragmenterNamed(simpleFragmenter.Name)
-	if err != nil {
-		return nil, fmt.Errorf("error building fragmenter: %v", err)
-	}
-
-	style := lipgloss.NewStyle().Reverse(true)
-	formatter := newLipglossFormatter(style)
-
-	return simpleHighlighter.NewHighlighter(
-		fragmenter,
-		formatter,
-		simpleHighlighter.DefaultSeparator,
-	), nil
-}
-
-func tuiHighlighter(config map[string]any, cache *registry.Cache) (highlight.Highlighter, error) {
-	fragmenter, err := cache.FragmenterNamed(simpleFragmenter.Name)
-	if err != nil {
-		return nil, fmt.Errorf("error building fragmenter: %v", err)
-	}
-
-	style := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("205")).
-		Bold(true)
-	formatter := newLipglossFormatter(style)
-
-	return simpleHighlighter.NewHighlighter(
-		fragmenter,
-		formatter,
-		simpleHighlighter.DefaultSeparator,
-	), nil
 }
 
 func bleveRuntimeConfig() map[string]any {

@@ -38,6 +38,13 @@ description: 'Explore every configuration section, option, default value, enviro
       description: 'Default web UI color scheme. Supported values are automatic, dark, and light. Visitors can override this default from the appearance menu.',
     },
     {
+      name: 'snippet_length',
+      type: 'int',
+      defaultValue: '300',
+      scopes: ['server'],
+      description: 'Maximum number of characters in search result text snippets and semantic previews, excluding highlighting and ellipses. Must be positive. Restart after changing; no reindexing is needed.',
+    },
+    {
       name: 'search_url',
       type: 'string',
       defaultValue: 'https://google.com/search?q={query}',
@@ -1164,6 +1171,19 @@ Personal access tokens continue to work regardless of this setting, so API clien
 The login page hides the username/password form when `oauth_only` is active, showing only the OAuth provider buttons.
 
 > **Note**: Use `oauth_only` with `app.user_handling: true` and at least one configured OAuth provider. Enabling it without a provider leaves users with no browser login path.
+
+## Search Result Context
+
+Increase `app.snippet_length` to show more text around keyword matches and longer semantic previews:
+
+```yaml
+app:
+  snippet_length: 800
+```
+
+The default is 300 characters. The value must be a positive integer. Highlighting and ellipses do not count toward this limit. Short documents and semantic chunks can return less text. Larger values make result cards taller and increase the amount of data returned by each search.
+
+You can also set `HISTER__APP__SNIPPET_LENGTH=800`. Restart Hister after changing the setting. Existing documents use the new length immediately after restart; no reindexing is needed.
 
 ## Language Detection
 

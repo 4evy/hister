@@ -2706,7 +2706,7 @@
                       </div>
                       {#if r.text}
                         <p
-                          class="result-snippet font-inter text-text-brand-secondary line-clamp-3 text-sm leading-[1.45] md:text-base"
+                          class="result-snippet font-inter text-text-brand-secondary text-sm leading-[1.45] md:text-base"
                         >
                           {@html r.text}
                         </p>

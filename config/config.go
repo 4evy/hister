@@ -56,6 +56,7 @@ type App struct {
 	Title                  string `yaml:"title" mapstructure:"title"`
 	Subtitle               string `yaml:"subtitle" mapstructure:"subtitle"`
 	ColorScheme            string `yaml:"color_scheme" mapstructure:"color_scheme"`
+	SnippetLength          int    `yaml:"snippet_length" mapstructure:"snippet_length"`
 	SearchURL              string `yaml:"search_url" mapstructure:"search_url"`
 	AccessToken            string `yaml:"access_token" mapstructure:"access_token"`
 	UserHandling           bool   `yaml:"user_handling" mapstructure:"user_handling"`
@@ -609,6 +610,7 @@ func CreateDefaultConfig() *Config {
 			Title:                  "Hister",
 			Subtitle:               "Your own search engine",
 			ColorScheme:            "automatic",
+			SnippetLength:          300,
 			LogLevel:               "info",
 			OpenResultsOnNewTab:    false,
 			RedirectOnNoResults:    true,
@@ -690,6 +692,9 @@ func parseConfig(rawConfig []byte) (*Config, error) {
 }
 
 func (c *Config) validateBasic() error {
+	if c.App.SnippetLength < 1 {
+		return errors.New("app.snippet_length must be a positive integer")
+	}
 	if _, _, err := c.Server.ListenEndpoint(); err != nil {
 		return err
 	}
