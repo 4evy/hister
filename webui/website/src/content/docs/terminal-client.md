@@ -119,6 +119,30 @@ or `server.` prefixes where applicable. Exit status is `1` if any check fails, a
 completed checks pass or only warnings remain. JSON output remains a complete array when a
 diagnostic check reports an error.
 
+### Maintenance
+
+```bash
+hister reindex
+hister cleanup
+```
+
+Both commands require a running server. `reindex` rebuilds search indexes from stored documents.
+`cleanup` removes indexed local documents that no longer match configured directories, plus
+unreferenced preview and favicon files. See [Data Storage and Lifecycle](data-lifecycle) for
+details about what cleanup removes.
+
+Both commands print a start message and a completion message with elapsed time to stderr.
+When stderr is connected to an interactive terminal, a timer updates every second while the
+command waits for the server to finish. Redirected stderr contains plain messages without
+timer updates. A failed operation reports an error without printing a completion message.
+
+Cleanup also prints its checked, skipped, and removed counts to stdout, so you can save those
+results separately:
+
+```bash
+hister cleanup > cleanup-results.txt
+```
+
 ### Index a URL Manually
 
 To manually index a specific URL:
