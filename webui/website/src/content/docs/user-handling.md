@@ -30,6 +30,8 @@ The cookie uses `SameSite=Lax`. Its `Secure` attribute is enabled when `server.b
 
 If OAuth providers are configured, the login page also shows **Sign in with &lt;Provider&gt;** buttons. See [OAuth Login](#oauth-login) below.
 
+After signing in, Hister returns you to the page you were viewing, including its search query or preview link. This also applies when a session expires or you choose **Login** from the menu. Opening the login page directly takes you to the home page after signing in.
+
 ### OAuth Login
 
 Hister supports signing in via GitHub, Google, or any OpenID Connect provider when `server.oauth` is configured. No password is required for OAuth accounts.

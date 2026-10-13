@@ -16,6 +16,7 @@
     UserRound,
   } from '@lucide/svelte';
   import type { AppConfig } from '#lib/api.js';
+  import { redirectToAuth } from '#lib/auth-navigation.js';
   import { detectExtensionBrowser, extensionStores } from '#lib/extension.js';
   import { showHelp } from '#lib/stores.js';
   import { setThemePreference, type ThemePreference } from '#lib/theme.js';
@@ -213,10 +214,7 @@
             Profile
           </DropdownMenu.Item>
         {:else if showLogin}
-          <DropdownMenu.Item
-            class={menuItem}
-            onSelect={() => (window.location.href = resolve('auth'))}
-          >
+          <DropdownMenu.Item class={menuItem} onSelect={() => redirectToAuth()}>
             <LogIn class="size-4" />
             Login
           </DropdownMenu.Item>

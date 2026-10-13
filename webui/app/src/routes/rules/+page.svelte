@@ -6,7 +6,7 @@
     (node.querySelector('input') as HTMLInputElement | null)?.focus();
   };
   import { fetchConfig, apiFetch, getUserId } from '#lib/api.js';
-  import { resolve } from '$app/paths';
+  import { redirectToAuth } from '#lib/auth-navigation.js';
   import BulkRulesDialog from '#lib/components/BulkRulesDialog.svelte';
   import DeleteMatchingDocumentsDialog from '#lib/components/DeleteMatchingDocumentsDialog.svelte';
   import DeleteMatchingDocumentsOption from '#lib/components/DeleteMatchingDocumentsOption.svelte';
@@ -211,7 +211,7 @@
   onMount(async () => {
     const cfg = await fetchConfig();
     if (cfg.public && !cfg.canWrite) {
-      window.location.href = resolve('auth');
+      redirectToAuth();
       return;
     }
     await loadRules();

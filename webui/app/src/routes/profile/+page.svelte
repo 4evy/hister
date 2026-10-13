@@ -2,6 +2,7 @@
   import { onMount } from 'svelte';
   import { apiFetch, fetchConfig } from '#lib/api.js';
   import { resolve } from '$app/paths';
+  import { redirectToAuth } from '#lib/auth-navigation.js';
   import { Button } from '@hister/components/ui/button';
   import * as Card from '@hister/components/ui/card';
   import * as Dialog from '@hister/components/ui/dialog';
@@ -22,8 +23,12 @@
 
   onMount(async () => {
     const cfg = await fetchConfig();
-    if (cfg.authMode !== 'user' || !cfg.authenticated) {
-      window.location.href = resolve('auth');
+    if (cfg.authMode !== 'user') {
+      window.location.href = resolve('/');
+      return;
+    }
+    if (!cfg.authenticated) {
+      redirectToAuth();
       return;
     }
     apiFetch('/profile')

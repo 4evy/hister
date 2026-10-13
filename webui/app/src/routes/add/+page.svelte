@@ -2,7 +2,7 @@
   import { onMount } from 'svelte';
   import { fetchConfig, apiFetch } from '#lib/api.js';
   import { buildPreviewUrl } from '#lib/preview.js';
-  import { resolve } from '$app/paths';
+  import { redirectToAuth } from '#lib/auth-navigation.js';
   import { Input } from '@hister/components/ui/input';
   import { Textarea } from '@hister/components/ui/textarea';
   import { Label } from '@hister/components/ui/label';
@@ -39,7 +39,7 @@
     try {
       const cfg = await fetchConfig();
       if (cfg.public && !cfg.canWrite) {
-        window.location.href = resolve('auth');
+        redirectToAuth();
       }
     } catch {
       // The form can still render when the standalone dev UI is running without the API.

@@ -8,6 +8,8 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"net/http"
+	"net/url"
+	"strings"
 	"time"
 
 	servererrors "github.com/asciimoo/hister/server/errors"
@@ -21,6 +23,7 @@ const (
 	oauthStateKey       = "oauth_state"
 	oauthProviderKey    = "oauth_provider"
 	oauthVerifierKey    = "oauth_code_verifier"
+	oauthReturnToKey    = "oauth_return_to"
 	oauthRequestTimeout = 10 * time.Second
 )
 
@@ -32,8 +35,36 @@ func generateOAuthState() (string, error) {
 	return hex.EncodeToString(b), nil
 }
 
+// authReturnPath accepts only UI pages beneath the configured base path.
+// Auth and API routes are excluded to prevent redirect loops and chains.
+func authReturnPath(target, prefix string) string {
+	home := prefix + "/"
+	if !strings.HasPrefix(target, "/") || strings.HasPrefix(target, "//") || strings.ContainsAny(target, "\\\r\n") {
+		return home
+	}
+	u, err := url.Parse(target)
+	if err != nil || u.IsAbs() || u.Host != "" || u.User != nil {
+		return home
+	}
+	if u.Path != prefix && !strings.HasPrefix(u.Path, prefix+"/") {
+		return home
+	}
+	page := strings.TrimSuffix(strings.TrimPrefix(u.Path, prefix), "/")
+	switch page {
+	case "", "/add", "/rules", "/history", "/profile", "/help", "/about", "/api-docs", "/preview", "/extractors":
+	default:
+		return home
+	}
+	u.Path = prefix + page
+	if page == "" {
+		u.Path = home
+	}
+	u.RawPath = ""
+	return u.String()
+}
+
 // serveOAuthRedirect starts the OAuth flow for a given provider.
-// It stores the state, provider, and PKCE verifier in the server side session.
+// It stores the state, provider, PKCE verifier, and return path in the server side session.
 func serveOAuthRedirect(c *webContext) {
 	if !c.Config.App.UserHandling {
 		http.Error(c.Response, "user handling is disabled", http.StatusForbidden)
@@ -85,6 +116,7 @@ func serveOAuthRedirect(c *webContext) {
 	session.Values[oauthStateKey] = state
 	session.Values[oauthProviderKey] = providerName
 	session.Values[oauthVerifierKey] = verifier
+	session.Values[oauthReturnToKey] = authReturnPath(c.Request.URL.Query().Get("return_to"), c.Config.BasePathPrefix())
 	if err := session.Save(c.Request, c.Response); err != nil {
 		serve500(c)
 		return
@@ -125,9 +157,11 @@ func serveOAuthCallback(c *webContext) {
 		return
 	}
 	verifier, hasVerifier := session.Values[oauthVerifierKey].(string)
+	returnTo, _ := session.Values[oauthReturnToKey].(string)
 	delete(session.Values, oauthStateKey)
 	delete(session.Values, oauthProviderKey)
 	delete(session.Values, oauthVerifierKey)
+	delete(session.Values, oauthReturnToKey)
 	// Consume the flow before contacting the provider, including on errors.
 	if err := session.Save(c.Request, c.Response); err != nil {
 		serve500(c)
@@ -208,5 +242,7 @@ func serveOAuthCallback(c *webContext) {
 		serve500(c)
 		return
 	}
-	http.Redirect(c.Response, c.Request, c.Config.BaseURL("/"), http.StatusFound)
+	returnPath := authReturnPath(returnTo, c.Config.BasePathPrefix())
+	basePath := (&url.URL{Path: c.Config.BasePathPrefix()}).EscapedPath()
+	http.Redirect(c.Response, c.Request, c.Config.BaseURL(strings.TrimPrefix(returnPath, basePath)), http.StatusFound)
 }

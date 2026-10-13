@@ -787,7 +787,7 @@
     const params = new URLSearchParams();
     if (query) params.set('q', query);
     const search = params.toString();
-    return `${resolve('/')}${search ? `?${search}` : ''}`;
+    return `${resolve('/')}${search ? `?${search}` : ''}${window.location.hash}`;
   }
 
   // --- History state helpers ---

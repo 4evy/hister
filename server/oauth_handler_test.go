@@ -36,9 +36,13 @@ func newOAuthTestServer(t *testing.T) (*config.Config, http.Handler) {
 	return cfg, registerEndpoints(cfg, nil)
 }
 
-func startOAuthLogin(t *testing.T, handler http.Handler, cookie *http.Cookie) (*http.Cookie, url.Values) {
+func startOAuthLogin(t *testing.T, handler http.Handler, cookie *http.Cookie, returnTo ...string) (*http.Cookie, url.Values) {
 	t.Helper()
-	req := httptest.NewRequest(http.MethodGet, "/hister/api/oauth?provider=oidc", nil)
+	params := url.Values{"provider": {"oidc"}}
+	if len(returnTo) > 0 {
+		params.Set("return_to", returnTo[0])
+	}
+	req := httptest.NewRequest(http.MethodGet, "/hister/api/oauth?"+params.Encode(), nil)
 	if cookie != nil {
 		req.AddCookie(cookie)
 	}
@@ -80,10 +84,57 @@ func oauthSessionValues(t *testing.T, cookie *http.Cookie) map[any]any {
 func assertOAuthFlowConsumed(t *testing.T, cookie *http.Cookie) {
 	t.Helper()
 	values := oauthSessionValues(t, cookie)
-	for _, key := range []string{oauthStateKey, oauthProviderKey, oauthVerifierKey} {
+	for _, key := range []string{oauthStateKey, oauthProviderKey, oauthVerifierKey, oauthReturnToKey} {
 		if _, ok := values[key]; ok {
 			t.Errorf("session still contains %s", key)
 		}
+	}
+}
+
+func TestOAuthReturnDestination(t *testing.T) {
+	provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/token" {
+			_, _ = fmt.Fprint(w, `{"access_token":"token"}`)
+		} else {
+			_, _ = fmt.Fprint(w, `{"email":"alice@example.com"}`)
+		}
+	}))
+	t.Cleanup(provider.Close)
+	for _, tc := range []struct {
+		name, target, want string
+	}{
+		{"preview", "/hister/preview?id=https%3A%2F%2Fexample.com%2Farticle#saved-section", "/preview?id=https%3A%2F%2Fexample.com%2Farticle#saved-section"},
+		{"search", "/hister/?q=needle+label%3Aresearch#results", "/?q=needle+label%3Aresearch#results"},
+		{"rules", "/hister/rules#aliases", "/rules#aliases"},
+		{"default", "", "/"},
+		{"external", "https://outside.example/", "/"},
+		{"scheme relative", "//outside.example/", "/"},
+		{"backslash", `/\outside.example/`, "/"},
+		{"outside base", "/preview", "/"},
+		{"base sibling", "/hister-other/preview", "/"},
+		{"traversal", "/hister/../preview", "/"},
+		{"encoded traversal", "/hister/%2e%2e/preview", "/"},
+		{"encoded separator", "/hister/%2f%2foutside.example", "/"},
+		{"auth loop", "/hister/auth?return_to=/hister/auth", "/"},
+		{"API endpoint", "/hister/api/oauth?provider=oidc", "/"},
+		{"invalid escape", "/hister/%xx", "/"},
+		{"control character", "/hister/preview\r\nLocation: https://outside.example/", "/"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg, handler := newOAuthTestServer(t)
+			cfg.Server.OAuth["oidc"].TokenURL = provider.URL + "/token"
+			cfg.Server.OAuth["oidc"].UserInfoURL = provider.URL + "/userinfo"
+			cookie, query := startOAuthLogin(t, handler, nil, tc.target)
+			if query.Has("return_to") {
+				t.Fatal("return destination was exposed to the OAuth provider")
+			}
+			callback := url.Values{"provider": {"oidc"}, "state": {query.Get("state")}, "code": {"code"}, "return_to": {"/hister/about"}}
+			rec := oauthCallback(handler, cookie, callback)
+			if rec.Code != http.StatusFound || rec.Header().Get("Location") != cfg.BaseURL(tc.want) {
+				t.Fatalf("callback status = %d, location = %q, want %q; body = %s", rec.Code, rec.Header().Get("Location"), cfg.BaseURL(tc.want), rec.Body.String())
+			}
+			assertOAuthFlowConsumed(t, responseSessionCookie(t, rec))
+		})
 	}
 }
 
@@ -118,7 +169,7 @@ func TestOAuthPKCEFlow(t *testing.T) {
 						http.Error(w, "session failure", http.StatusInternalServerError)
 						return
 					}
-					for _, key := range []string{oauthStateKey, oauthProviderKey, oauthVerifierKey} {
+					for _, key := range []string{oauthStateKey, oauthProviderKey, oauthVerifierKey, oauthReturnToKey} {
 						if _, ok := values[key]; ok {
 							t.Errorf("token exchange started before consuming %s", key)
 						}
@@ -234,7 +285,7 @@ func TestOAuthCallbackFailures(t *testing.T) {
 			t.Cleanup(provider.Close)
 			cfg.Server.OAuth["oidc"].TokenURL = provider.URL + "/token"
 			cfg.Server.OAuth["oidc"].UserInfoURL = provider.URL + "/userinfo"
-			cookie, query := startOAuthLogin(t, handler, nil)
+			cookie, query := startOAuthLogin(t, handler, nil, "/hister/preview?id=article")
 			callback := url.Values{"provider": {"oidc"}, "state": {query.Get("state")}, "code": {"code"}}
 			wantStatus := http.StatusBadRequest
 			wantCalls := int32(0)
@@ -293,7 +344,7 @@ func TestOAuthCallbackFailures(t *testing.T) {
 
 func TestOAuthNewLoginReplacesPendingFlow(t *testing.T) {
 	_, handler := newOAuthTestServer(t)
-	cookie, first := startOAuthLogin(t, handler, nil)
+	cookie, first := startOAuthLogin(t, handler, nil, "/hister/preview?id=article")
 	cookie, second := startOAuthLogin(t, handler, cookie)
 	if first.Get("state") == second.Get("state") || first.Get("code_challenge") == second.Get("code_challenge") {
 		t.Fatal("new login reused state or verifier")
@@ -304,6 +355,9 @@ func TestOAuthNewLoginReplacesPendingFlow(t *testing.T) {
 	}
 	if oauthSessionValues(t, cookie)[oauthStateKey] != second.Get("state") {
 		t.Fatal("invalid callback consumed the current flow")
+	}
+	if got := oauthSessionValues(t, cookie)[oauthReturnToKey]; got != "/hister/" {
+		t.Fatalf("new login retained the previous return destination: %v", got)
 	}
 }
 

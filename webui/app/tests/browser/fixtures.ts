@@ -17,7 +17,12 @@ export function previewPath(url = original, version?: number) {
 
 export async function mockAPI(
   page: Page,
-  options: { canWrite?: boolean; historyResult?: boolean; pinned?: boolean } = {},
+  options: {
+    canWrite?: boolean;
+    historyResult?: boolean;
+    pinned?: boolean;
+    config?: Record<string, unknown>;
+  } = {},
 ) {
   const result = {
     id: 'document-1',
@@ -60,6 +65,7 @@ export async function mockAPI(
           sort: { field: '', label: '', description: '', options: [] },
           valueSets: {},
         },
+        ...options.config,
       },
       '/api/stats': {
         doc_count: 2,

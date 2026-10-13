@@ -1266,6 +1266,11 @@ func init() {
 					Required:    true,
 					Description: "OAuth provider name (github, google, oidc)",
 				},
+				{
+					Name:        "return_to",
+					Type:        "string",
+					Description: "Local application page to return to after login, including the configured base path; defaults to the home page",
+				},
 			},
 		},
 		{

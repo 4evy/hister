@@ -7,6 +7,7 @@
   import { toast } from '@hister/components/ui/sonner';
   import { fetchConfig, login, loginWithToken, resetConfig } from '#lib/api.js';
   import { setFlashMessage, showFlashMessage } from '#lib/flash.js';
+  import { authReturnPath } from '#lib/auth-navigation.js';
   import { resolve } from '$app/paths';
 
   let authMode = $state<'token' | 'user' | 'none'>('token');
@@ -17,7 +18,11 @@
   let loading = $state(false);
   let oauthProviders = $state<string[]>([]);
   let oauthOnly = $state(false);
-  let basePath = $state('');
+  let basePath = $state(resolve('/').replace(/\/$/, ''));
+
+  function returnDestination(): string {
+    return authReturnPath(new URLSearchParams(window.location.search).get('return_to'), basePath);
+  }
 
   onMount(() => {
     void initializeAuthPage();
@@ -33,7 +38,7 @@
         oauthOnly = cfg.oauthOnly ?? false;
         basePath = cfg.basePath ?? '';
         if (authMode === 'none' || cfg.authenticated) {
-          window.location.href = basePath + '/';
+          window.location.href = returnDestination();
         }
       })
       .catch(() => {});
@@ -56,7 +61,7 @@
       await loginWithToken(token);
       resetConfig();
       setFlashMessage('Signed in successfully.');
-      window.location.href = resolve('/');
+      window.location.href = returnDestination();
     } catch {
       error = 'Invalid password';
       toast.error(error);
@@ -72,7 +77,7 @@
       await login(username, password);
       resetConfig();
       setFlashMessage('Signed in successfully.');
-      window.location.href = resolve('/');
+      window.location.href = returnDestination();
     } catch {
       error = 'Invalid username or password';
       toast.error(error);
@@ -92,7 +97,8 @@
   }
 
   function oauthLogin(provider: string) {
-    window.location.href = basePath + '/api/oauth?provider=' + provider;
+    const params = new URLSearchParams({ provider, return_to: returnDestination() });
+    window.location.href = `${basePath}/api/oauth?${params}`;
   }
 
   const providerLabels: Record<string, string> = {

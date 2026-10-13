@@ -1,5 +1,6 @@
 import { resolve } from '$app/paths';
 import type { SearchCapabilities } from '#lib/search-schema.js';
+import { redirectToAuth } from '#lib/auth-navigation.js';
 
 export interface AppConfig {
   basePath?: string;
@@ -18,6 +19,7 @@ export interface AppConfig {
   username?: string;
   userId?: number;
   oauthOnly?: boolean;
+  oauthProviders?: string[];
   disablePreviews?: boolean;
   semanticEnabled?: boolean;
   semanticWeight?: number;
@@ -50,11 +52,6 @@ function apiPath(path: string): string {
 
 function clearLegacyAccessToken(): void {
   localStorage.removeItem('access-token');
-}
-
-function redirectToAuth(reason: 'auth_required' | 'invalid_token' = 'auth_required'): void {
-  const params = new URLSearchParams({ reason });
-  window.location.href = resolve(`auth?${params.toString()}`);
 }
 
 function getCsrf(): string {
