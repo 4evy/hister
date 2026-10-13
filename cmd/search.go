@@ -3,6 +3,7 @@ package cmd
 import (
 	"fmt"
 	"io"
+	"slices"
 	"strings"
 
 	"github.com/asciimoo/hister/client"
@@ -45,8 +46,13 @@ func searchFilterMap(m map[string]any, fields []string) map[string]any {
 var searchCmd = &cobra.Command{
 	Use:   "search [search terms]",
 	Short: "Search indexed documents",
-	Long:  "Search indexed documents using the running server.\nRun without search terms to open the terminal interface, or provide terms to print results to standard output.",
-	Args:  cobra.MinimumNArgs(0),
+	Long: `Search indexed documents using the running server.
+Run without search terms to open the terminal interface, or provide terms to print results to standard output.
+
+By default, text output shows only the title and URL. Use --fields text to print
+the complete stored text. JSON, JSONL, and CSV include the complete text by default;
+use --fields to select which fields to include. HTML requires --fields html.`,
+	Args: cobra.MinimumNArgs(0),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if len(args) == 0 {
 			return tui.SearchTUI(cfg)
@@ -87,9 +93,10 @@ var searchCmd = &cobra.Command{
 			}
 		}
 
+		includeText := slices.Contains(fields, "text") || (len(fields) == 0 && format != "text")
 		c := newClient()
 		return writeSearchResults(cmd.OutOrStdout(), format, fields, limit,
-			client.SearchQuery{Text: qs, IncludeHTML: includeHTML, Sort: sortMode}, c.Search)
+			client.SearchQuery{Text: qs, IncludeHTML: includeHTML, IncludeText: includeText, Sort: sortMode}, c.Search)
 	},
 }
 

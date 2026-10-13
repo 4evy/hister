@@ -165,6 +165,12 @@ hister search 'domain:example.com' --format jsonl --fields url,text
 hister search 'label:research' --format csv --fields title,url > research.csv
 ```
 
+By default, text output shows only the title and URL. Use `--fields text` (or `-F text`)
+to print the complete stored text without truncation. JSON, JSONL, and CSV include the
+complete text by default. Selecting fields such as `--fields title,url` omits the text.
+HTML is included only when selected with `--fields html`, which can be combined with
+other fields, for example `--fields url,text,html`.
+
 When a text search finds no matches in an interactive terminal, Hister prints a message with
 a spelling suggestion when available, or a hint to broaden the search. An empty search result
 still exits successfully. Redirected or piped text output stays empty, and structured formats
