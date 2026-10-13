@@ -162,6 +162,12 @@ func (c *persistentCrawler) persistentBFS(ctx context.Context, startURL string, 
 
 		finalURL, htmlContent, links, fetchErr := c.fetcher.fetchPage(ctx, cur.URL)
 		if fetchErr != nil {
+			if ctx.Err() != nil {
+				if err := model.UpdateCrawlURLStatus(cur.ID, model.CrawlURLPending, ""); err != nil {
+					return fmt.Errorf("failed to requeue interrupted URL: %w", err)
+				}
+				return model.UpdateCrawlJobStatus(c.jobID, model.CrawlJobInterrupted)
+			}
 			log.Warn().Err(fetchErr).Str("url", cur.URL).Msg("crawler: failed to fetch page")
 			if err := model.UpdateCrawlURLStatus(cur.ID, model.CrawlURLFailed, fetchErr.Error()); err != nil {
 				return fmt.Errorf("failed to mark URL failed: %w", err)

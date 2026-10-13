@@ -82,65 +82,76 @@ func newChromedpFetcher(cfg *config.CrawlerConfig) (*chromedpFetcher, error) {
 }
 
 func (f *chromedpFetcher) fetchPage(ctx context.Context, rawURL string) (string, string, []string, error) {
+	if err := ctx.Err(); err != nil {
+		return "", "", nil, err
+	}
+
 	taskCtx, taskCancel := chromedp.NewContext(f.allocCtx)
 	defer taskCancel()
 
 	timeoutCtx, timeoutCancel := context.WithTimeout(taskCtx, f.timeout)
 	defer timeoutCancel()
+	// Keep the allocator in the context while honoring the caller's cancellation.
+	stopCancel := context.AfterFunc(ctx, timeoutCancel)
+	defer stopCancel()
 
-	var actions []chromedp.Action
+	finalURL, htmlContent, links, err := f.capturePage(timeoutCtx, rawURL)
+	if err != nil && ctx.Err() != nil {
+		return "", "", nil, ctx.Err()
+	}
+	return finalURL, htmlContent, links, err
+}
 
+func (f *chromedpFetcher) capturePage(ctx context.Context, rawURL string) (string, string, []string, error) {
 	if len(f.headers) > 0 {
 		h := make(network.Headers, len(f.headers))
 		for k, v := range f.headers {
 			h[k] = v
 		}
-		actions = append(actions, network.SetExtraHTTPHeaders(h))
+		if _, err := chromedp.Call(ctx, network.SetExtraHTTPHeaders, network.SetExtraHTTPHeadersParams{Headers: h}); err != nil {
+			return "", "", nil, err
+		}
 	}
 
-	if len(f.cookies) > 0 {
-		actions = append(actions, chromedp.ActionFunc(func(ctx context.Context) error {
-			for _, ck := range f.cookies {
-				cookiePath := ck.Path
-				if cookiePath == "" {
-					cookiePath = "/"
-				}
-				expr := cdp.TimeSinceEpoch(time.Now().Add(24 * time.Hour))
-				if err := network.SetCookie(ck.Name, ck.Value).
-					WithDomain(ck.Domain).
-					WithPath(cookiePath).
-					WithExpires(&expr).
-					Do(ctx); err != nil {
-					return err
-				}
-			}
-			return nil
-		}))
+	for _, ck := range f.cookies {
+		cookiePath := ck.Path
+		if cookiePath == "" {
+			cookiePath = "/"
+		}
+		if _, err := chromedp.Call(ctx, network.SetCookie, network.SetCookieParams{
+			Name:    ck.Name,
+			Value:   ck.Value,
+			Domain:  ck.Domain,
+			Path:    cookiePath,
+			Expires: cdp.TimeSinceEpoch(time.Now().Add(24 * time.Hour).Unix()),
+		}); err != nil {
+			return "", "", nil, err
+		}
 	}
 
-	var htmlContent string
-	var linkHrefs []string
-	var finalURL string
-
-	actions = append(
-		actions,
+	actions := []chromedp.Action[chromedp.Void]{
 		chromedp.Navigate(rawURL),
-		chromedp.WaitReady("body", chromedp.ByQuery),
-	)
+		chromedp.WaitReady(chromedp.CSS("body")),
+	}
 	if f.captureDelay > 0 {
 		actions = append(actions, chromedp.Sleep(f.captureDelay))
 	}
-	actions = append(
-		actions,
-		chromedp.Location(&finalURL),
-		chromedp.OuterHTML("html", &htmlContent, chromedp.ByQuery),
-		chromedp.Evaluate(
-			`Array.from(document.querySelectorAll('a[href]')).map(a => a.getAttribute('href'))`,
-			&linkHrefs,
-		),
-	)
+	if err := chromedp.Do(ctx, actions...); err != nil {
+		return "", "", nil, err
+	}
 
-	if err := chromedp.Run(timeoutCtx, actions...); err != nil {
+	finalURL, err := chromedp.Run(ctx, chromedp.Location())
+	if err != nil {
+		return "", "", nil, err
+	}
+	htmlContent, err := chromedp.Run(ctx, chromedp.OuterHTML(chromedp.CSS("html")))
+	if err != nil {
+		return "", "", nil, err
+	}
+	linkHrefs, err := chromedp.Run(ctx, chromedp.Evaluate[[]string](
+		`Array.from(document.querySelectorAll('a[href]')).map(a => a.getAttribute('href'))`,
+	))
+	if err != nil {
 		return "", "", nil, err
 	}
 
