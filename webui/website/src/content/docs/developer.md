@@ -436,6 +436,17 @@ a clear structure, return a template name in `PreviewResponse` and build a
 dedicated Svelte template for it. Code documentation, question and answer
 threads, and recipes often benefit from a tailored layout.
 
+The reusable `issue` template accepts JSON encoded from `sdk.IssuePreview` in
+`PreviewResponse.Content`. Set `Template` to `"issue"`. It supports a title,
+number, repository, URL, state, labels, a description in `body`, and an ordered
+`comments` array. The description and comments use `sdk.IssueComment`, with
+optional `author`, `authorURL`, `createdAt`, and `url` fields plus `bodyHTML`.
+Use plain text for metadata, absolute HTTP or HTTPS URLs for attribution links,
+and sanitized HTML for `bodyHTML`. Resolve relative content URLs before
+sanitizing. The web interface renders the layout, and the terminal client
+converts the same payload into readable text. Include only comments present
+in the saved page.
+
 ### Test Extractors Against Live Websites
 
 Live extractor cases are declared in

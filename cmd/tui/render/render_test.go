@@ -149,6 +149,26 @@ func TestResultDetailsRendersHTMLAsReadableText(t *testing.T) {
 	}
 }
 
+func TestResultDetailsRendersIssueTemplateAsReadableText(t *testing.T) {
+	m := renderModel()
+	m.DetailsURL = "https://github.com/owner/repo/issues/305"
+	m.DetailsPreview = &client.PreviewResponse{
+		Title: "An issue", Template: "issue",
+		Content: `{"title":"An issue","number":"305","repository":"owner/repo","state":"Closed","labels":["bug"],"body":{"author":"alice","createdAt":"2026-04-09T07:47:32Z","bodyHTML":"<p>First paragraph</p><pre><code>go test</code></pre>"},"comments":[{"author":"bob","bodyHTML":"<p>Try verbose</p>"}]}`,
+	}
+	content := ResultDetailsContent(m)
+	for _, want := range []string{"Closed", "#305", "alice", "First paragraph", "go test", "bob", "Try verbose"} {
+		if !strings.Contains(content, want) {
+			t.Errorf("missing %q in %s", want, content)
+		}
+	}
+	for _, unwanted := range []string{`"bodyHTML"`, `<p>`, `"comments"`} {
+		if strings.Contains(content, unwanted) {
+			t.Errorf("unexpected %q in %s", unwanted, content)
+		}
+	}
+}
+
 func TestResultDetailsWrapsDocumentTextToViewport(t *testing.T) {
 	m := renderModel()
 	m.Width = 27

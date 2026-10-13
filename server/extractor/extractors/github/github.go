@@ -67,14 +67,14 @@ var (
 	ownerPattern = `[a-zA-Z0-9-]+`
 	repoPattern  = `[a-zA-Z0-9-._]+`
 
-	urlPattern = fmt.Sprintf(`%s(%s)/(%s)`, githubURLPrefix, ownerPattern, repoPattern)
+	urlPattern = fmt.Sprintf(`%s(%s)/(%s)`, regexp.QuoteMeta(githubURLPrefix), ownerPattern, repoPattern)
 
 	// /owner/repo/...
 	repoRe = regexp.MustCompile(fmt.Sprintf(`^%s`, urlPattern))
 	// /owner/repo/? OR /owner/repo?... OR /owner/repo#...
 	fullRepoRe = regexp.MustCompile(fmt.Sprintf(`^%s(?:#[^/]*|\?[^/]*)?/?$`, urlPattern))
 	// /owner/repo/:id/? OR /owner/repo/:id#...
-	issueRe = regexp.MustCompile(fmt.Sprintf(`^%s/issues/(\d+)(?:#[^/])?/?$`, urlPattern))
+	issueRe = regexp.MustCompile(fmt.Sprintf(`^%s/issues/(\d+)/?(?:\?[^#]*)?(?:#.*)?$`, urlPattern))
 	// /owner/repo/issues
 	issuesRe = regexp.MustCompile(fmt.Sprintf(`^%s/issues/?$`, urlPattern))
 	// /owner/repo/pull/:id/? OR /owner/repo/:id#...
@@ -84,13 +84,14 @@ var (
 type githubPattern = struct {
 	re      *regexp.Regexp
 	handler func(*sdk.Document) sdk.ExtractResult
+	preview func(*sdk.Document) sdk.PreviewResult
 }
 
 var githubPatterns = []githubPattern{
-	{fullRepoRe, extractRepo},
-	{issueRe, extractIssue},
-	{issuesRe, extractIssues},
-	{prRe, extractPull},
+	{fullRepoRe, extractRepo, previewRepo},
+	{issueRe, extractIssue, previewIssue},
+	{issuesRe, extractIssues, previewIssues},
+	{prRe, extractPull, previewPull},
 }
 
 // Match returns true for known github URLs, defined in githubPatterns
@@ -131,57 +132,13 @@ func (e *GitHubExtractor) Extract(d *sdk.Document) sdk.ExtractResult {
 	return sdk.ExtractFallback(fmt.Errorf("no extractor matched for %s", d.URL))
 }
 
-// Preview renders a summary card (description, stars, topics, languages) and
-// the sanitized README HTML suitable for the preview panel.
 func (e *GitHubExtractor) Preview(d *sdk.Document) sdk.PreviewResult {
-	doc, err := goquery.NewDocumentFromReader(strings.NewReader(d.HTML))
-	if err != nil {
-		return sdk.PreviewFallback(err)
-	}
-
-	info := parseRepoPage(doc, d.HTML)
-	if info == nil {
-		return sdk.PreviewFallback(nil)
-	}
-
-	var b strings.Builder
-
-	// Metadata card.
-	b.WriteString(`<div class="gh-meta">`)
-
-	if info.description != "" {
-		fmt.Fprintf(&b, `<p class="gh-description">%s</p>`, stdhtml.EscapeString(info.description))
-	}
-
-	if info.stars != "" || len(info.languages) > 0 {
-		b.WriteString(`<p class="gh-stats">`)
-		parts := make([]string, 0, 2)
-		if info.stars != "" {
-			parts = append(parts, fmt.Sprintf("&#9733; %s stars", stdhtml.EscapeString(info.stars)))
+	for _, p := range githubPatterns {
+		if p.re.MatchString(d.URL) {
+			return p.preview(d)
 		}
-		if len(info.languages) > 0 {
-			parts = append(parts, stdhtml.EscapeString(strings.Join(info.languages, " / ")))
-		}
-		b.WriteString(strings.Join(parts, " &nbsp;&middot;&nbsp; "))
-		b.WriteString("</p>")
 	}
-
-	if len(info.topics) > 0 {
-		b.WriteString(`<p class="gh-topics">`)
-		for _, t := range info.topics {
-			fmt.Fprintf(&b, `<code>%s</code> `, stdhtml.EscapeString(t))
-		}
-		b.WriteString("</p>")
-	}
-
-	b.WriteString("</div>")
-
-	if info.readmeHTML != "" {
-		b.WriteString("<hr>")
-		b.WriteString(sanitizer.SanitizeHTML(info.readmeHTML))
-	}
-
-	return sdk.Previewed(sdk.PreviewResponse{Content: b.String()})
+	return sdk.PreviewFallback(fmt.Errorf("no previewer matched for %s", d.URL))
 }
 
 // --- Repositories --------------------------------------------------------
@@ -199,7 +156,7 @@ func extractRepo(d *sdk.Document) sdk.ExtractResult {
 		return sdk.ExtractFallback(err)
 	}
 
-	info := parseRepoPage(doc, d.HTML)
+	info := parseRepoPage(doc)
 	if info == nil {
 		return sdk.ExtractFallback(nil)
 	}
@@ -254,6 +211,59 @@ func extractRepo(d *sdk.Document) sdk.ExtractResult {
 	return sdk.Extracted()
 }
 
+// Preview renders a summary card (description, stars, topics, languages) and
+// the sanitized README HTML suitable for the preview panel.
+func previewRepo(d *sdk.Document) sdk.PreviewResult {
+	doc, err := goquery.NewDocumentFromReader(strings.NewReader(d.HTML))
+	if err != nil {
+		return sdk.PreviewFallback(err)
+	}
+
+	info := parseRepoPage(doc)
+	if info == nil {
+		return sdk.PreviewFallback(nil)
+	}
+
+	var b strings.Builder
+
+	// Metadata card.
+	b.WriteString(`<div class="gh-meta">`)
+
+	if info.description != "" {
+		fmt.Fprintf(&b, `<p class="gh-description">%s</p>`, stdhtml.EscapeString(info.description))
+	}
+
+	if info.stars != "" || len(info.languages) > 0 {
+		b.WriteString(`<p class="gh-stats">`)
+		parts := make([]string, 0, 2)
+		if info.stars != "" {
+			parts = append(parts, fmt.Sprintf("&#9733; %s stars", stdhtml.EscapeString(info.stars)))
+		}
+		if len(info.languages) > 0 {
+			parts = append(parts, stdhtml.EscapeString(strings.Join(info.languages, " / ")))
+		}
+		b.WriteString(strings.Join(parts, " &nbsp;&middot;&nbsp; "))
+		b.WriteString("</p>")
+	}
+
+	if len(info.topics) > 0 {
+		b.WriteString(`<p class="gh-topics">`)
+		for _, t := range info.topics {
+			fmt.Fprintf(&b, `<code>%s</code> `, stdhtml.EscapeString(t))
+		}
+		b.WriteString("</p>")
+	}
+
+	b.WriteString("</div>")
+
+	if info.readmeHTML != "" {
+		b.WriteString("<hr>")
+		b.WriteString(sanitizer.SanitizeHTML(info.readmeHTML))
+	}
+
+	return sdk.Previewed(sdk.PreviewResponse{Content: b.String()})
+}
+
 // repoInfo holds the extracted fields from a GitHub repository page.
 type repoInfo struct {
 	description string
@@ -268,7 +278,7 @@ var starsRe = regexp.MustCompile(`^([\d,]+)\s+users?\s+starred\s+this\s+reposito
 
 // parseRepoPage extracts repository metadata from the parsed goquery document.
 // Returns nil if the page does not appear to be a repository overview page.
-func parseRepoPage(doc *goquery.Document, rawHTML string) *repoInfo {
+func parseRepoPage(doc *goquery.Document) *repoInfo {
 	info := &repoInfo{}
 
 	// Description: the sidebar "about" paragraph (class varies by page version).
@@ -393,52 +403,7 @@ func richTextFromFiles(v any) string {
 	return ""
 }
 
-// --- Issues --------------------------------------------------------------
-func extractIssue(d *sdk.Document) sdk.ExtractResult {
-	doc, err := goquery.NewDocumentFromReader(strings.NewReader(d.HTML))
-	if err != nil {
-		return sdk.ExtractFallback(err)
-	}
-
-	d.Title = strings.TrimSpace(doc.Find("title").First().Text())
-
-	var b strings.Builder
-	if d.Metadata == nil {
-		d.Metadata = make(map[string]any)
-	}
-	d.Metadata["type"] = "Issue"
-
-	if repo, err := getRepo(d.URL); err == nil {
-		d.Metadata["repo"] = repo
-	}
-
-	if title := doc.Find(`bdi[data-testid="issue-title"]`).Text(); title != "" {
-		d.Metadata["title"] = title
-		fmt.Fprintf(&b, "title: %s\n\n", title)
-	}
-	if dateOpened := doc.Find(`[data-testid="issue-body"] relative-time`).AttrOr("datetime", ""); dateOpened != "" {
-		d.Metadata["date"] = dateOpened
-	}
-
-	if body := doc.Find(`#issue-body-viewer`).Text(); body != "" {
-		fmt.Fprintf(&b, "body: %s\n\n", body)
-	}
-
-	var commentBodies []string
-	doc.Find(`[data-testid="issue-viewer-comments-container"] [data-testid="markdown-body"]`).Each(func(_ int, s *goquery.Selection) {
-		commentBodies = append(commentBodies, strings.TrimSpace(s.Text()))
-	})
-	if len(commentBodies) > 0 {
-		fmt.Fprintf(&b, "comments: %s\n", strings.Join(commentBodies, ", "))
-	}
-
-	d.Text = strings.TrimSpace(b.String())
-	if d.Text == "" && d.Title == "" {
-		return sdk.ExtractFallback(fmt.Errorf("no content found"))
-	}
-	return sdk.Extracted()
-}
-
+// --- Issue lists ---------------------------------------------------------
 func extractIssues(d *sdk.Document) sdk.ExtractResult {
 	doc, err := goquery.NewDocumentFromReader(strings.NewReader(d.HTML))
 	if err != nil {
@@ -526,4 +491,12 @@ func extractPull(d *sdk.Document) sdk.ExtractResult {
 	}
 
 	return sdk.Extracted()
+}
+
+func previewIssues(d *sdk.Document) sdk.PreviewResult {
+	return sdk.PreviewFallback(nil)
+}
+
+func previewPull(d *sdk.Document) sdk.PreviewResult {
+	return sdk.PreviewFallback(nil)
 }

@@ -234,6 +234,12 @@ description, star count, topics, programming languages, and README. Issue and
 pull request results include their page specific metadata and discussion
 content.
 
+Issue previews show the status, labels, description, and comments with their
+authors and dates when available. Formatting, code blocks, links, and task
+completion are preserved. The preview uses the saved page, so comments that
+were not loaded when the page was indexed are not included. Open the original
+issue to see the latest discussion.
+
 **Matches:** `https://github.com/{owner}/{repo}`, its `/issues` list, individual
 `/issues/{number}` pages, and individual `/pull/{number}` pages. GitHub system
 paths such as `/settings`, `/topics`, and `/explore` are excluded.
