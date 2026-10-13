@@ -170,6 +170,12 @@ func RetryEmbeddingJob(docID string, retryAt time.Time, lastError string) error 
 	}
 	retryAt = retryAt.UTC()
 	now := time.Now().UTC()
+	availableAt := "CASE WHEN dirty = ? THEN ? ELSE ? END"
+	if db.Name() == "postgres" {
+		// PostgreSQL resolves untyped CASE branches to text before binding
+		// their time.Time values. SQLite must keep its native time bindings.
+		availableAt = "CASE WHEN dirty = ? THEN CAST(? AS timestamptz) ELSE CAST(? AS timestamptz) END"
+	}
 	return db.Model(&EmbeddingJob{}).
 		Where("doc_id = ? AND status = ?", docID, EmbeddingJobInProgress).
 		Updates(map[string]any{
@@ -179,7 +185,7 @@ func RetryEmbeddingJob(docID string, retryAt time.Time, lastError string) error 
 				"CASE WHEN dirty = ? THEN 0 ELSE attempts END", true,
 			),
 			"available_at": gorm.Expr(
-				"CASE WHEN dirty = ? THEN ? ELSE ? END", true, now, retryAt,
+				availableAt, true, now, retryAt,
 			),
 			"last_error": gorm.Expr(
 				"CASE WHEN dirty = ? THEN '' ELSE ? END", true, lastError,

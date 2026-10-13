@@ -5,11 +5,16 @@
 package model_test
 
 import (
+	"regexp"
+	"strconv"
 	"testing"
 	"time"
 
 	"github.com/asciimoo/hister/server/model"
 	"github.com/asciimoo/hister/server/testutil"
+
+	"gorm.io/driver/postgres"
+	"gorm.io/gorm"
 )
 
 func getEmbeddingJob(t *testing.T, docID string) *model.EmbeddingJob {
@@ -104,9 +109,19 @@ func TestEmbeddingJobRetryAndRecovery(t *testing.T) {
 		t.Fatalf("ClaimNextEmbeddingJob() = %#v, %v", job, err)
 	}
 
-	retryAt := time.Now().Add(time.Hour)
+	retryAt := time.Now().Add(time.Hour).In(time.FixedZone("retry timezone", 9*60*60))
 	if err := model.RetryEmbeddingJob(docID, retryAt, "endpoint unavailable"); err != nil {
 		t.Fatalf("RetryEmbeddingJob() error: %v", err)
+	}
+	stored := getEmbeddingJob(t, docID)
+	if !stored.AvailableAt.Equal(retryAt) {
+		t.Fatalf("retry availability = %v, want %v", stored.AvailableAt, retryAt)
+	}
+	if _, offset := stored.AvailableAt.Zone(); offset != 0 {
+		t.Fatalf("retry availability UTC offset = %d, want 0", offset)
+	}
+	if stored.Status != model.EmbeddingJobPending || stored.Dirty || stored.Attempts != 1 || stored.LastError != "endpoint unavailable" {
+		t.Fatalf("retried job did not preserve the failed attempt: %#v", stored)
 	}
 	if job, err = model.ClaimNextEmbeddingJob(); err != nil || job != nil {
 		t.Fatalf("delayed ClaimNextEmbeddingJob() = %#v, %v, want nil, nil", job, err)
@@ -115,7 +130,7 @@ func TestEmbeddingJobRetryAndRecovery(t *testing.T) {
 	if err := model.ResetInProgressEmbeddingJobs(); err != nil {
 		t.Fatalf("ResetInProgressEmbeddingJobs() error: %v", err)
 	}
-	stored := getEmbeddingJob(t, docID)
+	stored = getEmbeddingJob(t, docID)
 	stored.Status = model.EmbeddingJobInProgress
 	if err := model.DB.Save(stored).Error; err != nil {
 		t.Fatalf("failed to prepare interrupted job: %v", err)
@@ -129,6 +144,62 @@ func TestEmbeddingJobRetryAndRecovery(t *testing.T) {
 	}
 	if stored.AvailableAt.After(time.Now()) {
 		t.Fatalf("recovered job remains delayed until %v", stored.AvailableAt)
+	}
+}
+
+func TestEmbeddingJobRetryPostgresTimestampTypes(t *testing.T) {
+	// Inspect the prepared SQL rather than interpolated logs: PostgreSQL must
+	// resolve the CASE result to a timestamp before any values are bound.
+	db, err := gorm.Open(postgres.Open("host=localhost user=hister dbname=hister sslmode=disable"), &gorm.Config{
+		DryRun:                 true,
+		DisableAutomaticPing:   true,
+		SkipDefaultTransaction: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sqlDB, err := db.DB()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = sqlDB.Close() })
+	originalDB := model.DB
+	model.DB = db
+	t.Cleanup(func() { model.DB = originalDB })
+
+	var query string
+	var args []any
+	if err := db.Callback().Update().After("gorm:update").Register("test:capture_retry", func(tx *gorm.DB) {
+		query = tx.Statement.SQL.String()
+		args = append([]any(nil), tx.Statement.Vars...)
+	}); err != nil {
+		t.Fatal(err)
+	}
+	retryAt := time.Now().Add(time.Hour).In(time.FixedZone("retry timezone", -8*60*60))
+	before := time.Now().UTC()
+	if err := model.RetryEmbeddingJob("https://example.com/retry", retryAt, "endpoint unavailable"); err != nil {
+		t.Fatal(err)
+	}
+	after := time.Now().UTC()
+	casts := regexp.MustCompile(`CAST\(\$(\d+) AS timestamptz\)`).FindAllStringSubmatch(query, -1)
+	if len(casts) != 2 {
+		t.Fatalf("retry timestamps need explicit PostgreSQL types before binding; got SQL: %s", query)
+	}
+	for i, cast := range casts {
+		parameter, err := strconv.Atoi(cast[1])
+		if err != nil || parameter < 1 || parameter > len(args) {
+			t.Fatalf("invalid timestamp parameter %q", cast[1])
+		}
+		value, ok := args[parameter-1].(time.Time)
+		if !ok || value.Location() != time.UTC {
+			t.Fatalf("timestamp parameter %s = %#v, want time.Time in UTC", cast[1], args[parameter-1])
+		}
+		if i == 0 && (value.Before(before) || value.After(after)) {
+			t.Fatalf("immediate retry timestamp = %v, want current time", value)
+		}
+		if i == 1 && !value.Equal(retryAt) {
+			t.Fatalf("delayed retry timestamp = %v, want %v", value, retryAt)
+		}
 	}
 }
 
@@ -265,8 +336,17 @@ func TestDirtyEmbeddingJobRetriesImmediatelyAfterFailure(t *testing.T) {
 	if err := model.EnqueueEmbeddingJob(docID); err != nil {
 		t.Fatalf("active EnqueueEmbeddingJob() error: %v", err)
 	}
+	before := time.Now().UTC()
 	if err := model.RetryEmbeddingJob(docID, time.Now().Add(time.Hour), "old contents failed"); err != nil {
 		t.Fatalf("RetryEmbeddingJob() error: %v", err)
+	}
+	after := time.Now().UTC()
+	stored := getEmbeddingJob(t, docID)
+	if stored.AvailableAt.Before(before) || stored.AvailableAt.After(after) {
+		t.Fatalf("dirty retry availability = %v, want current time", stored.AvailableAt)
+	}
+	if stored.Status != model.EmbeddingJobPending || stored.Dirty || stored.Attempts != 0 || stored.LastError != "" {
+		t.Fatalf("dirty retry did not reset the failed attempt: %#v", stored)
 	}
 
 	job, err = model.ClaimNextEmbeddingJob()
