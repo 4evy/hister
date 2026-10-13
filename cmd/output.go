@@ -7,10 +7,17 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"os"
 	"time"
 
+	"github.com/charmbracelet/x/term"
 	"github.com/spf13/cobra"
 )
+
+func isTerminalWriter(out io.Writer) bool {
+	file, ok := out.(interface{ Fd() uintptr })
+	return ok && os.Getenv("TERM") != "dumb" && term.IsTerminal(file.Fd())
+}
 
 func formatLocalTimestamp(timestamp time.Time) string {
 	return timestamp.Local().Format("2006-01-02 15:04:05")

@@ -134,8 +134,25 @@ func writeSearchResults(out io.Writer, format string, fields []string, limit int
 			}
 		}
 		if res.PageKey == "" || len(res.Documents) == 0 {
+			if total == 0 && format == "text" && isTerminalWriter(out) {
+				return writeEmptySearchResults(out, query.Text, res.QuerySuggestion)
+			}
 			return w.Close()
 		}
 		query.PageKey = res.PageKey
 	}
+}
+
+func writeEmptySearchResults(out io.Writer, query, suggestion string) error {
+	message := fmt.Sprintf("No results found for %q.\n", query)
+	suggestion = strings.TrimSpace(suggestion)
+	if suggestion != "" && suggestion != strings.TrimSpace(query) {
+		message += fmt.Sprintf("Did you mean %q?\n", suggestion)
+	} else {
+		message += "Try fewer words or broader filters.\n"
+	}
+	if _, err := io.WriteString(out, message); err != nil {
+		return fmt.Errorf("write search result: %w", err)
+	}
+	return nil
 }

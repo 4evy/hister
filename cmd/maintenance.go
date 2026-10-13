@@ -3,12 +3,10 @@ package cmd
 import (
 	"fmt"
 	"io"
-	"os"
 	"time"
 
 	"github.com/asciimoo/hister/client"
 
-	"github.com/charmbracelet/x/term"
 	"github.com/spf13/cobra"
 )
 
@@ -63,11 +61,6 @@ func runMaintenance(cmd *cobra.Command, name, activity string, operation func() 
 	}
 	_, err = fmt.Fprintf(out, "%s completed in %s.\n", name, elapsed)
 	return err
-}
-
-func isTerminalWriter(out io.Writer) bool {
-	file, ok := out.(interface{ Fd() uintptr })
-	return ok && os.Getenv("TERM") != "dumb" && term.IsTerminal(file.Fd())
 }
 
 // startMaintenanceProgress returns a function that stops and joins the timer

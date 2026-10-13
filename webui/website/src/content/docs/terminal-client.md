@@ -165,6 +165,11 @@ hister search 'domain:example.com' --format jsonl --fields url,text
 hister search 'label:research' --format csv --fields title,url > research.csv
 ```
 
+When a text search finds no matches in an interactive terminal, Hister prints a message with
+a spelling suggestion when available, or a hint to broaden the search. An empty search result
+still exits successfully. Redirected or piped text output stays empty, and structured formats
+keep the output described below.
+
 Search, indexing summaries, crawl inspection commands, doctor, and file and service import summaries
 share `--format` / `-f`:
 
