@@ -1665,12 +1665,14 @@ func serveFile(c *webContext) {
 		return
 	}
 
-	ext := filepath.Ext(filePath)
-	mimeType := mime.TypeByExtension(ext)
-	if mimeType == "" {
-		mimeType = "text/plain; charset=utf-8"
-	}
-	c.Response.Header().Set("Content-Type", mimeType)
+	// Local files may contain active content. Treat them as untrusted downloads
+	// regardless of their extension, with no script or origin privileges.
+	c.Response.Header().Set("Content-Type", "application/octet-stream")
+	c.Response.Header().Set("Content-Disposition", mime.FormatMediaType("attachment", map[string]string{
+		"filename": filepath.Base(filePath),
+	}))
+	c.Response.Header().Set("X-Content-Type-Options", "nosniff")
+	c.Response.Header().Set("Content-Security-Policy", "sandbox; default-src 'none'")
 	if _, err := c.Response.Write(content); err != nil {
 		log.Warn().Err(err).Msg("failed to write file response")
 	}

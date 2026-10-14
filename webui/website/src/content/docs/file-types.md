@@ -20,6 +20,8 @@ Hister can index local files from configured directories and from explicit impor
 
 Files that do not match a specialized handler are treated as plain text. Binary files are skipped.
 
+Opening a watched local file from search downloads the original file. Use the preview to read its content within Hister.
+
 Watched HTML files use the same extractor chain as browser submissions, including Readability and structured metadata extraction, before language detection. Their original HTML is kept for previews, and their file identity is preserved even when the page contains a canonical URL. Run `hister reindex` after upgrading to extract text and correct language detection for previously indexed local HTML files. Existing remote HTML snapshots must be imported again from the source files.
 
 The same handlers process snapshots created with `hister import file`. These imports are stored as remote file documents. The client sends prepared text, metadata, and any HTML preview content to the server.

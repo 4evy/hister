@@ -948,7 +948,7 @@ func init() {
 			CSRFRequired: false,
 			Public:       true,
 			Handler:      serveFile,
-			Description:  "Serve the raw content of a locally indexed file",
+			Description:  "Download the original content of a locally indexed file",
 			Args: []*EndpointArg{
 				{
 					Name:        "id",
