@@ -148,6 +148,16 @@ type Query struct {
 	// PriorityPatterns contains URL regex patterns whose matching documents
 	// receive a score boost.  Set by doSearch from the user's priority rules.
 	PriorityPatterns []string `json:"priority_patterns,omitempty"`
+	userScoped       bool
+}
+
+// ScopeToUser limits a query to the user's documents and global documents.
+// User zero selects only global documents. The scope cannot be set through
+// JSON; API callers must derive it from their authentication context.
+// Internal queries without an explicit scope retain unrestricted user zero.
+func (q *Query) ScopeToUser(userID uint) {
+	q.UserID = userID
+	q.userScoped = true
 }
 
 // TermCount and RangeCount are the shape of facet buckets returned by Search
@@ -2302,7 +2312,7 @@ func (q *Query) create(text string) (query.Query, error) {
 		sq = bleve.NewConjunctionQuery(sq, dateQuery)
 	}
 
-	if q.UserID > 0 {
+	if q.userScoped || q.UserID > 0 {
 		sq = bleve.NewConjunctionQuery(sq, userDocumentsQuery(q.UserID))
 	}
 

@@ -258,10 +258,7 @@ func serveSPA(c *webContext) {
 
 	// redirect to configured search engine if query string exists but we have no matching results
 	if q != "" && c.Config.App.RedirectOnNoResults {
-		res, err := c.Indexer.Search(&indexer.Query{
-			Text:   c.effectiveRules().ResolveAliases(q),
-			UserID: c.UserID,
-		})
+		res, err := searchIndex(c.Indexer, &indexer.Query{Text: q}, c.effectiveRules(), c.UserID)
 		if errors.Is(err, querybuilder.ErrInvalidQuery) {
 			// Let the app display the diagnostic and keep the query editable.
 			serveIndex(c)
@@ -682,7 +679,7 @@ func searchIndex(idx *indexer.Indexer, query *indexer.Query, rules *config.Rules
 	if rules != nil {
 		query.Text = rules.ResolveAliases(query.Text)
 	}
-	query.UserID = userID
+	query.ScopeToUser(userID)
 	if rules != nil && rules.Priority != nil {
 		query.PriorityPatterns = rules.Priority.ReStrs
 	}
