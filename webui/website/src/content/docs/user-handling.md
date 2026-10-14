@@ -36,7 +36,7 @@ After signing in, Hister returns you to the page you were viewing, including its
 
 Hister supports signing in via GitHub, Google, or any OpenID Connect provider when `server.oauth` is configured. No password is required for OAuth accounts.
 
-When a user signs in via OAuth for the first time, Hister automatically creates a local account linked to their provider identity. GitHub uses the login name. Google uses the account name with the full email address as a fallback. OIDC uses `preferred_username` with the full email address as a fallback. Subsequent logins with the same provider identity reuse the same account.
+When a user signs in via OAuth for the first time, Hister automatically creates a local account linked to their provider identity. The initial Hister username comes from the GitHub login name, the Google account name with the full email address as a fallback, or OIDC's `preferred_username` with the full email address as a fallback. Subsequent logins with the same provider identity reuse the same account. GitHub account links use a permanent account ID, so changing a GitHub username preserves access and does not rename the Hister account.
 
 OAuth accounts work identically to password accounts: they have scoped documents and search results, a personal access token, rules, and aliases. An OAuth user can generate a personal access token from their profile page to use with the CLI or browser extension.
 

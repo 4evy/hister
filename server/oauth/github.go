@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 
 	servererrors "github.com/asciimoo/hister/server/errors"
@@ -92,7 +93,11 @@ func (g GitHubOAuth) GetUserInfo(ctx context.Context, response TokenResponse) (*
 		return nil, fmt.Errorf("github: failed to read UserInfo response: %w", err)
 	}
 
-	var uData userData
+	var uData struct {
+		ID    uint64 `json:"id"`
+		Login string `json:"login"`
+		Email string `json:"email"`
+	}
 
 	if err := json.Unmarshal(uBody, &uData); err != nil {
 		return nil, fmt.Errorf("github: failed to parse UserInfo response: %w", err)
@@ -101,9 +106,14 @@ func (g GitHubOAuth) GetUserInfo(ctx context.Context, response TokenResponse) (*
 	if len(uData.Login) < 1 {
 		return nil, errors.New("github: failed to get user login from UserInfo")
 	}
+	if uData.ID == 0 {
+		return nil, errors.New("github: failed to get user id from UserInfo")
+	}
 
 	return &UserInfoResponse{
-		UID:      "gh-" + uData.Login,
+		// Logins can be renamed and recycled. Keep numeric IDs in a separate
+		// namespace from legacy gh-<login> identities, even for numeric logins.
+		UID:      "github:" + strconv.FormatUint(uData.ID, 10),
 		Email:    uData.Email,
 		Username: uData.Login,
 	}, nil

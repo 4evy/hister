@@ -1062,6 +1062,8 @@ server:
       client_secret: 'your-github-client-secret'
 ```
 
+GitHub sign in identifies your account by its permanent account ID. A GitHub username change keeps the same Hister account.
+
 ### Google Example
 
 Create OAuth credentials in the [Google Cloud Console](https://console.cloud.google.com/). Add `https://your-hister-instance/api/oauth/callback?provider=google` as an authorised redirect URI.
