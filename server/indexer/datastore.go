@@ -5,6 +5,7 @@ package indexer
 import (
 	"compress/gzip"
 	"crypto/sha256"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -93,11 +94,15 @@ func (ds *dataStore) read(subdir, key string) ([]byte, error) {
 // remove makes the operation atomic with respect to concurrent writes or
 // deletes of the same key.
 func (ds *dataStore) deleteIfOrphaned(field, subdir, key string, refCount func(string, string) uint64) {
+	path, err := dataFilePath(ds.dir, subdir, key)
+	if err != nil {
+		log.Warn().Err(err).Str("key", key).Str("subdir", subdir).Msg("ignored invalid stored data reference")
+		return
+	}
 	mu := ds.shard(key)
 	mu.Lock()
 	defer mu.Unlock()
 	if refCount(field, key) == 0 {
-		path := dataFilePath(ds.dir, subdir, key)
 		if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
 			log.Warn().Err(err).Str("key", key).Str("subdir", subdir).Msg("failed to remove orphaned data file")
 		} else {
@@ -136,6 +141,9 @@ func (ds *dataStore) cleanup(field, subdir string, refCount func(string, string)
 		}
 		// parts[3] is the filename with .gz suffix; strip it to get the hash tail.
 		key := parts[0] + parts[1] + parts[2] + parts[3][:len(parts[3])-3]
+		if !validDataKey(key) {
+			return nil
+		}
 		mu := ds.shard(key)
 		mu.Lock()
 		if refCount(field, key) == 0 {
@@ -152,17 +160,36 @@ func (ds *dataStore) cleanup(field, subdir string, refCount func(string, string)
 	return removed, err
 }
 
-// dataFilePath returns the filesystem path for a stored data file.
+func validDataKey(key string) bool {
+	if len(key) != 64 {
+		return false
+	}
+	for _, c := range key {
+		if (c < '0' || c > '9') && (c < 'a' || c > 'f') {
+			return false
+		}
+	}
+	return true
+}
+
+// dataFilePath validates the key before deriving a filesystem path. Stored
+// references may have been imported or saved before submission validation.
 // Layout: {dataDir}/{subdir}/{key[0:2]}/{key[2:4]}/{key[4:6]}/{key[6:]}.gz
-func dataFilePath(dataDir, subdir, key string) string {
-	return filepath.Join(dataDir, subdir, key[0:2], key[2:4], key[4:6], key[6:]+".gz")
+func dataFilePath(dataDir, subdir, key string) (string, error) {
+	if !validDataKey(key) {
+		return "", errors.New("invalid data key")
+	}
+	return filepath.Join(dataDir, subdir, key[0:2], key[2:4], key[4:6], key[6:]+".gz"), nil
 }
 
 // writeFileLocked writes data compressed with gzip to the path derived from
 // key. If the file already exists it is left unchanged (same hash = same
 // content). The caller must hold the relevant shard lock.
 func writeFileLocked(dataDir, subdir, key string, data []byte) error {
-	fpath := dataFilePath(dataDir, subdir, key)
+	fpath, err := dataFilePath(dataDir, subdir, key)
+	if err != nil {
+		return err
+	}
 	if _, err := os.Stat(fpath); err == nil {
 		return nil
 	}
@@ -191,7 +218,10 @@ func writeFileLocked(dataDir, subdir, key string, data []byte) error {
 // readFileLocked decompresses and returns the data file identified by key.
 // The caller must hold the relevant shard lock.
 func readFileLocked(dataDir, subdir, key string) ([]byte, error) {
-	fpath := dataFilePath(dataDir, subdir, key)
+	fpath, err := dataFilePath(dataDir, subdir, key)
+	if err != nil {
+		return nil, err
+	}
 	f, err := os.Open(fpath)
 	if err != nil {
 		return nil, fmt.Errorf("open data file: %w", err)

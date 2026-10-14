@@ -873,6 +873,7 @@ func serveAddPDF(c *webContext) {
 	}
 
 	d := req.Document
+	clearSubmittedStorageReferences(d)
 	if shouldSkipSubmission(c, d) || c.Config.IsSameHost(d.URL) {
 		log.Debug().Str("url", d.URL).Msg("skip indexing pdf")
 		c.Response.WriteHeader(http.StatusNotAcceptable)

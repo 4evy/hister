@@ -1019,22 +1019,7 @@ func (i *Indexer) CleanupDataFiles() (int, int, error) {
 }
 
 func (i *Indexer) ReadFavicon(key string) ([]byte, error) {
-	if !validDataKey(key) {
-		return nil, errors.New("invalid favicon key")
-	}
 	return i.data.read(faviconSubdir, key)
-}
-
-func validDataKey(key string) bool {
-	if len(key) != 64 {
-		return false
-	}
-	for _, c := range key {
-		if (c < '0' || c > '9') && (c < 'a' || c > 'f') {
-			return false
-		}
-	}
-	return true
 }
 
 func (i *Indexer) SemanticSearchEnabled() bool {

@@ -17,6 +17,7 @@ import (
 // cannot override the caller's authorized scope. On rejection it returns the
 // status for the HTTP response or the individual batch operation.
 func prepareDocumentSubmission(c *webContext, d *document.Document) (int, error) {
+	clearSubmittedStorageReferences(d)
 	if err := validateAddDocument(d); err != nil {
 		return http.StatusBadRequest, err
 	}
@@ -26,6 +27,13 @@ func prepareDocumentSubmission(c *webContext, d *document.Document) (int, error)
 	}
 	d.UserID = submittedDocumentUserID(c)
 	return 0, nil
+}
+
+// Storage keys identify server managed blobs, not content supplied by a client.
+// Derive them from submitted HTML and favicon data for every document type.
+func clearSubmittedStorageReferences(d *document.Document) {
+	d.HTMLKey = ""
+	d.FaviconKey = ""
 }
 
 // shouldSkipSubmission checks URL allow and skip rules unless the document carries an
@@ -66,9 +74,7 @@ func validateAddDocument(d *document.Document) error {
 	// bypassing URL and sensitive content checks.
 	d.DocumentID = ""
 	d.Domain = ""
-	d.HTMLKey = ""
 	d.Favicon = ""
-	d.FaviconKey = ""
 	d.Score = 0
 	d.Language = ""
 	d.UserID = 0
