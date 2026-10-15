@@ -37,3 +37,83 @@ summary:focus-visible,
     scroll-behavior: auto;
   }
 }
+
+.landing-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 32px;
+  padding: 17px 24px;
+  background: var(--text-primary);
+  color: white;
+  font-size: 13px;
+  font-weight: 600;
+  text-decoration: none;
+  transition: background 150ms;
+}
+.landing-button:hover {
+  background: #59598f;
+}
+.text-link {
+  font-size: 13px;
+  text-decoration: none;
+  padding: 12px 0;
+  border-bottom: 1px solid currentColor;
+}
+.text-link:hover {
+  color: #59598f;
+}
+.landing-section {
+  max-width: 1384px;
+  margin: auto;
+  padding: 96px 48px;
+}
+.landing-kicker {
+  font:
+    10px 'Fira Code',
+    monospace;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  margin-bottom: 24px;
+}
+.landing-heading {
+  font:
+    700 clamp(36px, 4.5vw, 64px)/1.05 'Outfit',
+    sans-serif;
+  letter-spacing: -0.045em;
+  margin: 0;
+}
+@media (max-width: 700px) {
+  .landing-section {
+    padding: 64px 24px;
+  }
+}
+
+.home-theme {
+  position: relative;
+  isolation: isolate;
+  background: var(--brutal-bg);
+  color: var(--text-primary);
+}
+.home-theme .landing-button {
+  background: var(--hister-indigo);
+  color: #18191b;
+  padding: 13px 20px;
+}
+.home-theme .landing-button:hover {
+  background: var(--hister-coral);
+}
+.home-theme .text-link:hover {
+  color: var(--hister-indigo);
+}
+.home-theme .landing-section {
+  max-width: 1240px;
+  padding-top: 56px;
+  padding-bottom: 56px;
+}
+.home-theme .landing-heading {
+  font:
+    500 clamp(28px, 3vw, 40px)/1.2 'Inter',
+    sans-serif;
+  letter-spacing: -0.04em;
+}

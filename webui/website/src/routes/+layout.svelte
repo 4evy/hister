@@ -1,8 +1,11 @@
 <script lang="ts">
   import '../app.css';
+  import { ModeWatcher } from 'mode-watcher';
+  import { page } from '$app/state';
   import { afterNavigate } from '$app/navigation';
   import Header from '#lib/Header.svelte';
   import Footer from '#lib/Footer.svelte';
+  import AsciiBackground from '#lib/AsciiBackground.svelte';
 
   let { children } = $props();
 
@@ -19,6 +22,8 @@
   });
 </script>
 
+<ModeWatcher modeStorageKey="hister-website-theme" />
+
 <a
   href="#main-content"
   class="border-brutal-border bg-brutal-card shadow-brutal sr-only fixed top-4 left-4 z-50 border-[3px] px-4 py-3 font-bold text-(--text-primary) focus:not-sr-only"
@@ -26,7 +31,8 @@
   Skip to main content
 </a>
 
-<div class="bg-brutal-bg flex min-h-screen flex-col">
+<div class="bg-brutal-bg flex min-h-screen flex-col" class:home-theme={page.url.pathname === '/'}>
+  {#if page.url.pathname === '/'}<AsciiBackground />{/if}
   <Header />
   <main id="main-content" tabindex="-1" class="flex-1 outline-none">
     {@render children()}

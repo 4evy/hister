@@ -1,30 +1,20 @@
 <script lang="ts">
+  import CodebergIcon from '#lib/CodebergIcon.svelte';
+  import GitHubIcon from '#lib/GitHubIcon.svelte';
+  import ArrowUpRight from '@lucide/svelte/icons/arrow-up-right';
+  import ThemeSwitch from '#lib/ThemeSwitch.svelte';
   import { page } from '$app/state';
-  import Menu from '@lucide/svelte/icons/menu';
-  import X from '@lucide/svelte/icons/x';
-  import Heart from '@lucide/svelte/icons/heart';
-  import { Button } from '@hister/components';
-
+  import { afterNavigate } from '$app/navigation';
   let menuOpen = $state(false);
   let menuButton: HTMLButtonElement;
-
   const links = [
+    { href: '/docs', label: 'Documentation' },
     { href: '/datasets', label: 'Datasets' },
-    { href: '/docs', label: 'Docs' },
     { href: '/posts', label: 'Posts' },
+    { href: '/support', label: 'Support' },
   ];
-
-  function isActive(href: string): boolean {
-    if (href === '/') return page.url.pathname === '/';
-    return page.url.pathname.startsWith(href);
-  }
-
-  function ariaCurrent(href: string): 'page' | 'location' | undefined {
-    if (page.url.pathname === href || page.url.pathname === `${href}/`) return 'page';
-    return isActive(href) ? 'location' : undefined;
-  }
-
-  function handleKeydown(event: KeyboardEvent) {
+  afterNavigate(() => (menuOpen = false));
+  function closeOnEscape(event: KeyboardEvent) {
     if (event.key === 'Escape' && menuOpen) {
       menuOpen = false;
       menuButton.focus();
@@ -32,114 +22,150 @@
   }
 </script>
 
-<svelte:window onkeydown={handleKeydown} />
-
-<header class="bg-brutal-bg border-brutal-border w-full border-b-[3px]">
-  <nav aria-label="Primary" class="grid grid-cols-[1fr_auto_1fr] items-center px-6 py-4 md:px-12">
-    <a
-      href="/"
-      aria-current={page.url.pathname === '/' ? 'page' : undefined}
-      class="group font-space flex items-center gap-1.5 justify-self-start text-[28px] font-extrabold tracking-[2px] text-[var(--text-primary)] uppercase no-underline md:gap-2"
+<svelte:window onkeydown={closeOnEscape} />
+<header>
+  <div class="header-bar">
+    <a class="wordmark" href="/" aria-label="Hister home"
+      ><img src="/logo.png" alt="" width="28" height="28" />hister</a
     >
-      <img src="/logo.png" alt="" width="32" height="32" class="h-6 w-6 md:h-8 md:w-8" />
-      <span class="group-hover:underline">Hister</span>
-    </a>
-
-    <ul class="m-0 hidden list-none items-center p-0 md:flex">
-      {#each links as link}
-        <li>
-          <a
-            href={link.href}
-            aria-current={ariaCurrent(link.href)}
-            class="font-space gap-4 px-8 py-8 font-semibold tracking-[1.5px] uppercase no-underline transition-colors hover:underline md:text-sm {isActive(
-              link.href,
-            )
-              ? 'text-[var(--text-primary)]'
-              : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'}"
-          >
-            {link.label}
-          </a>
-        </li>
-      {/each}
-    </ul>
-
-    <div class="hidden items-center gap-4 justify-self-end md:flex">
-      <Button
-        href="/support"
-        aria-current={page.url.pathname === '/support' ? 'page' : undefined}
-        class="bg-hister-rose font-space border-brutal-border h-auto rounded-none border-[3px] px-5 py-2.5 text-[13px] font-semibold tracking-[1px] text-white uppercase no-underline shadow-[3px_3px_0_rgba(0,0,0,0.25)] transition-all hover:translate-x-[2px] hover:translate-y-[2px] hover:shadow-[1px_1px_0_rgba(0,0,0,0.25)]"
-      >
-        <Heart size={14} class="shrink-0 fill-white text-white" />
-        Support
-      </Button>
-      <Button
+    <nav class="desktop-links" aria-label="Primary">
+      {#each links as link}<a
+          href={link.href}
+          aria-current={page.url.pathname.startsWith(link.href) ? 'location' : undefined}
+          >{link.label}</a
+        >{/each}
+    </nav>
+    <div class="utilities">
+      <a
+        class="source-link"
         href="https://github.com/asciimoo/hister"
-        target="_blank"
-        rel="noopener noreferrer"
-        class="bg-hister-indigo font-space border-brutal-border h-auto rounded-none border-[3px] px-5 py-2.5 text-[13px] font-semibold tracking-[1px] text-white uppercase no-underline shadow-[3px_3px_0_rgba(0,0,0,0.25)] transition-all hover:translate-x-[2px] hover:translate-y-[2px] hover:shadow-[1px_1px_0_rgba(0,0,0,0.25)]"
+        aria-label="Hister source on GitHub"
+        ><GitHubIcon />GitHub<ArrowUpRight size={14} aria-hidden="true" /></a
       >
-        GitHub
-      </Button>
+      <a
+        class="source-link"
+        href="https://codeberg.org/asciimoo/hister"
+        aria-label="Hister source on Codeberg"
+        ><CodebergIcon />Codeberg<ArrowUpRight size={14} aria-hidden="true" /></a
+      >
+      <ThemeSwitch />
     </div>
-
     <button
+      class="menu-button"
       bind:this={menuButton}
-      class="cursor-pointer justify-self-end p-2 md:hidden"
       onclick={() => (menuOpen = !menuOpen)}
-      aria-label={menuOpen ? 'Close menu' : 'Open menu'}
       aria-expanded={menuOpen}
-      aria-controls="mobile-navigation"
+      aria-controls="mobile-navigation">{menuOpen ? 'Close −' : 'Menu +'}</button
     >
-      {#if menuOpen}
-        <X size={24} />
-      {:else}
-        <Menu size={24} />
-      {/if}
-    </button>
-  </nav>
-
-  {#if menuOpen}
-    <ul
-      id="mobile-navigation"
-      class="border-brutal-border bg-brutal-bg m-0 flex list-none flex-col gap-4 border-t-[2px] md:hidden"
-    >
-      {#each links as link}
-        <li>
-          <a
-            href={link.href}
-            aria-current={ariaCurrent(link.href)}
-            class="font-space px-6 py-4 text-[15px] font-semibold tracking-[1.5px] uppercase no-underline {isActive(
-              link.href,
-            )
-              ? 'text-[var(--text-primary)]'
-              : 'text-[var(--text-secondary)]'}"
-            onclick={() => (menuOpen = false)}
-          >
-            {link.label}
-          </a>
-        </li>
-      {/each}
-      <li>
-        <Button
-          href="/support"
-          aria-current={page.url.pathname === '/support' ? 'page' : undefined}
-          onclick={() => (menuOpen = false)}
-          class="bg-hister-rose font-space border-brutal-border h-auto w-fit rounded-none border-[3px] px-5 py-2.5 text-[13px] font-semibold tracking-[1px] text-white uppercase no-underline shadow-[3px_3px_0_rgba(0,0,0,0.25)]"
-        >
-          <Heart size={14} class="shrink-0 fill-white text-white" />
-          Support
-        </Button>
-      </li>
-      <li>
-        <Button
-          href="https://github.com/asciimoo/hister"
-          target="_blank"
-          rel="noopener noreferrer"
-          class="bg-hister-indigo font-space border-brutal-border h-auto w-fit rounded-none border-[3px] px-5 py-2.5 text-[13px] font-semibold tracking-[1px] text-white uppercase no-underline shadow-[3px_3px_0_rgba(0,0,0,0.25)]"
-        >
-          GitHub
-        </Button>
-      </li>
-    </ul>
-  {/if}
+  </div>
+  {#if menuOpen}<nav id="mobile-navigation" aria-label="Primary">
+      {#each links as link}<a
+          href={link.href}
+          aria-current={page.url.pathname.startsWith(link.href) ? 'location' : undefined}
+          onclick={() => (menuOpen = false)}>{link.label}</a
+        >{/each}<a class="mobile-source" href="https://github.com/asciimoo/hister"
+        ><GitHubIcon />Source on GitHub<ArrowUpRight size={14} aria-hidden="true" /></a
+      >
+      <a class="mobile-source" href="https://codeberg.org/asciimoo/hister"
+        ><CodebergIcon />Source on Codeberg<ArrowUpRight size={14} aria-hidden="true" /></a
+      >
+    </nav>{/if}
 </header>
+
+<style>
+  header {
+    border-bottom: 1px solid var(--border);
+  }
+  :global(.home-theme) header {
+    border-bottom: 0;
+  }
+  :global(.home-theme) .header-bar {
+    max-width: 1240px;
+  }
+  .header-bar {
+    max-width: 1240px;
+    margin: auto;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 21px 48px;
+    gap: 32px;
+  }
+  a {
+    text-decoration: none;
+  }
+  .wordmark {
+    font:
+      800 29px 'Outfit',
+      sans-serif;
+    letter-spacing: -1.5px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .utilities {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    margin-left: auto;
+  }
+  .desktop-links {
+    margin-left: auto;
+    display: flex;
+    gap: 29px;
+  }
+  .desktop-links a,
+  .source-link,
+  .menu-button {
+    font-size: 13px;
+  }
+  .desktop-links a:hover,
+  .desktop-links a[aria-current],
+  .source-link:hover {
+    text-decoration: underline;
+    text-underline-offset: 5px;
+  }
+  .source-link,
+  .mobile-source {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 44px;
+    white-space: nowrap;
+  }
+  .mobile-source:has(+ .mobile-source) {
+    margin-top: 8px;
+    border-top: 1px solid var(--border);
+  }
+  .menu-button {
+    display: none;
+    cursor: pointer;
+    padding: 10px 0 10px 16px;
+  }
+  #mobile-navigation {
+    padding: 15px 24px 25px;
+    border-top: 1px solid var(--border);
+    display: grid;
+  }
+  #mobile-navigation a {
+    padding: 12px 0;
+    font-size: 14px;
+  }
+  @media (max-width: 940px) {
+    .header-bar {
+      padding: 18px 24px;
+    }
+    .desktop-links,
+    .source-link {
+      display: none;
+    }
+    .menu-button {
+      display: block;
+    }
+  }
+  @media (min-width: 941px) {
+    #mobile-navigation {
+      display: none;
+    }
+  }
+</style>
