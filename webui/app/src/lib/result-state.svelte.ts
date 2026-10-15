@@ -66,6 +66,11 @@ export class ResultState {
     this.labelError = false;
   }
 
+  private labelSaved(label: string) {
+    this.displayLabel = label || undefined;
+    this.labelMessage = label ? 'Label saved.' : 'Label cleared.';
+  }
+
   async updateLabel(url: string) {
     this.labelMessage = null;
     this.labelError = false;
@@ -77,12 +82,16 @@ export class ResultState {
         body: JSON.stringify({ url, label }),
       });
       if (!res.ok) throw new Error('Failed to save label');
-      this.displayLabel = label || undefined;
-      this.labelMessage = label ? 'Label saved.' : 'Label cleared.';
+      this.labelSaved(label);
     } catch {
       this.labelMessage = 'Failed to save label.';
       this.labelError = true;
     }
+  }
+
+  private prioritySaved(remove: boolean) {
+    this.actionsMessage = `Priority result ${remove ? 'removed' : 'added'}.`;
+    this.actionsError = false;
   }
 
   async pin(url: string, title: string, currentQuery: string, remove = false) {
@@ -95,9 +104,8 @@ export class ResultState {
         headers: { 'Content-type': 'application/json; charset=UTF-8' },
         body: JSON.stringify({ url, title: cleanTitle, query: q, pin: !remove }),
       });
-      if (!res.ok) throw new Error('Failed to update priority');
-      this.actionsMessage = `Priority result ${remove ? 'removed' : 'added'}.`;
-      this.actionsError = false;
+      requireActionResponse(res, 'Failed to update priority');
+      this.prioritySaved(remove);
     } catch {
       this.actionsMessage = 'Failed to update priority.';
       this.actionsError = true;
@@ -123,16 +131,24 @@ export class ResultState {
     }
   }
 
+  private async deleteSkipMatches(options: AddSkipRuleOptions) {
+    const { url, domain, type, removeResult, removeResultsByDomain, confirmDeletion } = options;
+    try {
+      const removeMatches =
+        type === 'url' ? () => removeResult(url) : () => removeResultsByDomain(domain);
+      this.actionsMessage = await deleteSkipRuleDocuments(
+        skipRuleDeleteQuery(url, domain, type),
+        confirmDeletion,
+        removeMatches,
+      );
+    } catch {
+      this.actionsMessage = 'Skip rule added, but matching documents could not be deleted.';
+      this.actionsError = true;
+    }
+  }
+
   async addSkipRule(options: AddSkipRuleOptions) {
-    const {
-      url,
-      domain,
-      type,
-      deleteMatches,
-      removeResult,
-      removeResultsByDomain,
-      confirmDeletion,
-    } = options;
+    const { url, type, deleteMatches } = options;
     this.actionsMessage = null;
     this.actionsError = false;
     const pattern = type === 'url' ? buildUrlSkipPattern(url) : buildDomainSkipPattern(url);
@@ -147,17 +163,10 @@ export class ResultState {
       this.actionsMessage = 'Skip rule added.';
       return;
     }
-    try {
-      const removeMatches =
-        type === 'url' ? () => removeResult(url) : () => removeResultsByDomain(domain);
-      this.actionsMessage = await deleteSkipRuleDocuments(
-        skipRuleDeleteQuery(url, domain, type),
-        confirmDeletion,
-        removeMatches,
-      );
-    } catch {
-      this.actionsMessage = 'Skip rule added, but matching documents could not be deleted.';
-      this.actionsError = true;
-    }
+    await this.deleteSkipMatches(options);
   }
+}
+
+function requireActionResponse(res: Response, message: string) {
+  if (!res.ok) throw new Error(message);
 }

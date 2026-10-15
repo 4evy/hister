@@ -90,6 +90,66 @@
   }
 </script>
 
+{#snippet documentActions()}
+  <fieldset disabled={pending} class="flex min-w-0 flex-col gap-2">
+    {#if pinned}
+      <Button
+        variant="outline"
+        class={actionClass}
+        onclick={() => perform(() => resultState.pin(url, title, query, true))}
+      >
+        <PinOff class="size-4" /> Unpin
+      </Button>
+    {:else}
+      <Button
+        bind:ref={pinButton}
+        variant="outline"
+        class={actionClass}
+        onclick={() => showEditor('pin')}
+      >
+        <Pin class="size-4" /> Pin result
+      </Button>
+    {/if}
+    <Button
+      bind:ref={labelButton}
+      variant="outline"
+      class={actionClass}
+      onclick={() => showEditor('label')}
+    >
+      <Tag class="size-4" /> Edit label
+    </Button>
+    <Button
+      bind:ref={skipButton}
+      variant="outline"
+      class={actionClass}
+      onclick={() => showEditor('skip')}
+    >
+      <Ban class="size-4" /> Disable indexing
+    </Button>
+    {#if historyResult}
+      <Button variant="outline" class={actionClass} onclick={() => perform(onForget)}>
+        <Unlink class="size-4" /> Forget for this query
+      </Button>
+      <p class="font-inter text-text-brand-muted text-xs">
+        Stops prioritizing this result for “{query}”. The document remains indexed.
+      </p>
+    {/if}
+    {#if !pinned}
+      <hr class="border-border-brand-muted my-1" />
+      <Button
+        variant="outline"
+        class="{actionClass} border-hister-rose text-hister-rose"
+        onclick={() => {
+          open = false;
+          onDelete?.();
+        }}
+      >
+        <Trash2 class="size-4" /> Delete result
+      </Button>
+    {/if}
+  </fieldset>
+{/snippet}
+
 <Dialog.Root
   bind:open
   onOpenChange={(isOpen) => {
@@ -144,7 +204,7 @@
     <Dialog.Header class="min-w-0 text-left">
       <Dialog.Title
         bind:ref={heading}
-        tabindex="-1"
+        tabindex={-1}
         class="font-outfit text-text-brand text-xl font-bold"
       >
         {titles[view]}
@@ -155,63 +215,7 @@
     </Dialog.Header>
 
     {#if view === 'actions'}
-      <fieldset disabled={pending} class="flex min-w-0 flex-col gap-2">
-        {#if pinned}
-          <Button
-            variant="outline"
-            class={actionClass}
-            onclick={() => perform(() => resultState.pin(url, title, query, true))}
-          >
-            <PinOff class="size-4" /> Unpin
-          </Button>
-        {:else}
-          <Button
-            bind:ref={pinButton}
-            variant="outline"
-            class={actionClass}
-            onclick={() => showEditor('pin')}
-          >
-            <Pin class="size-4" /> Pin result
-          </Button>
-        {/if}
-        <Button
-          bind:ref={labelButton}
-          variant="outline"
-          class={actionClass}
-          onclick={() => showEditor('label')}
-        >
-          <Tag class="size-4" /> Edit label
-        </Button>
-        <Button
-          bind:ref={skipButton}
-          variant="outline"
-          class={actionClass}
-          onclick={() => showEditor('skip')}
-        >
-          <Ban class="size-4" /> Disable indexing
-        </Button>
-        {#if historyResult}
-          <Button variant="outline" class={actionClass} onclick={() => perform(onForget)}>
-            <Unlink class="size-4" /> Forget for this query
-          </Button>
-          <p class="font-inter text-text-brand-muted text-xs">
-            Stops prioritizing this result for “{query}”. The document remains indexed.
-          </p>
-        {/if}
-        {#if !pinned}
-          <hr class="border-border-brand-muted my-1" />
-          <Button
-            variant="outline"
-            class="{actionClass} border-hister-rose text-hister-rose"
-            onclick={() => {
-              open = false;
-              onDelete?.();
-            }}
-          >
-            <Trash2 class="size-4" /> Delete result
-          </Button>
-        {/if}
-      </fieldset>
+      {@render documentActions()}
     {:else if view === 'pin'}
       <form
         onsubmit={(event) => {

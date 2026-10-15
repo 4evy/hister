@@ -63,6 +63,7 @@
   } from '#lib/query-suggestions.js';
   import type { QuerySuggestion } from '#lib/query-suggestions.js';
   import { animate } from 'animejs';
+  import { SearchResultCard } from '@hister/components';
   import { Input } from '@hister/components/ui/input';
   import { Button } from '@hister/components/ui/button';
   import { Badge } from '@hister/components/ui/badge';
@@ -2539,57 +2540,53 @@
                       : 'hister-cyan'}
                   {@const state = getResultState(r.url, r.label)}
                   {@const resultDate = r.updated || r.added}
-                  <article
-                    data-result
-                    class="result-card flex w-full scroll-my-[6em] gap-3 transition-all duration-150"
-                    class:result-card-active={i === highlightIdx}
-                    class:mt-2.5={i !== 0}
-                    style="--result-color: var(--{color});"
+                  <SearchResultCard
+                    url={r.url}
+                    href={fileResultUrl(r.url, r.id, r.title || '*title*')}
+                    title={r.title || '*title*'}
+                    htmlSnippet={r.text}
+                    active={i === highlightIdx}
+                    color={`var(--${color})`}
+                    class={i !== 0 ? 'mt-2.5' : ''}
+                    target={config.openResultsOnNewTab ? '_blank' : undefined}
+                    onclick={() => {
+                      debouncedURLUpdate.flush();
+                      sendHistoryBeacon(r.url, r.title || '*title*', query);
+                    }}
+                    onauxclick={(event) => {
+                      if (event.button === 1) {
+                        debouncedURLUpdate.flush();
+                        sendHistoryBeacon(r.url, r.title || '*title*', query);
+                      }
+                    }}
                   >
-                    <div class="w-0 min-w-0 flex-1 space-y-0.5">
-                      <div class="flex min-w-0 items-start gap-1.5">
-                        <ResultFavicon
-                          favicon={r.favicon}
-                          faviconKey={r.favicon_key}
-                          pinned={r.isPinned}
-                          class="mt-0.5"
-                        />
-                        <a
-                          data-result-link={r.url}
-                          href={fileResultUrl(r.url, r.id, r.title || '*title*')}
-                          class="result-title font-outfit text-md line-clamp-3 min-w-0 flex-1 font-semibold hover:underline md:text-xl"
-                          title={r.title || '*title*'}
-                          target={config.openResultsOnNewTab ? '_blank' : undefined}
-                          onclick={() => {
-                            debouncedURLUpdate.flush();
-                            sendHistoryBeacon(r.url, r.title || '*title*', query);
-                          }}
-                          onauxclick={(e) => {
-                            if (e.button === 1) {
-                              debouncedURLUpdate.flush();
-                              sendHistoryBeacon(r.url, r.title || '*title*', query);
-                            }
-                          }}
-                        >
-                          {r.title || '*title*'}
-                        </a>
-                        <ResultActionsMenu
-                          url={r.url}
-                          title={r.title || '*title*'}
-                          domain={r.domain}
-                          resultState={state}
-                          {query}
-                          pinned={r.isPinned}
-                          historyResult={r.isHistoryResult}
-                          canWrite={config.canWrite}
-                          onForget={() => sendQuery(query)}
-                          onDelete={r.isPinned || !config.canWrite
-                            ? undefined
-                            : () => deleteResult(r.url)}
-                          {removeResult}
-                          {removeResultsByDomain}
-                        />
-                      </div>
+                    {#snippet leading()}
+                      <ResultFavicon
+                        favicon={r.favicon}
+                        faviconKey={r.favicon_key}
+                        pinned={r.isPinned}
+                        class="mt-0.5"
+                      />
+                    {/snippet}
+                    {#snippet actions()}
+                      <ResultActionsMenu
+                        url={r.url}
+                        title={r.title || '*title*'}
+                        domain={r.domain}
+                        resultState={state}
+                        {query}
+                        pinned={r.isPinned}
+                        historyResult={r.isHistoryResult}
+                        canWrite={config.canWrite}
+                        onForget={() => sendQuery(query)}
+                        onDelete={r.isPinned || !config.canWrite
+                          ? undefined
+                          : () => deleteResult(r.url)}
+                        {removeResult}
+                        {removeResultsByDomain}
+                      />
+                    {/snippet}
+                    {#snippet metadata()}
                       <div
                         class="result-meta flex max-w-full min-w-0 flex-wrap items-center gap-x-3 gap-y-1"
                       >
@@ -2704,15 +2701,8 @@
                           {/if}
                         </div>
                       </div>
-                      {#if r.text}
-                        <p
-                          class="result-snippet font-inter text-text-brand-secondary text-sm leading-[1.45] md:text-base"
-                        >
-                          {@html r.text}
-                        </p>
-                      {/if}
-                    </div>
-                  </article>
+                    {/snippet}
+                  </SearchResultCard>
                 {/each}
               {/if}
             {:else if !searchPending && query && lastResults}
@@ -3276,108 +3266,6 @@
     backdrop-filter: blur(8px);
   }
 
-  .result-card {
-    position: relative;
-    container-type: inline-size;
-    min-width: 0;
-    max-width: 100%;
-    overflow: hidden;
-    border: 0;
-    background: transparent;
-    padding: 0.2rem 0;
-    box-shadow: none;
-  }
-
-  .result-card:hover {
-    background: linear-gradient(
-      90deg,
-      color-mix(in srgb, var(--result-color) 4%, transparent),
-      transparent 44%
-    );
-  }
-
-  .result-domain {
-    color: color-mix(in srgb, var(--result-color) 70%, var(--text-primary-brand));
-  }
-
-  .result-meta {
-    color: var(--text-muted-brand);
-  }
-
-  .result-card-active {
-    border-left: 3px solid var(--result-color);
-    background: linear-gradient(
-      90deg,
-      color-mix(in srgb, var(--result-color) 8%, transparent),
-      color-mix(in srgb, var(--result-color) 2%, transparent) 62%,
-      transparent
-    );
-    padding-left: 0.75rem;
-    box-shadow: none;
-  }
-
-  :global(.results-list-panel) .result-card:not(.result-card-active),
-  :global(.results-list-panel) .result-card-active {
-    width: calc(100% - 1.5rem);
-    max-width: 100%;
-    overflow: hidden;
-  }
-
-  :global(.results-list-panel) .result-card-active {
-    box-shadow: none;
-  }
-
-  .result-title {
-    color: color-mix(in srgb, var(--result-color) 82%, var(--text-primary-brand));
-    overflow-wrap: anywhere;
-    word-break: break-word;
-  }
-
-  .result-title:hover {
-    color: var(--result-color);
-  }
-
-  .result-snippet {
-    overflow-wrap: anywhere;
-    word-break: break-word;
-  }
-
-  :global(.result-label) {
-    overflow-wrap: anywhere;
-    word-break: break-word;
-    white-space: normal;
-  }
-
-  .result-url-text,
-  .result-url-text .result-domain,
-  .result-url-text .result-path {
-    overflow-wrap: normal;
-    white-space: nowrap;
-    word-break: normal;
-  }
-
-  @container (max-width: 360px) {
-    .result-meta {
-      flex-wrap: wrap;
-      overflow: visible;
-    }
-
-    .result-url-line {
-      flex-basis: 100%;
-      width: 100%;
-    }
-
-    .result-secondary-meta {
-      flex-basis: 100%;
-    }
-  }
-
-  :global(.result-snippet mark) {
-    color: var(--text-primary-brand);
-    background: color-mix(in srgb, var(--hister-amber) 18%, transparent);
-    padding: 0 0.12em;
-  }
-
   :global(.dark) .home-search {
     background: var(--card-surface);
     box-shadow:
@@ -3397,36 +3285,5 @@
 
   :global(.dark) .results-toolbar {
     background: color-mix(in srgb, var(--card-surface) 88%, transparent);
-  }
-
-  :global(.dark) .result-card {
-    box-shadow: none;
-  }
-
-  :global(.dark) .result-card:hover {
-    background: linear-gradient(
-      90deg,
-      color-mix(in srgb, var(--result-color) 7%, transparent),
-      transparent 46%
-    );
-  }
-
-  :global(.dark) .result-title {
-    color: color-mix(in srgb, var(--result-color) 88%, white);
-  }
-
-  :global(.dark) .result-card-active {
-    border-left-color: var(--result-color);
-    background: linear-gradient(
-      90deg,
-      color-mix(in srgb, var(--result-color) 10%, transparent),
-      color-mix(in srgb, var(--result-color) 4%, transparent) 58%,
-      transparent
-    );
-    box-shadow: none;
-  }
-
-  :global(.dark .results-list-panel .result-card-active) {
-    box-shadow: none;
   }
 </style>

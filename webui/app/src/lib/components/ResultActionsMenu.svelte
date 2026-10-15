@@ -94,6 +94,124 @@
   }
 </script>
 
+{#snippet documentMenu()}
+  <DropdownMenu.Content
+    class="border-brutal-border bg-card-surface {pinned
+      ? 'w-72'
+      : 'w-100'} rounded-none border-[3px] p-3 shadow-[4px_4px_0_var(--brutal-shadow)]"
+  >
+    <div class="space-y-3">
+      <div class="space-y-2">
+        {#if pinned}
+          <p
+            class="font-outfit text-text-brand-muted mb-1 text-xs font-bold tracking-widest uppercase"
+          >
+            Priority
+          </p>
+          <Button
+            variant="outline"
+            size="sm"
+            class="border-hister-rose text-hister-rose hover:bg-hister-rose/10 w-full border-[2px] text-xs"
+            onclick={() => resultState.pin(url, title, query, true)}
+          >
+            <PinOff class="size-3.5" />
+            Unpin
+          </Button>
+        {:else}
+          <p class="font-outfit mb-1 text-xs font-bold tracking-widest uppercase">
+            Prioritize this result in query:
+          </p>
+          <div class="flex items-center gap-2">
+            <Input
+              bind:value={resultState.actionsQuery}
+              placeholder="Query.."
+              class="font-inter border-border-brand-muted focus-visible:border-hister-indigo flex-1 border-[2px] text-sm shadow-none focus-visible:ring-0"
+            />
+            <Button
+              variant="outline"
+              size="sm"
+              class="border-hister-indigo text-hister-indigo border-[2px] text-xs"
+              onclick={() => resultState.pin(url, title, query)}
+            >
+              <Pin class="size-3.5" />
+              Pin
+            </Button>
+          </div>
+          <hr />
+        {/if}
+        {#if historyResult}
+          <p class="font-inter text-text-brand-muted text-xs">
+            Stops prioritizing this result for “{query}”. The document remains indexed.
+          </p>
+          <Button
+            variant="outline"
+            size="sm"
+            class="border-hister-rose text-hister-rose hover:bg-hister-rose/10 w-full border-[2px] text-xs"
+            onclick={forgetResult}
+          >
+            <Unlink class="size-3.5" />
+            Forget for this query
+          </Button>
+        {/if}
+      </div>
+      <SkipRuleActions onAddSkipRule={addSkipRule} />
+      <hr />
+      <div class="space-y-2">
+        <p class="font-outfit mb-1 text-xs font-bold tracking-widest uppercase">Label:</p>
+        <div class="flex items-center gap-2">
+          <Input
+            bind:value={resultState.labelInput}
+            placeholder="Add a label…"
+            class="font-inter border-border-brand-muted focus-visible:border-hister-amber flex-1 border-[2px] text-sm shadow-none focus-visible:ring-0"
+          />
+          <Button
+            variant="outline"
+            size="sm"
+            class="border-[2px] text-xs"
+            onclick={() => resultState.updateLabel(url)}
+          >
+            <Tag class="size-3.5" />
+            Save
+          </Button>
+        </div>
+        {#if resultState.labelMessage}
+          <p
+            class="font-inter text-xs {resultState.labelError
+              ? 'text-hister-rose'
+              : 'text-hister-teal'}"
+          >
+            {resultState.labelMessage}
+          </p>
+        {/if}
+      </div>
+      {#if !pinned}
+        <hr />
+        <Button
+          variant="outline"
+          size="sm"
+          class="border-hister-rose text-hister-rose hover:bg-hister-rose/10 w-full border-[2px] text-xs"
+          onclick={() => {
+            open = false;
+            onDelete?.();
+          }}
+        >
+          <Trash2 class="size-3.5" />
+          Delete result
+        </Button>
+      {/if}
+      {#if resultState.actionsMessage}
+        <p
+          class="font-inter text-xs {resultState.actionsError
+            ? 'text-hister-rose'
+            : 'text-hister-teal'}"
+        >
+          {resultState.actionsMessage}
+        </p>
+      {/if}
+    </div>
+  </DropdownMenu.Content>
+{/snippet}
+
 {#if canWrite}
   {#if mobile}
     <ResultActionsSheet
@@ -129,123 +247,7 @@
           </Button>
         {/snippet}
       </DropdownMenu.Trigger>
-      <DropdownMenu.Content
-        class="border-brutal-border bg-card-surface {pinned
-          ? 'w-72'
-          : 'w-100'} rounded-none border-[3px] p-3 shadow-[4px_4px_0_var(--brutal-shadow)]"
-      >
-        <div class="space-y-3">
-          <div class="space-y-2">
-            {#if pinned}
-              <p
-                class="font-outfit text-text-brand-muted mb-1 text-xs font-bold tracking-widest uppercase"
-              >
-                Priority
-              </p>
-              <Button
-                variant="outline"
-                size="sm"
-                class="border-hister-rose text-hister-rose hover:bg-hister-rose/10 w-full border-[2px] text-xs"
-                onclick={() => resultState.pin(url, title, query, true)}
-              >
-                <PinOff class="size-3.5" />
-                Unpin
-              </Button>
-            {:else}
-              <p class="font-outfit mb-1 text-xs font-bold tracking-widest uppercase">
-                Prioritize this result in query:
-              </p>
-              <div class="flex items-center gap-2">
-                <Input
-                  bind:value={resultState.actionsQuery}
-                  placeholder="Query.."
-                  size="sm"
-                  class="font-inter border-border-brand-muted focus-visible:border-hister-indigo flex-1 border-[2px] text-sm shadow-none focus-visible:ring-0"
-                />
-                <Button
-                  variant="outline"
-                  size="sm"
-                  class="border-hister-indigo text-hister-indigo border-[2px] text-xs"
-                  onclick={() => resultState.pin(url, title, query)}
-                >
-                  <Pin class="size-3.5" />
-                  Pin
-                </Button>
-              </div>
-              <hr />
-            {/if}
-            {#if historyResult}
-              <p class="font-inter text-text-brand-muted text-xs">
-                Stops prioritizing this result for “{query}”. The document remains indexed.
-              </p>
-              <Button
-                variant="outline"
-                size="sm"
-                class="border-hister-rose text-hister-rose hover:bg-hister-rose/10 w-full border-[2px] text-xs"
-                onclick={forgetResult}
-              >
-                <Unlink class="size-3.5" />
-                Forget for this query
-              </Button>
-            {/if}
-          </div>
-          <SkipRuleActions onAddSkipRule={addSkipRule} />
-          <hr />
-          <div class="space-y-2">
-            <p class="font-outfit mb-1 text-xs font-bold tracking-widest uppercase">Label:</p>
-            <div class="flex items-center gap-2">
-              <Input
-                bind:value={resultState.labelInput}
-                placeholder="Add a label…"
-                size="sm"
-                class="font-inter border-border-brand-muted focus-visible:border-hister-amber flex-1 border-[2px] text-sm shadow-none focus-visible:ring-0"
-              />
-              <Button
-                variant="outline"
-                size="sm"
-                class="border-[2px] text-xs"
-                onclick={() => resultState.updateLabel(url)}
-              >
-                <Tag class="size-3.5" />
-                Save
-              </Button>
-            </div>
-            {#if resultState.labelMessage}
-              <p
-                class="font-inter text-xs {resultState.labelError
-                  ? 'text-hister-rose'
-                  : 'text-hister-teal'}"
-              >
-                {resultState.labelMessage}
-              </p>
-            {/if}
-          </div>
-          {#if !pinned}
-            <hr />
-            <Button
-              variant="outline"
-              size="sm"
-              class="border-hister-rose text-hister-rose hover:bg-hister-rose/10 w-full border-[2px] text-xs"
-              onclick={() => {
-                open = false;
-                onDelete?.();
-              }}
-            >
-              <Trash2 class="size-3.5" />
-              Delete result
-            </Button>
-          {/if}
-          {#if resultState.actionsMessage}
-            <p
-              class="font-inter text-xs {resultState.actionsError
-                ? 'text-hister-rose'
-                : 'text-hister-teal'}"
-            >
-              {resultState.actionsMessage}
-            </p>
-          {/if}
-        </div>
-      </DropdownMenu.Content>
+      {@render documentMenu()}
     </DropdownMenu.Root>
   {/if}
   <DeleteMatchingDocumentsDialog
