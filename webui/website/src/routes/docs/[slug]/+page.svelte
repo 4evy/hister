@@ -1,9 +1,5 @@
 <script lang="ts">
-  import ArrowLeft from '@lucide/svelte/icons/arrow-left';
-  import ArrowRight from '@lucide/svelte/icons/arrow-right';
-  import ChevronDownIcon from '@lucide/svelte/icons/chevron-down';
   import ListIcon from '@lucide/svelte/icons/list';
-  import { Button, Separator } from '@hister/components';
   import ImageLightbox from '#lib/ImageLightbox.svelte';
   import Seo from '#lib/Seo.svelte';
 
@@ -31,7 +27,9 @@
     const article = document.querySelector('[data-doc-content]');
     if (!article) return;
 
-    const headings = article.querySelectorAll('h2, h3');
+    const headings = Array.from(article.querySelectorAll('h2, h3')).filter(
+      (heading) => !heading.closest('.config-option'),
+    );
     const nextToc = Array.from(headings).map((h) => ({
       id: h.id,
       text: h.textContent ?? '',
@@ -56,6 +54,47 @@
   });
 </script>
 
+{#snippet mobilePageOutline()}
+  <details class="page-outline group">
+    <summary
+      class="flex cursor-pointer list-none items-center gap-3 px-4 py-3 [&::-webkit-details-marker]:hidden"
+    >
+      <ListIcon aria-hidden="true" size={18} class="text-hister-indigo shrink-0" />
+      <span class="min-w-0 flex-1">
+        <span
+          class="font-fira block text-[9px] font-bold tracking-[1.5px] text-(--text-secondary) uppercase"
+          >On this page</span
+        >
+        <span class="font-inter block truncate text-sm font-semibold text-(--text-primary)"
+          >{activeEntry?.text}</span
+        >
+      </span>
+      <span aria-hidden="true" class="group-open:hidden">+</span>
+      <span aria-hidden="true" class="hidden group-open:inline">−</span>
+    </summary>
+    <nav
+      aria-label="On this page"
+      class="max-h-[50dvh] overflow-y-auto border-t border-(--border) p-2"
+    >
+      {#each toc as entry}
+        <a
+          href="#{entry.id}"
+          aria-current={activeId === entry.id ? 'location' : undefined}
+          onclick={closePageNavigation}
+          class="font-inter block border-l-2 py-2 text-sm no-underline transition-colors {entry.level ===
+          3
+            ? 'pl-6'
+            : 'pl-3'} {activeId === entry.id
+            ? 'border-hister-indigo bg-hister-indigo/10 font-semibold text-(--text-primary)'
+            : 'border-transparent text-(--text-secondary) hover:bg-(--muted-surface) hover:text-(--text-primary)'}"
+        >
+          {entry.text}
+        </a>
+      {/each}
+    </nav>
+  </details>
+{/snippet}
+
 <Seo
   title={`${data.meta.title} | Hister Documentation`}
   description={(data.meta.description as string) ??
@@ -75,126 +114,55 @@
   ]}
 />
 
-<div class="flex gap-10">
-  <article class="min-w-0 flex-1" data-doc-content>
+<div class="doc-layout">
+  <article class="doc-article" data-doc-content>
     {#if toc.length > 0}
-      <details class="group border-brutal-border bg-brutal-card mb-8 border-[3px] xl:hidden">
-        <summary
-          class="flex cursor-pointer list-none items-center gap-3 px-4 py-3 [&::-webkit-details-marker]:hidden"
-        >
-          <ListIcon aria-hidden="true" size={18} class="text-hister-indigo shrink-0" />
-          <span class="min-w-0 flex-1">
-            <span
-              class="font-space block text-[9px] font-bold tracking-[1.5px] text-(--text-secondary) uppercase"
-              >On this page</span
-            >
-            <span class="font-inter block truncate text-sm font-semibold text-(--text-primary)"
-              >{activeEntry?.text}</span
-            >
-          </span>
-          <ChevronDownIcon
-            aria-hidden="true"
-            size={18}
-            class="shrink-0 transition-transform group-open:rotate-180"
-          />
-        </summary>
-        <nav
-          aria-label="On this page"
-          class="border-brutal-border max-h-[50vh] overflow-y-auto border-t-[2px] p-2"
-        >
-          {#each toc as entry}
-            <a
-              href="#{entry.id}"
-              aria-current={activeId === entry.id ? 'location' : undefined}
-              onclick={closePageNavigation}
-              class="font-inter block border-l-[3px] py-2 text-sm no-underline transition-colors {entry.level ===
-              3
-                ? 'pl-6'
-                : 'pl-3'} {activeId === entry.id
-                ? 'border-hister-indigo bg-hister-indigo/10 font-semibold text-(--text-primary)'
-                : 'border-transparent text-(--text-secondary) hover:bg-(--muted-surface) hover:text-(--text-primary)'}"
-            >
-              {entry.text}
-            </a>
-          {/each}
-        </nav>
-      </details>
+      {@render mobilePageOutline()}
     {/if}
 
     <div class="content doc-content">
       <data.content />
     </div>
 
-    <!-- Prev / Next -->
-    <Separator class="bg-brutal-border mt-12 h-0.75" />
-    <nav
-      aria-label="Documentation pagination"
-      class="flex flex-col items-stretch justify-between gap-4 pt-8 sm:flex-row sm:items-center"
-    >
+    <nav aria-label="Documentation pagination" class="doc-pagination">
       {#if data.prev}
-        <Button
-          variant="ghost"
-          href="/docs/{data.prev.slug}"
-          class="group flex h-auto w-full items-center justify-start gap-3 rounded-none px-2 py-2 text-(--text-secondary) no-underline transition-colors hover:text-(--text-primary) sm:w-auto"
-        >
-          <ArrowLeft size={18} class="transition-transform group-hover:-translate-x-1" />
-          <div class="flex flex-col items-start">
-            <span
-              class="font-space text-[10px] font-bold tracking-[2px] text-(--text-secondary) uppercase"
-              >Previous</span
-            >
-            <span class="font-inter text-sm font-semibold">{data.prev.title}</span>
-          </div>
-        </Button>
-      {:else}
-        <div></div>
+        <a href="/docs/{data.prev.slug}" rel="prev">
+          <span>Previous</span>
+          {data.prev.title}
+        </a>
       {/if}
-
       {#if data.next}
-        <Button
-          variant="ghost"
-          href="/docs/{data.next.slug}"
-          class="group flex h-auto w-full items-center justify-end gap-3 rounded-none px-2 py-2 text-right text-(--text-secondary) no-underline transition-colors hover:text-(--text-primary) sm:w-auto"
-        >
-          <div class="flex flex-col items-end">
-            <span
-              class="font-space text-[10px] font-bold tracking-[2px] text-(--text-secondary) uppercase"
-              >Next</span
-            >
-            <span class="font-inter text-sm font-semibold">{data.next.title}</span>
-          </div>
-          <ArrowRight size={18} class="transition-transform group-hover:translate-x-1" />
-        </Button>
-      {:else}
-        <div></div>
+        <a href="/docs/{data.next.slug}" rel="next">
+          <span>Next</span>
+          {data.next.title}
+        </a>
       {/if}
     </nav>
   </article>
 
   <!-- TOC Sidebar (xl only) -->
   {#if toc.length > 0}
-    <aside class="hidden w-52 shrink-0 xl:block">
+    <aside class="doc-toc">
       <nav
         aria-label="On this page"
-        class="sticky top-6 flex max-h-[calc(100vh-3rem)] flex-col gap-0.5 overflow-y-auto pb-4"
+        class="sticky top-6 flex max-h-[calc(100dvh-3rem)] flex-col gap-0.5 overflow-y-auto pb-4"
       >
         <span
-          class="font-space mb-3 text-[10px] font-bold tracking-[2px] text-(--text-secondary) uppercase"
+          class="font-fira mb-3 text-[10px] font-bold tracking-[2px] text-(--text-secondary) uppercase"
           >On This Page</span
         >
         {#each toc as entry}
-          <Button
-            variant="ghost"
+          <a
             href="#{entry.id}"
             aria-current={activeId === entry.id ? 'location' : undefined}
             class="font-inter h-auto justify-start rounded-none border-l-2 py-1 text-left text-[13px] whitespace-normal no-underline transition-colors
               {entry.level === 3 ? 'pl-5' : 'pl-3'}
               {activeId === entry.id
               ? 'border-hister-indigo font-medium text-(--text-primary)'
-              : 'hover:border-brutal-border border-transparent text-(--text-secondary) hover:text-(--text-primary)'}"
+              : 'border-transparent text-(--text-secondary) hover:border-(--border) hover:text-(--text-primary)'}"
           >
             {entry.text}
-          </Button>
+          </a>
         {/each}
       </nav>
     </aside>
@@ -202,3 +170,63 @@
 </div>
 
 <ImageLightbox contentKey={data.slug} />
+
+<style>
+  .doc-layout {
+    display: grid;
+    grid-template-columns: minmax(0, 760px);
+    gap: 40px;
+  }
+  .doc-article {
+    min-width: 0;
+  }
+  .doc-toc {
+    min-width: 0;
+    display: none;
+  }
+  .doc-toc a {
+    overflow-wrap: anywhere;
+  }
+  .page-outline {
+    margin-bottom: 36px;
+    border-block: 1px solid var(--border);
+  }
+  @media (min-width: 1440px) {
+    .doc-layout {
+      grid-template-columns: minmax(0, 760px) 176px;
+    }
+    .doc-toc {
+      display: block;
+    }
+    .page-outline {
+      display: none;
+    }
+  }
+
+  .doc-pagination {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 24px;
+    border-top: 1px solid var(--border);
+    margin-top: 48px;
+    padding-top: 24px;
+  }
+  .doc-pagination a {
+    padding: 8px 0;
+    font-size: 14px;
+    text-decoration: none;
+  }
+  .doc-pagination a:hover {
+    color: var(--hister-indigo);
+  }
+  .doc-pagination span {
+    display: block;
+    font-size: 12px;
+    color: var(--text-secondary);
+    margin-bottom: 6px;
+  }
+  .doc-pagination [rel='next'] {
+    grid-column: 2;
+    text-align: right;
+  }
+</style>

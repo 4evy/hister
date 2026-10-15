@@ -1,11 +1,13 @@
 <script lang="ts">
   import { page } from '$app/state';
   import BookOpenIcon from '@lucide/svelte/icons/book-open';
-  import ChevronDownIcon from '@lucide/svelte/icons/chevron-down';
+  import { afterNavigate } from '$app/navigation';
   import DocsNavigation from '#lib/DocsNavigation.svelte';
   import DocsSearch from '#lib/DocsSearch.svelte';
 
   let { children, data } = $props();
+  let navigationOpen = $state(false);
+  afterNavigate(() => (navigationOpen = false));
 
   const isIndex = $derived(page.url.pathname === '/docs' || page.url.pathname === '/docs/');
 
@@ -24,41 +26,17 @@
 {#if isIndex}
   {@render children()}
 {:else}
-  <!-- Dark header banner -->
-  <header class="w-full bg-(--text-primary) px-6 py-10 md:py-14">
-    <div class="mx-auto max-w-7xl">
-      <nav
-        aria-label="Breadcrumb"
-        class="font-space mb-4 flex items-center gap-2 text-[11px] font-bold tracking-[2px] text-white/65 uppercase"
-      >
-        <a
-          href="/docs"
-          class="font-space text-[11px] font-bold tracking-[2px] text-white/65 no-underline transition-colors hover:text-white"
-          >Docs</a
-        >
-        <span aria-hidden="true">/</span>
-        <span aria-current="page" class="text-white/80">{currentDoc?.title}</span>
-      </nav>
-      <h1
-        class="font-space text-3xl leading-tight font-black tracking-[-1px] text-white md:text-5xl"
-      >
-        {currentDoc?.title}
-      </h1>
-      <div class="mt-7">
-        <DocsSearch tone="dark" />
-      </div>
-    </div>
-  </header>
+  <div class="docs-search-bar"><DocsSearch /></div>
 
-  <div class="border-brutal-border bg-brutal-bg sticky top-0 z-30 border-b-[3px] md:hidden">
-    <details class="group">
+  <div class="bg-brutal-bg sticky top-0 z-30 border-b border-(--border) md:hidden">
+    <details class="group" bind:open={navigationOpen}>
       <summary
         class="flex cursor-pointer list-none items-center gap-3 px-6 py-3.5 [&::-webkit-details-marker]:hidden"
       >
         <BookOpenIcon aria-hidden="true" size={19} class="text-hister-indigo shrink-0" />
         <span class="min-w-0 flex-1">
           <span
-            class="font-space block text-[9px] font-bold tracking-[1.5px] text-(--text-secondary) uppercase"
+            class="font-fira block text-[9px] font-bold tracking-[1.5px] text-(--text-secondary) uppercase"
             >{currentCategory?.name ?? 'Documentation'}</span
           >
           <span class="font-inter block truncate text-sm font-semibold text-(--text-primary)"
@@ -66,32 +44,110 @@
           >
         </span>
         <span
-          class="font-space text-[9px] font-bold tracking-[1.25px] text-(--text-secondary) uppercase"
+          class="font-fira text-[9px] font-bold tracking-[1.25px] text-(--text-secondary) uppercase"
           >Browse</span
         >
-        <ChevronDownIcon
-          aria-hidden="true"
-          size={18}
-          class="shrink-0 transition-transform group-open:rotate-180"
-        />
+        <span aria-hidden="true">{navigationOpen ? '−' : '+'}</span>
       </summary>
-      <div
-        class="border-brutal-border max-h-[70vh] overflow-y-auto border-t-[2px] bg-(--page-bg) p-4"
-      >
+      <div class="max-h-[70dvh] overflow-y-auto border-t border-(--border) bg-(--page-bg) p-4">
         <DocsNavigation categories={data.categories} currentSlug={currentDoc?.slug ?? ''} />
       </div>
     </details>
   </div>
 
-  <div class="mx-auto flex max-w-7xl flex-col gap-10 px-6 py-10 md:flex-row md:px-12">
-    <aside class="hidden w-64 shrink-0 md:block">
-      <div class="sticky top-6 max-h-[calc(100vh-3rem)] overflow-y-auto pr-2 pb-4">
+  <div class="docs-shell">
+    <aside class="docs-sidebar">
+      <div class="sticky top-6 max-h-[calc(100dvh-3rem)] overflow-y-auto pr-2 pb-4">
         <DocsNavigation categories={data.categories} currentSlug={currentDoc?.slug ?? ''} />
       </div>
     </aside>
 
-    <div class="min-w-0 flex-1">
+    <div class="docs-main">
+      <header class="reading-header docs-header">
+        <nav aria-label="Breadcrumb" class="reading-breadcrumb">
+          <a href="/docs">Documentation</a><span aria-hidden="true">/</span>
+          <span>{currentCategory?.name}</span>
+        </nav>
+        <h1>{currentDoc?.title}</h1>
+        {#if currentDoc?.description}<p>{currentDoc.description}</p>{/if}
+      </header>
+
       {@render children()}
     </div>
   </div>
 {/if}
+
+<style>
+  .docs-search-bar {
+    max-width: 1440px;
+    padding: 24px 48px;
+    margin: auto;
+    border-bottom: 1px solid var(--border);
+  }
+  .docs-search-bar :global(search) {
+    max-width: min(640px, calc(100% - 256px));
+    margin-left: 256px;
+  }
+  .docs-shell {
+    display: grid;
+    grid-template-columns: 208px minmax(0, 1fr);
+    gap: 48px;
+    max-width: 1440px;
+    margin: auto;
+    padding: 40px 48px 80px;
+  }
+  .docs-main {
+    min-width: 0;
+  }
+  .docs-header {
+    max-width: 760px;
+    padding: 0;
+    border: 0;
+    margin: 0 0 40px;
+  }
+  .docs-header h1 {
+    font-size: clamp(32px, 3.5vw, 46px);
+    letter-spacing: -0.04em;
+  }
+  .docs-header > p {
+    font-size: 18px;
+    line-height: 1.7;
+    margin-bottom: 0;
+  }
+  .reading-breadcrumb {
+    margin-bottom: 24px;
+  }
+  @media (max-width: 1000px) {
+    .docs-shell {
+      grid-template-columns: 180px minmax(0, 1fr);
+      gap: 32px;
+      padding-inline: 32px;
+    }
+    .docs-search-bar {
+      padding-inline: 32px;
+    }
+    .docs-search-bar :global(search) {
+      max-width: min(640px, calc(100% - 212px));
+      margin-left: 212px;
+    }
+  }
+  @media (max-width: 767px) {
+    .docs-shell {
+      display: block;
+      padding: 32px 24px 56px;
+    }
+    .docs-sidebar {
+      display: none;
+    }
+    .docs-search-bar {
+      padding: 24px;
+    }
+    .docs-search-bar :global(search) {
+      max-width: 100%;
+      margin-left: 0;
+    }
+    .docs-header > p {
+      font-size: 17px;
+    }
+  }
+</style>

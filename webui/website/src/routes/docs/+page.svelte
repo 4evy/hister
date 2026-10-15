@@ -1,14 +1,25 @@
 <script lang="ts">
-  import ArrowRightIcon from '@lucide/svelte/icons/arrow-right';
+  import ArrowRight from '@lucide/svelte/icons/arrow-right';
+  import ArrowUpRight from '@lucide/svelte/icons/arrow-up-right';
+  import BookOpen from '@lucide/svelte/icons/book-open';
+  import FolderOpen from '@lucide/svelte/icons/folder-open';
+  import Users from '@lucide/svelte/icons/users';
+  import Search from '@lucide/svelte/icons/search';
+  import Server from '@lucide/svelte/icons/server';
+  import Code from '@lucide/svelte/icons/code';
   import Globe from '@lucide/svelte/icons/globe';
-  import SettingsIcon from '@lucide/svelte/icons/settings';
-  import * as Card from '@hister/components/ui/card';
   import DocsSearch from '#lib/DocsSearch.svelte';
   import Seo from '#lib/Seo.svelte';
 
   let { data } = $props();
-  const featuredSlugs = new Set(['configuration']);
-  const featuredDoc = $derived(data.docs.find((doc) => doc.slug === 'configuration'));
+  const groups = [
+    { icon: BookOpen, description: 'Install Hister and find your first page.' },
+    { icon: FolderOpen, description: 'Bring websites, files, and bookmarks into your index.' },
+    { icon: Users, description: 'Manage accounts, indexing rules, and stored data.' },
+    { icon: Search, description: 'Search from the terminal and connect other tools.' },
+    { icon: Server, description: 'Configure, deploy, and maintain your server.' },
+    { icon: Code, description: 'Work on Hister and build integrations.' },
+  ];
 </script>
 
 <Seo
@@ -17,108 +28,158 @@
   path="/docs"
 />
 
-<section class="mx-auto max-w-4xl px-6 py-12 md:px-12">
-  <h1
-    class="font-space text-4xl font-black tracking-[-1px] text-(--text-primary) uppercase md:text-5xl"
-  >
-    Documentation
-  </h1>
-  <div class="mt-6 mb-10">
+<section class="reading-index docs-index">
+  <header class="reading-header">
+    <h1>Documentation</h1>
+    <p>Set up your search engine, add content, and make it yours.</p>
     <DocsSearch />
-  </div>
-
-  <Card.Root href="/docs/configuration" color="hister-indigo" class="bg-hister-indigo/10 mb-10 p-6">
-    <div class="flex items-center gap-4">
-      <div
-        class="border-brutal-border bg-hister-indigo flex size-11 shrink-0 items-center justify-center border-[2px] text-white"
-      >
-        <SettingsIcon aria-hidden="true" size={22} />
-      </div>
-      <div class="min-w-0 flex-1">
-        <h2
-          class="font-space text-xl font-extrabold tracking-[0.5px] text-(--text-primary) sm:text-2xl"
-        >
-          Configuration Reference
-        </h2>
-        {#if featuredDoc?.description}
-          <p class="font-inter mt-2 text-sm leading-relaxed text-(--text-secondary)">
-            {featuredDoc.description}
-          </p>
-        {/if}
-      </div>
-      <ArrowRightIcon aria-hidden="true" size={20} class="text-hister-indigo shrink-0" />
+  </header>
+  <section class="docs-start" aria-labelledby="docs-start-title">
+    <div>
+      <h2 id="docs-start-title">New to Hister?</h2>
+      <p>Start a server, connect your browser, and run your first search.</p>
     </div>
-  </Card.Root>
-
-  {#each data.categories as category}
-    <div class="mb-8">
-      <div class="mb-3 flex items-center gap-2">
-        <div class="h-2.5 w-2.5 bg-hister-{category.color}"></div>
-        <span
-          class="font-space text-xs font-bold tracking-[2px] text-[var(--text-secondary)] uppercase"
-        >
-          {category.name}
-        </span>
-      </div>
-
-      <ul class="m-0 flex list-none flex-col gap-3 p-0">
-        {#each category.docs as doc}
-          {#if !featuredSlugs.has(doc.slug)}
-            <li>
-              <Card.Root href="/docs/{doc.slug}" class="bg-brutal-card p-5">
-                <h2
-                  class="font-space text-lg font-extrabold tracking-[0.5px] text-(--text-primary)"
-                >
-                  {doc.title}
-                </h2>
-                {#if doc.description}
-                  <p class="font-inter mt-2 text-sm leading-relaxed text-(--text-secondary)">
-                    {doc.description}
-                  </p>
-                {/if}
-              </Card.Root>
-            </li>
-          {/if}
-        {/each}
+    <a href="/docs/quickstart">Follow the quickstart</a>
+  </section>
+  <div class="docs-directory">
+    {#each data.categories as category, i}
+      {@const group = groups[i]}
+      <section aria-labelledby={`category-${i}`}>
+        <header>
+          <group.icon size={20} aria-hidden="true" />
+          <h2 id={`category-${i}`}>{category.name}</h2>
+        </header>
+        <p>{group.description}</p>
+        <ul>
+          {#each category.docs as doc}<li>
+              <a href="/docs/{doc.slug}"
+                ><span>{doc.title}</span><ArrowRight size={16} aria-hidden="true" /></a
+              >
+            </li>{/each}
+        </ul>
+      </section>
+    {/each}
+    <section aria-labelledby="extensions-title">
+      <header>
+        <Globe size={20} aria-hidden="true" />
+        <h2 id="extensions-title">Browser extensions</h2>
+      </header>
+      <p>Save the pages you visit, as you browse.</p>
+      <ul>
+        <li>
+          <a
+            href="https://chromewebstore.google.com/detail/hister/cciilamhchpmbdnniabclekddabkifhb"
+            target="_blank"
+            rel="noopener noreferrer"
+            ><span>Chrome Extension</span><ArrowUpRight size={16} aria-hidden="true" /></a
+          >
+        </li>
+        <li>
+          <a
+            href="https://addons.mozilla.org/en-US/firefox/addon/hister/"
+            target="_blank"
+            rel="noopener noreferrer"
+            ><span>Firefox Add-on</span><ArrowUpRight size={16} aria-hidden="true" /></a
+          >
+        </li>
       </ul>
-    </div>
-  {/each}
-
-  <div class="mb-8">
-    <div class="mb-3 flex items-center gap-2">
-      <div class="bg-hister-indigo h-2.5 w-2.5"></div>
-      <span class="font-space text-xs font-bold tracking-[2px] text-(--text-secondary) uppercase">
-        Browser Extensions
-      </span>
-    </div>
-
-    <ul class="m-0 flex list-none flex-col gap-3 p-0">
-      <li>
-        <Card.Root
-          href="https://chromewebstore.google.com/detail/hister/cciilamhchpmbdnniabclekddabkifhb"
-          target="_blank"
-          rel="noopener noreferrer"
-          class="bg-brutal-card flex-row items-center gap-4 p-5"
-        >
-          <Globe size={20} class="shrink-0 text-(--text-secondary)" />
-          <h2 class="font-space text-lg font-extrabold tracking-[0.5px] text-(--text-primary)">
-            Chrome Extension
-          </h2>
-        </Card.Root>
-      </li>
-      <li>
-        <Card.Root
-          href="https://addons.mozilla.org/en-US/firefox/addon/hister/"
-          target="_blank"
-          rel="noopener noreferrer"
-          class="bg-brutal-card flex-row items-center gap-4 p-5"
-        >
-          <Globe size={20} class="shrink-0 text-(--text-secondary)" />
-          <h2 class="font-space text-lg font-extrabold tracking-[0.5px] text-(--text-primary)">
-            Firefox Add-on
-          </h2>
-        </Card.Root>
-      </li>
-    </ul>
+    </section>
   </div>
 </section>
+
+<style>
+  .docs-start {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 24px;
+    padding: 24px;
+    margin-bottom: 48px;
+    border-radius: 6px;
+    background: var(--muted-surface);
+  }
+  .docs-start h2 {
+    font-size: 18px;
+    font-weight: 600;
+    margin-bottom: 6px;
+  }
+  .docs-start p,
+  .docs-directory p {
+    color: var(--text-secondary);
+    font-size: 13px;
+    line-height: 1.65;
+  }
+  .docs-start a {
+    flex-shrink: 0;
+    padding: 11px 16px;
+    background: var(--hister-indigo);
+    color: #18191b;
+    font-size: 13px;
+    font-weight: 500;
+    border-radius: 4px;
+    text-decoration: none;
+  }
+  .docs-start a:hover {
+    background: var(--hister-coral);
+  }
+  .docs-directory {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 40px 64px;
+  }
+  .docs-directory header {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+    margin-bottom: 8px;
+  }
+  .docs-directory header :global(svg) {
+    color: var(--text-secondary);
+    flex-shrink: 0;
+  }
+  .docs-directory h2 {
+    font-size: 17px;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+  }
+  .docs-directory p {
+    margin: 0 0 14px 32px;
+    max-width: 340px;
+  }
+  .docs-directory ul {
+    list-style: none;
+    padding: 0 0 0 32px;
+    margin: 0;
+  }
+  .docs-directory a {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    min-height: 40px;
+    max-width: 100%;
+    padding: 7px 0;
+    font-size: 14px;
+    text-decoration: none;
+  }
+  .docs-directory a :global(svg) {
+    flex-shrink: 0;
+    color: var(--text-secondary);
+  }
+  .docs-directory a:hover,
+  .docs-directory a:focus-visible {
+    text-decoration: underline;
+    text-underline-offset: 4px;
+    color: var(--hister-indigo);
+  }
+  @media (max-width: 700px) {
+    .docs-directory {
+      grid-template-columns: minmax(0, 1fr);
+      gap: 32px;
+    }
+    .docs-start {
+      align-items: start;
+      flex-direction: column;
+    }
+  }
+</style>

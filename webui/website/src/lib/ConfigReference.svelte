@@ -1,8 +1,4 @@
 <script lang="ts">
-  import { Badge } from '@hister/components/ui/badge';
-  import * as Card from '@hister/components/ui/card';
-  import AlertTriangleIcon from '@lucide/svelte/icons/triangle-alert';
-
   type ConfigScope = 'client' | 'server';
 
   interface ConfigReferenceItem {
@@ -14,98 +10,97 @@
     scopes?: ConfigScope[];
   }
 
+  const referenceId = $props.id();
+
   let { items, scopes = [] }: { items: ConfigReferenceItem[]; scopes?: ConfigScope[] } = $props();
 </script>
 
-<div class="mb-7 flex flex-col gap-4">
+<div class="config-options">
   {#each items as item (item.name)}
     {@const optionScopes = item.scopes ?? scopes}
-    <Card.Root
-      aria-labelledby="config-option-{item.name}"
-      color="hister-indigo"
-      class="bg-brutal-card min-w-0"
-    >
-      <Card.Header
-        class="border-brutal-border items-center justify-between gap-4 border-b-[3px] bg-(--text-primary) px-5 py-3.5"
-      >
-        <Card.Title
-          id="config-option-{item.name}"
-          class="font-outfit text-xl font-extrabold text-(--brutal-bg)"
+    <section aria-labelledby="{referenceId}-{item.name}" class="config-option">
+      <header>
+        <h3 id="{referenceId}-{item.name}"><code>{item.name}</code></h3>
+        <span class="config-scope"
+          >{optionScopes.length ? optionScopes.join(' · ') : 'Config option'}</span
         >
-          <code class="border-0! bg-transparent! p-0! text-xl! wrap-anywhere text-(--brutal-bg)"
-            >{item.name}</code
-          >
-        </Card.Title>
-        {#if optionScopes.length > 0}
-          <div class="flex shrink-0 flex-wrap justify-end gap-1.5">
-            {#each optionScopes as scope (scope)}
-              <Badge
-                variant="outline"
-                class={scope === 'server'
-                  ? 'font-space border-hister-amber text-hister-amber bg-transparent text-[9px] font-bold tracking-[1.25px] uppercase'
-                  : 'font-space border-hister-cyan text-hister-cyan bg-transparent text-[9px] font-bold tracking-[1.25px] uppercase'}
-              >
-                {scope}
-              </Badge>
-            {/each}
-          </div>
-        {:else}
-          <Badge
-            variant="outline"
-            class="font-space shrink-0 border-(--brutal-bg) bg-transparent text-[9px] font-semibold tracking-[1.25px] text-(--brutal-bg) uppercase opacity-70"
-          >
-            Config option
-          </Badge>
-        {/if}
-      </Card.Header>
-
-      <Card.Content class="px-5 py-4">
-        <Card.Description class="font-inter m-0! text-sm leading-6 text-(--text-secondary)">
-          {item.description}
-        </Card.Description>
-      </Card.Content>
-
-      <Card.Footer
-        class="bg-brutal-card border-border-brand-muted flex flex-col items-stretch border-t-2 p-0 sm:flex-row md:p-0"
-      >
-        <div class="flex min-w-0 items-baseline gap-2 px-4 py-2">
-          <span
-            class="font-space shrink-0 text-[9px] font-bold tracking-[1.25px] text-(--text-secondary) uppercase"
-            >Type</span
-          >
-          <code
-            class="border-0! bg-(--muted-surface)! px-1.5! py-0.5! text-sm whitespace-nowrap text-(--text-primary)"
-            >{item.type}</code
-          >
+      </header>
+      <p>{item.description}</p>
+      <dl>
+        <div>
+          <dt>Type</dt>
+          <dd><code>{item.type}</code></dd>
         </div>
-        {#if item.defaultValue !== undefined}
-          <div
-            class="border-border-brand-muted flex min-w-0 items-baseline gap-2 border-t-2 px-4 py-2 sm:flex-1 sm:border-t-0 sm:border-l-2"
-          >
-            <span
-              class="font-space shrink-0 text-[9px] font-bold tracking-[1.25px] text-(--text-secondary) uppercase"
-              >Default</span
-            >
-            <code
-              class="border-0! bg-(--muted-surface)! px-1.5! py-0.5! text-sm wrap-anywhere text-(--text-primary)"
-              >{item.defaultValue}</code
-            >
-          </div>
-        {/if}
-        {#if item.requirement}
-          <div
-            class="border-border-brand-muted flex min-w-0 items-center justify-end border-t-2 px-4 py-2 sm:ml-auto sm:border-t-0 sm:border-l-2"
-          >
-            <Badge
-              variant="outline"
-              class="font-space border-hister-amber bg-hister-amber/10 border-2 px-2 py-1 text-[10px] font-bold tracking-[1px] text-(--text-primary) uppercase"
-            >
-              <AlertTriangleIcon aria-hidden="true" class="text-hister-amber size-3.5!" />
-              {item.requirement}
-            </Badge>
-          </div>
-        {/if}
-      </Card.Footer>
-    </Card.Root>
+        {#if item.defaultValue !== undefined}<div>
+            <dt>Default</dt>
+            <dd><code>{item.defaultValue}</code></dd>
+          </div>{/if}
+        {#if item.requirement}<div>
+            <dt>Requirement</dt>
+            <dd>{item.requirement}</dd>
+          </div>{/if}
+      </dl>
+    </section>
   {/each}
 </div>
+
+<style>
+  .config-options {
+    display: grid;
+    gap: 0;
+    margin-bottom: 28px;
+  }
+  .config-option {
+    min-width: 0;
+    border-top: 1px solid var(--border);
+    padding: 24px 0;
+  }
+  header {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+  }
+  .config-option h3 {
+    margin: 0;
+    font-size: 18px;
+  }
+  .config-option h3 code {
+    font-size: inherit;
+    border: 0;
+    padding: 0;
+    background: transparent;
+  }
+  .config-scope,
+  dt {
+    font:
+      12px 'Fira Code',
+      monospace;
+    color: var(--text-secondary);
+  }
+  .config-option p {
+    margin: 12px 0 16px;
+    font-size: 16px;
+  }
+  dl {
+    display: flex;
+    flex-wrap: wrap;
+    margin: 0;
+    gap: 16px 24px;
+  }
+  dl div {
+    min-width: 0;
+    flex: 1 1 160px;
+  }
+  dd {
+    margin: 6px 0 0;
+    font-size: 14px;
+    overflow-wrap: anywhere;
+  }
+  dd code {
+    border: 0;
+    padding: 0;
+    background: transparent;
+  }
+</style>
