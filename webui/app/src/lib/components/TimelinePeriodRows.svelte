@@ -22,6 +22,37 @@
   }: TimelinePeriodRendererProps = $props();
 </script>
 
+{#snippet periodDayRows(bucket: import('#lib/history-timeline.js').TimelineBucket, color: string)}
+  {#each periodDays.get(bucket.key) ?? [] as day (day.key)}
+    {@const isActive = activeKey === day.key}
+    <Button
+      variant="ghost"
+      class="ml-8 flex h-auto w-[calc(100%-2rem)] cursor-pointer items-center justify-start gap-2 rounded-none border-[2px] px-3 py-1.5 shadow-[2px_2px_0_transparent] hover:shadow-[2px_2px_0_var(--brutal-shadow)] {isActive
+        ? 'border-brutal-border text-primary-foreground hover:text-primary-foreground'
+        : 'hover:border-border-brand hover:bg-muted-surface border-transparent'}"
+      style={isActive ? `background-color: ${getColorVar(color)};` : ''}
+      disabled={day.count === 0}
+      onclick={() => onSelect(day)}
+    >
+      <span
+        class="h-1.5 w-1.5 shrink-0 rounded-full"
+        style={isActive ? 'background-color: white;' : `background-color: ${getColorVar(color)};`}
+      ></span>
+      <span class="font-inter text-xs" class:font-semibold={isActive}>
+        {timelineBucketLabel(day, 'day')}
+      </span>
+      <Badge
+        variant="secondary"
+        class="ml-auto h-4 shrink-0 border-0 px-1.5 py-0 text-xs {isActive
+          ? 'text-primary-foreground bg-white/20'
+          : 'bg-muted-surface text-text-brand-muted'}"
+      >
+        {day.count.toLocaleString()}
+      </Badge>
+    </Button>
+  {/each}
+{/snippet}
+
 {#each buckets as bucket, i (bucket.key)}
   {@const isExpanded = expandedPeriods.has(bucket.key)}
   {@const color = getGroupColor(i + colorOffset)}
@@ -53,36 +84,7 @@
         {periodErrors.get(bucket.key)}
       </p>
     {:else}
-      {#each periodDays.get(bucket.key) ?? [] as day (day.key)}
-        {@const isActive = activeKey === day.key}
-        <Button
-          variant="ghost"
-          class="ml-8 flex h-auto w-[calc(100%-2rem)] cursor-pointer items-center justify-start gap-2 rounded-none border-[2px] px-3 py-1.5 shadow-[2px_2px_0_transparent] hover:shadow-[2px_2px_0_var(--brutal-shadow)] {isActive
-            ? 'border-brutal-border text-primary-foreground hover:text-primary-foreground'
-            : 'hover:border-border-brand hover:bg-muted-surface border-transparent'}"
-          style={isActive ? `background-color: ${getColorVar(color)};` : ''}
-          disabled={day.count === 0}
-          onclick={() => onSelect(day)}
-        >
-          <span
-            class="h-1.5 w-1.5 shrink-0 rounded-full"
-            style={isActive
-              ? 'background-color: white;'
-              : `background-color: ${getColorVar(color)};`}
-          ></span>
-          <span class="font-inter text-xs" class:font-semibold={isActive}>
-            {timelineBucketLabel(day, 'day')}
-          </span>
-          <Badge
-            variant="secondary"
-            class="ml-auto h-4 shrink-0 border-0 px-1.5 py-0 text-xs {isActive
-              ? 'text-primary-foreground bg-white/20'
-              : 'bg-muted-surface text-text-brand-muted'}"
-          >
-            {day.count.toLocaleString()}
-          </Badge>
-        </Button>
-      {/each}
+      {@render periodDayRows(bucket, color)}
     {/if}
   {/if}
 {/each}

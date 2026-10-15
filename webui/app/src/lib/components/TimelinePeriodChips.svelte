@@ -21,6 +21,24 @@
   }: TimelinePeriodRendererProps = $props();
 </script>
 
+{#snippet periodDayChips(bucket: import('#lib/history-timeline.js').TimelineBucket, color: string)}
+  {#each periodDays.get(bucket.key) ?? [] as day (day.key)}
+    {@const isActive = activeKey === day.key}
+    <Button
+      variant="ghost"
+      size="sm"
+      class="font-inter border-brutal-border h-8 shrink-0 rounded-none border-[2px] px-3 text-xs font-semibold {isActive
+        ? 'text-primary-foreground hover:text-primary-foreground'
+        : 'text-text-brand-secondary hover:bg-muted-surface'}"
+      style={isActive ? `background-color: ${getColorVar(color)};` : ''}
+      disabled={day.count === 0}
+      onclick={() => onSelect(day)}
+    >
+      {timelineBucketLabel(day, 'day')} ({day.count.toLocaleString()})
+    </Button>
+  {/each}
+{/snippet}
+
 {#each buckets as bucket, i (bucket.key)}
   {@const color = getGroupColor(i + colorOffset)}
   {@const isExpanded = expandedPeriods.has(bucket.key)}
@@ -42,21 +60,7 @@
         {periodErrors.get(bucket.key)}
       </span>
     {:else}
-      {#each periodDays.get(bucket.key) ?? [] as day (day.key)}
-        {@const isActive = activeKey === day.key}
-        <Button
-          variant="ghost"
-          size="sm"
-          class="font-inter border-brutal-border h-8 shrink-0 rounded-none border-[2px] px-3 text-xs font-semibold {isActive
-            ? 'text-primary-foreground hover:text-primary-foreground'
-            : 'text-text-brand-secondary hover:bg-muted-surface'}"
-          style={isActive ? `background-color: ${getColorVar(color)};` : ''}
-          disabled={day.count === 0}
-          onclick={() => onSelect(day)}
-        >
-          {timelineBucketLabel(day, 'day')} ({day.count.toLocaleString()})
-        </Button>
-      {/each}
+      {@render periodDayChips(bucket, color)}
     {/if}
   {/if}
 {/each}

@@ -1,11 +1,7 @@
 <script lang="ts">
-  import {
-    buildPreviewUrl,
-    pushPreviewHistory,
-    replacePreviewHistory,
-    withSkipUrl,
-    createResizeHandler,
-  } from '#lib/preview.js';
+  import { PreviewState } from '#lib/preview-state.svelte.js';
+  import FullscreenPreview from '#lib/components/FullscreenPreview.svelte';
+  import { buildPreviewUrl, withSkipUrl, createResizeHandler } from '#lib/preview.js';
   import { onMount, untrack } from 'svelte';
   import { fetchConfig, apiFetch, getUserId } from '#lib/api.js';
   import { resolve } from '$app/paths';
@@ -54,6 +50,7 @@
   let items: HistoryItem[] = $state([]);
   let loading = $state(true);
   let error = $state('');
+  let deleteError = $state('');
   let filter = $state(initialFilter);
   let serverFilter = $state(initialFilter.trim());
   let pageKey = $state('');
@@ -97,17 +94,13 @@
 
   // Preview state
   let isDesktop = $state(false);
-  let panelUrl = $state('');
-  let panelDocumentId = $state('');
-  let panelHintTitle = $state('');
-  let panelViewingVersion = $state<number | null>(null);
-  let panelOpen = $state(
+  let disablePreviews = $state(false);
+  const preview = new PreviewState(
+    'hister-history-panel-open',
     typeof localStorage !== 'undefined'
       ? localStorage.getItem('hister-history-panel-open') !== 'false'
       : true,
   );
-  let previewFullscreen = $state(false);
-  let disablePreviews = $state(false);
   const skipUrl = { value: false };
   let panelWidthPct = $state(parseFloat(localStorage.getItem('hister-panel-width') ?? '') || 50);
   let splitContainerEl: HTMLDivElement | undefined = $state();
@@ -141,7 +134,7 @@
 
   $effect(() => {
     const currentFilter = filter;
-    if (skipUrl.value || previewFullscreen) return;
+    if (skipUrl.value || preview.fullscreen) return;
     replaceHistoryPageHistory(currentFilter);
   });
 
@@ -160,62 +153,24 @@
   }
 
   function openPreview(url: string, title: string, documentId = '') {
-    if (isDesktop) {
-      if (!panelOpen) {
-        panelOpen = true;
-        localStorage.setItem('hister-history-panel-open', 'true');
-      }
-      panelViewingVersion = null;
-      panelDocumentId = documentId;
-      panelHintTitle = title;
-      panelUrl = url;
-      return;
-    }
-    panelViewingVersion = null;
-    panelDocumentId = documentId;
-    panelUrl = url;
-    panelHintTitle = title;
-    previewFullscreen = true;
-    withSkipUrl(skipUrl, () => pushPreviewHistory(url, title, null, documentId));
+    preview.open(url, title, documentId, isDesktop, skipUrl);
   }
 
   function enterFullscreen() {
-    previewFullscreen = true;
-    withSkipUrl(skipUrl, () =>
-      pushPreviewHistory(panelUrl, panelHintTitle, panelViewingVersion, panelDocumentId),
-    );
+    preview.enterFullscreen(skipUrl);
   }
 
   function exitFullscreen() {
-    previewFullscreen = false;
-    withSkipUrl(skipUrl, () => pushHistoryPageHistory());
+    preview.exitFullscreen(skipUrl, pushHistoryPageHistory);
   }
 
   function closePanelAndFullscreen() {
-    previewFullscreen = false;
-    panelOpen = false;
-    localStorage.setItem('hister-history-panel-open', 'false');
-    withSkipUrl(skipUrl, () => pushHistoryPageHistory());
+    preview.close(skipUrl, pushHistoryPageHistory);
   }
 
   function handlePopState(event: PopStateEvent) {
-    const state = event.state as {
-      type?: string;
-      id?: string;
-      documentId?: string;
-      title?: string;
-      versionId?: number | null;
-    } | null;
-    if (state?.type === 'preview') {
-      panelUrl = state.id || '';
-      panelDocumentId = state.documentId || '';
-      panelHintTitle = state.title || '';
-      panelOpen = true;
-      previewFullscreen = true;
-      panelViewingVersion = state.versionId ?? null;
-      return;
-    }
-    previewFullscreen = false;
+    if (preview.restore(event.state)) return;
+    preview.fullscreen = false;
     withSkipUrl(skipUrl, () => {
       filter = new URLSearchParams(window.location.search).get('filter') ?? '';
     });
@@ -268,7 +223,7 @@
   }
 
   const groups = $derived.by(() => groupByDate(items));
-  const activeTimelineKey = $derived(selectedBucket?.key ?? '');
+  const activeTimelineKey = $derived.by(() => selectedBucket?.key ?? '');
 
   const globalGroupColors = $derived.by(
     () => new Map(groups.map((group, idx) => [group.key, getGroupColor(idx)])),
@@ -310,16 +265,7 @@
     const params = new URLSearchParams();
     if (requestedOpenedOnly) params.set('opened', 'true');
     if (requestedFilter) params.set('filter', requestedFilter);
-    if (requestedBucket) {
-      if (requestedBucket.from !== undefined) {
-        params.set('date_from', String(requestedBucket.from));
-      }
-      params.set('date_to', String(requestedBucket.to));
-    }
-    if (includeTimezone) {
-      const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-      if (timezone) params.set('timezone', timezone);
-    }
+    setHistoryDateParams(params, requestedBucket, includeTimezone);
     return params;
   }
 
@@ -339,68 +285,27 @@
     requestedBucket: TimelineBucket | null = selectedBucket,
     requestedLastUpdatedAt: string = openedLastUpdatedAt,
   ) {
-    historyRequestController?.abort();
+    abortHistoryRequest();
     const controller = new AbortController();
     const requestID = ++historyRequestID;
     historyRequestController = controller;
     loading = true;
     error = '';
-    if (!latest) items = [];
+    clearHistoryForRequest(latest);
     try {
-      const cfg = await fetchConfig();
-      if (controller.signal.aborted) return;
-      if (!cfg.historyEnabled) {
-        window.location.href = resolve('/');
-        return;
-      }
+      if (!(await canLoadHistory(controller))) return;
       const params = historyQueryParams(requestedFilter, requestedOpenedOnly, requestedBucket);
-      if (requestedOpenedOnly) {
-        if (latest) {
-          params.set('last_id', latest);
-          if (requestedLastUpdatedAt) params.set('last_updated_at', requestedLastUpdatedAt);
-        }
-      } else if (latest) {
-        params.set('last', latest);
-      }
-      const url = `/history${params.size > 0 ? `?${params.toString()}` : ''}`;
-      const res = await apiFetch(url, {
-        headers: { Accept: 'application/json' },
-        signal: controller.signal,
-      });
-      if (!res.ok) throw new Error('Failed to load history');
-      const resJSON = await res.json();
-      if (controller.signal.aborted || requestID !== historyRequestID) return;
-      if (resJSON && Array.isArray(resJSON.documents)) {
-        const loadedCount = resJSON.documents.length;
-        if (!latest) {
-          items = resJSON.documents;
-        } else {
-          items.push(...resJSON.documents);
-        }
-        if (requestedOpenedOnly) {
-          openedLastID = loadedCount >= historyPageSize ? (resJSON.last_id ?? 0) : 0;
-          openedLastUpdatedAt =
-            loadedCount >= historyPageSize ? (resJSON.last_updated_at ?? '') : '';
-          pageKey = '';
-        } else {
-          pageKey = loadedCount >= historyPageSize ? (resJSON.page_key ?? '') : '';
-          openedLastID = 0;
-          openedLastUpdatedAt = '';
-        }
-      } else {
-        if (!latest) items = [];
-        pageKey = '';
-        openedLastID = 0;
-        openedLastUpdatedAt = '';
-      }
+      setHistoryCursor(params, latest, requestedOpenedOnly, requestedLastUpdatedAt);
+      const resJSON = await fetchHistoryJSON<HistoryResponse | null>(
+        historyItemsUrl(params),
+        controller.signal,
+      );
+      if (!historyRequestIsCurrent(controller, requestID)) return;
+      applyHistoryResponse(resJSON, latest, requestedOpenedOnly);
     } catch (e) {
-      if (controller.signal.aborted) return;
-      error = String(e);
+      historyFailed(controller, e);
     } finally {
-      if (requestID === historyRequestID) {
-        loading = false;
-        historyRequestController = undefined;
-      }
+      historyFinished(requestID);
     }
   }
 
@@ -447,18 +352,14 @@
         headers: { Accept: 'application/json' },
         signal: controller.signal,
       });
-      if (!res.ok) throw new Error('Failed to load timeline');
+      requireHistoryResponse(res, 'Failed to load timeline');
       const data: HistoryTimeline = await res.json();
-      if (controller.signal.aborted || requestID !== timelineRequestID) return;
+      if (!currentTimelineRequest(controller, requestID)) return;
       timelineData = data;
     } catch (e) {
-      if (controller.signal.aborted) return;
-      timelineError = String(e);
+      timelineFailed(controller, e);
     } finally {
-      if (requestID === timelineRequestID) {
-        timelineLoading = false;
-        timelineRequestController = undefined;
-      }
+      timelineFinished(requestID);
     }
   }
 
@@ -475,7 +376,7 @@
     requestedFilter: string = serverFilter,
     requestedOpenedOnly: boolean = openedOnly,
   ) {
-    if (!bucket.from || timelinePeriodLoading.has(bucket.key)) return;
+    if (!canLoadPeriod(bucket)) return;
     const generation = timelinePeriodGeneration;
     timelinePeriodLoading = new Set(timelinePeriodLoading).add(bucket.key);
     const nextErrors = new Map(timelinePeriodErrors);
@@ -486,28 +387,14 @@
       const res = await apiFetch(`/history/timeline?${params.toString()}`, {
         headers: { Accept: 'application/json' },
       });
-      if (!res.ok) throw new Error('Failed to load daily counts');
+      requireHistoryResponse(res, 'Failed to load daily counts');
       const data: Pick<HistoryTimeline, 'days'> = await res.json();
-      if (
-        generation !== timelinePeriodGeneration ||
-        requestedFilter !== serverFilter ||
-        requestedOpenedOnly !== openedOnly
-      )
-        return;
-      const nextDays = new Map(timelinePeriodDays);
-      nextDays.set(bucket.key, data.days ?? []);
-      timelinePeriodDays = nextDays;
+      if (!currentPeriodRequest(generation, requestedFilter, requestedOpenedOnly)) return;
+      applyPeriodDays(bucket.key, data.days);
     } catch (e) {
-      if (generation !== timelinePeriodGeneration) return;
-      const errors = new Map(timelinePeriodErrors);
-      errors.set(bucket.key, String(e));
-      timelinePeriodErrors = errors;
+      periodFailed(generation, bucket, e);
     } finally {
-      if (generation === timelinePeriodGeneration) {
-        const loadingPeriods = new Set(timelinePeriodLoading);
-        loadingPeriods.delete(bucket.key);
-        timelinePeriodLoading = loadingPeriods;
-      }
+      periodFinished(generation, bucket);
     }
   }
 
@@ -585,34 +472,46 @@
 
   $effect(() => {
     const inputFilter = filter.trim();
-    if (inputFilter !== serverFilter || !sentinel || !sentinelVisible || loading || !hasMore)
-      return;
+    if (!canAutoLoadHistory(inputFilter)) return;
     loadMore();
   });
 
   async function deleteItem(item: HistoryItem) {
+    const deletingOpenedEntry = openedOnly;
+    deleteError = '';
     try {
-      if (openedOnly) {
-        await apiFetch('/history', {
+      if (deletingOpenedEntry) {
+        const response = await apiFetch('/history', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ query: item.query, url: item.url, delete: true }),
         });
+        requireHistoryResponse(response, 'Failed to delete history entry');
       } else {
-        await apiFetch('/delete', {
+        const response = await apiFetch('/delete', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            query: 'url:' + item.url + (getUserId() !== undefined ? ' user_id:' + getUserId() : ''),
+            query:
+              `url:"${item.url.replace(/["\\]/g, '\\$&')}"` +
+              (getUserId() !== undefined ? ' user_id:' + getUserId() : ''),
           }),
         });
+        requireHistoryResponse(response, 'Failed to delete document');
       }
-      items = items.filter((i) => i.url !== item.url);
+      removeDeletedItem(item, deletingOpenedEntry);
       resetTimelinePeriodDays();
       await loadTimeline();
     } catch (e) {
-      error = String(e);
+      deleteError = String(e);
     }
+  }
+
+  function removeDeletedItem(item: HistoryItem, deletingOpenedEntry: boolean) {
+    if (openedOnly !== deletingOpenedEntry) return;
+    items = items.filter(
+      (i) => i.url !== item.url || (deletingOpenedEntry && i.query !== item.query),
+    );
   }
 
   function selectNthResult(n: number) {
@@ -636,8 +535,7 @@
     if (e) e.preventDefault();
     const item = items[highlightIdx];
     if (!item) return;
-    if (openResultsOnNewTab) newWindow = true;
-    window.open(historyResultUrl(item), newWindow ? '_blank' : '_self');
+    openHistoryResult(item, newWindow);
   }
 
   function historyResultUrl(item: HistoryItem): string {
@@ -651,21 +549,9 @@
     if (e) e.preventDefault();
     const item = items[highlightIdx];
     if (!item) return;
-    if (isDesktop) {
-      if (previewFullscreen) {
-        exitFullscreen();
-      } else if (panelOpen) {
-        enterFullscreen();
-      } else {
-        openPreview(item.url, item.title || item.url, historyDocumentId(item));
-      }
-    } else {
-      if (previewFullscreen) {
-        closePanelAndFullscreen();
-      } else {
-        openPreview(item.url, item.title || item.url, historyDocumentId(item));
-      }
-    }
+    preview.toggle(isDesktop, skipUrl, pushHistoryPageHistory, () =>
+      openPreview(item.url, item.title || item.url, historyDocumentId(item)),
+    );
   }
 
   function handleKeydown(e: KeyboardEvent) {
@@ -688,12 +574,9 @@
 
   onMount(async () => {
     const cfg = await fetchConfig();
-    if (!cfg.historyEnabled) {
-      window.location.href = resolve('/');
-      return;
-    }
+    if (!historyEnabled(cfg)) return;
     openResultsOnNewTab = (cfg as any).openResultsOnNewTab ?? false;
-    keyHandler = new KeyHandler((cfg as any).hotkeys ?? {}, hotkeyActions);
+    setupHistoryHotkeys(cfg);
     disablePreviews = (cfg as any).disablePreviews ?? false;
   });
 
@@ -708,24 +591,497 @@
   $effect(() => {
     const idx = highlightIdx;
     items;
-    const isFullscreen = previewFullscreen;
-    if (!isDesktop || !items.length || (!panelOpen && !isFullscreen)) return;
+    if (!preview.visibleOnDesktop(isDesktop)) return;
     const item = items[idx];
     if (!item) return;
-    const documentId = historyDocumentId(item);
-    if (untrack(() => panelUrl) === item.url && untrack(() => panelDocumentId) === documentId)
-      return;
-    panelViewingVersion = null;
-    panelDocumentId = documentId;
-    panelHintTitle = item.title || item.url;
-    panelUrl = item.url;
-    if (isFullscreen) {
-      withSkipUrl(skipUrl, () =>
-        replacePreviewHistory(item.url, item.title || item.url, null, documentId),
-      );
-    }
+    preview.syncDocument(item.url, item.title || item.url, historyDocumentId(item), skipUrl);
   });
+  function openHistoryResult(item: HistoryItem, newWindow: boolean) {
+    window.open(historyResultUrl(item), openResultsOnNewTab || newWindow ? '_blank' : '_self');
+  }
+  function setHistoryDateParams(
+    params: URLSearchParams,
+    requestedBucket: TimelineBucket | null,
+    includeTimezone: boolean,
+  ) {
+    if (requestedBucket) {
+      if (requestedBucket.from !== undefined) {
+        params.set('date_from', String(requestedBucket.from));
+      }
+      params.set('date_to', String(requestedBucket.to));
+    }
+    setHistoryTimezone(params, includeTimezone);
+  }
+
+  function setHistoryTimezone(params: URLSearchParams, includeTimezone: boolean) {
+    if (includeTimezone) {
+      const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+      if (timezone) params.set('timezone', timezone);
+    }
+  }
+
+  interface HistoryResponse {
+    documents?: HistoryItem[];
+    last_id?: number;
+    last_updated_at?: string;
+    page_key?: string;
+  }
+  function historyEnabled(cfg: Awaited<ReturnType<typeof fetchConfig>>): boolean {
+    if (cfg.historyEnabled) return true;
+    window.location.href = resolve('/');
+    return false;
+  }
+  function setHistoryCursor(
+    params: URLSearchParams,
+    latest: string,
+    opened: boolean,
+    updated: string,
+  ) {
+    if (!latest) return;
+    params.set(opened ? 'last_id' : 'last', latest);
+    setHistoryUpdatedCursor(params, opened, updated);
+  }
+  function historyItemsUrl(params: URLSearchParams): string {
+    return `/history${params.size > 0 ? `?${params.toString()}` : ''}`;
+  }
+  async function fetchHistoryJSON<T>(url: string, signal?: AbortSignal): Promise<T> {
+    const res = await apiFetch(url, { headers: { Accept: 'application/json' }, signal });
+    if (!res.ok) throw new Error('Failed to load history');
+    return res.json();
+  }
+  function historyRequestIsCurrent(controller: AbortController, requestID: number): boolean {
+    return !controller.signal.aborted && requestID === historyRequestID;
+  }
+  function resetHistoryCursor() {
+    pageKey = '';
+    openedLastID = 0;
+    openedLastUpdatedAt = '';
+  }
+  function applyHistoryResponse(data: HistoryResponse | null, latest: string, opened: boolean) {
+    if (!data || !Array.isArray(data.documents)) {
+      resetEmptyHistory(latest);
+      return;
+    }
+    if (!latest) items = data.documents;
+    else items.push(...data.documents);
+    updateHistoryCursor(data, opened);
+  }
+  function resetEmptyHistory(latest: string) {
+    if (!latest) items = [];
+    resetHistoryCursor();
+  }
+  function updateHistoryCursor(data: HistoryResponse, opened: boolean) {
+    resetHistoryCursor();
+    if (data.documents!.length < historyPageSize) return;
+    if (opened) setOpenedHistoryCursor(data);
+    else pageKey = data.page_key ?? '';
+  }
+  function setOpenedHistoryCursor(data: HistoryResponse) {
+    openedLastID = data.last_id ?? 0;
+    openedLastUpdatedAt = data.last_updated_at ?? '';
+  }
+  function historyFailed(controller: AbortController, e: unknown) {
+    if (!controller.signal.aborted) error = String(e);
+  }
+  function historyFinished(requestID: number) {
+    if (requestID !== historyRequestID) return;
+    loading = false;
+    historyRequestController = undefined;
+  }
+
+  function clearHistoryForRequest(latest: string) {
+    if (!latest) items = [];
+  }
+  async function canLoadHistory(controller: AbortController) {
+    const cfg = await fetchConfig();
+    if (controller.signal.aborted) return false;
+    return historyEnabled(cfg);
+  }
+  function abortHistoryRequest() {
+    historyRequestController?.abort();
+  }
+  function requireHistoryResponse(res: Response, message: string) {
+    if (!res.ok) throw new Error(message);
+  }
+  function currentTimelineRequest(controller: AbortController, requestID: number) {
+    return !controller.signal.aborted && requestID === timelineRequestID;
+  }
+  function timelineFailed(controller: AbortController, e: unknown) {
+    if (!controller.signal.aborted) timelineError = String(e);
+  }
+  function timelineFinished(requestID: number) {
+    if (requestID !== timelineRequestID) return;
+    timelineLoading = false;
+    timelineRequestController = undefined;
+  }
+  function canLoadPeriod(bucket: TimelineBucket) {
+    return !!bucket.from && !timelinePeriodLoading.has(bucket.key);
+  }
+  function currentPeriodRequest(
+    generation: number,
+    requestedFilter: string,
+    requestedOpenedOnly: boolean,
+  ) {
+    return (
+      generation === timelinePeriodGeneration &&
+      requestedFilter === serverFilter &&
+      requestedOpenedOnly === openedOnly
+    );
+  }
+  function applyPeriodDays(key: string, days: TimelineBucket[] | undefined) {
+    timelinePeriodDays = new Map(timelinePeriodDays).set(key, days ?? []);
+  }
+  function periodFailed(generation: number, bucket: TimelineBucket, e: unknown) {
+    if (generation !== timelinePeriodGeneration) return;
+    const errors = new Map(timelinePeriodErrors);
+    errors.set(bucket.key, String(e));
+    timelinePeriodErrors = errors;
+  }
+  function periodFinished(generation: number, bucket: TimelineBucket) {
+    if (generation === timelinePeriodGeneration) {
+      const loadingPeriods = new Set(timelinePeriodLoading);
+      loadingPeriods.delete(bucket.key);
+      timelinePeriodLoading = loadingPeriods;
+    }
+  }
+  function canAutoLoadHistory(inputFilter: string) {
+    return ![inputFilter !== serverFilter, !sentinel, !sentinelVisible, loading, !hasMore].some(
+      Boolean,
+    );
+  }
+  function setupHistoryHotkeys(cfg: Awaited<ReturnType<typeof fetchConfig>>) {
+    keyHandler = new KeyHandler(cfg.hotkeys ?? {}, hotkeyActions);
+  }
+  function setHistoryUpdatedCursor(params: URLSearchParams, opened: boolean, updated: string) {
+    if (opened && updated) params.set('last_updated_at', updated);
+  }
 </script>
+
+{#snippet historyResultsPane()}
+  <div class="flex min-h-0 flex-1 overflow-hidden" bind:this={splitContainerEl}>
+    {#if !preview.fullscreen}
+      <ScrollArea
+        orientation="vertical"
+        class="min-h-0 max-w-full min-w-0 flex-1 overflow-x-hidden"
+      >
+        <div
+          class="mx-auto w-full max-w-5xl space-y-5 overflow-hidden px-3 py-3 md:space-y-7 md:px-6 md:py-5"
+        >
+          {#if groups.length === 0}
+            <StatusMessage message="No entries in this period" type="empty" />
+          {/if}
+          {@render historyGroups()}
+        </div>
+        {#if loading && items.length > 0}
+          <div class="flex justify-center py-4">
+            <span class="font-inter text-text-brand-muted animate-pulse text-xs">Loading...</span>
+          </div>
+        {/if}
+        <div bind:this={sentinel} class="h-px w-full"></div>
+      </ScrollArea>
+    {/if}
+
+    <!-- Preview panel: fullscreen (both mobile and desktop) or split-pane (desktop only) -->
+    {#if !disablePreviews}
+      {#if preview.fullscreen}
+        <FullscreenPreview
+          url={preview.url}
+          documentId={preview.documentId}
+          hintTitle={preview.title}
+          onclose={closePanelAndFullscreen}
+          onfullscreentoggle={isDesktop ? exitFullscreen : undefined}
+          bind:viewingVersion={preview.version}
+          {skipUrl}
+        />
+      {:else if preview.panelOpen && isDesktop}
+        <!-- Drag handle to resize the split-screen panel -->
+        <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+        <div
+          class="hover:bg-hister-indigo/40 w-1.5 shrink-0 cursor-col-resize bg-transparent transition-colors"
+          onmousedown={startPanelResize}
+          role="separator"
+          aria-label="Resize preview panel"
+        ></div>
+        <div
+          style="width: min({panelWidthPct}%, max(0px, calc(100% - 28rem))); flex: none;"
+          class="flex min-h-0 overflow-hidden"
+        >
+          <PreviewPanel
+            url={preview.url}
+            documentId={preview.documentId}
+            hintTitle={preview.title}
+            fullscreen={false}
+            onclose={() => {
+              preview.closePanel();
+            }}
+            onfullscreentoggle={enterFullscreen}
+            initialViewingVersionId={preview.version}
+            onviewingversionchange={(id) => {
+              preview.version = id;
+            }}
+          />
+        </div>
+      {/if}
+    {/if}
+  </div>
+{/snippet}
+
+{#snippet timelineSidebar()}
+  <ScrollArea class="border-brutal-border bg-page-bg hidden w-72 shrink-0 border-r-[3px] md:block">
+    <div class="space-y-2 p-4">
+      <span
+        class="font-space text-text-brand-muted flex items-center gap-2 px-1 text-xs font-bold uppercase"
+      >
+        <CalendarDays class="size-3.5" />
+        Timeline
+      </span>
+      <Separator class="bg-border-brand-muted h-[2px]" />
+
+      <Button
+        variant="ghost"
+        class="flex h-auto w-full cursor-pointer items-center justify-start gap-2 rounded-none border-[2px] px-3 py-2 shadow-[2px_2px_0_transparent] hover:shadow-[2px_2px_0_var(--brutal-shadow)] {!activeTimelineKey
+          ? 'border-brutal-border bg-hister-indigo text-primary-foreground hover:bg-hister-indigo/90 hover:text-primary-foreground'
+          : 'hover:border-border-brand hover:bg-muted-surface border-transparent'}"
+        onclick={showAll}
+      >
+        <span
+          class="font-inter text-sm font-semibold"
+          class:text-text-brand-secondary={!!activeTimelineKey}
+        >
+          Show All
+        </span>
+        <Badge
+          variant="secondary"
+          class="ml-auto h-4 border-0 px-1.5 py-0 text-xs {!activeTimelineKey
+            ? 'text-primary-foreground bg-white/20'
+            : 'bg-muted-surface text-text-brand-muted'}"
+        >
+          {timelineTotalCount.toLocaleString()}
+        </Badge>
+      </Button>
+
+      <Separator class="bg-border-brand-muted h-[2px]" />
+
+      {#each timelineData.days as bucket, i (bucket.key)}
+        {@const color = getGroupColor(i)}
+        {@const isActive = activeTimelineKey === bucket.key}
+        <Button
+          variant="ghost"
+          class="flex h-auto w-full cursor-pointer items-center justify-start gap-2 rounded-none border-[2px] px-3 py-2 shadow-[2px_2px_0_transparent] hover:shadow-[2px_2px_0_var(--brutal-shadow)] {isActive
+            ? 'border-brutal-border text-primary-foreground hover:text-primary-foreground'
+            : 'hover:border-border-brand hover:bg-muted-surface border-transparent'}"
+          style={isActive ? `background-color: ${getColorVar(color)};` : ''}
+          disabled={bucket.count === 0}
+          onclick={() => selectTimelineBucket(bucket)}
+        >
+          <span
+            class="h-2 w-2 shrink-0 rounded-full"
+            style={isActive
+              ? 'background-color: white;'
+              : `background-color: ${getColorVar(color)};`}
+          ></span>
+          <span
+            class="font-inter truncate text-sm"
+            class:font-semibold={isActive}
+            class:font-medium={!isActive}
+            class:text-text-brand-secondary={!isActive}
+          >
+            {timelineBucketLabel(bucket, 'day')}
+          </span>
+          <Badge
+            variant="secondary"
+            class="ml-auto h-4 shrink-0 border-0 px-1.5 py-0 text-xs {isActive
+              ? 'text-primary-foreground bg-white/20'
+              : 'bg-muted-surface text-text-brand-muted'}"
+          >
+            {bucket.count.toLocaleString()}
+          </Badge>
+        </Button>
+      {/each}
+
+      <Button
+        variant="ghost"
+        class="hover:border-border-brand hover:bg-muted-surface text-text-brand-secondary flex h-auto w-full cursor-pointer items-center justify-start gap-2 rounded-none border-[2px] border-transparent px-3 py-2 font-semibold"
+        disabled={timelineData.older.count === 0}
+        onclick={toggleOlder}
+      >
+        {#if olderExpanded}<ChevronDown class="size-4" />{:else}<ChevronRight class="size-4" />{/if}
+        <span class="font-inter text-sm">Older</span>
+        <Badge
+          variant="secondary"
+          class="bg-muted-surface text-text-brand-muted ml-auto h-4 border-0 px-1.5 py-0 text-xs"
+        >
+          {timelineData.older.count.toLocaleString()}
+        </Badge>
+      </Button>
+
+      {#if olderExpanded}
+        <TimelinePeriodRows
+          {...timelinePeriodRendererProps}
+          buckets={populatedMonths}
+          colorOffset={timelineData.days.length}
+        />
+        {#if timelineLoading}
+          <p class="font-inter text-text-brand-muted px-3 py-1 text-xs">Loading months...</p>
+        {/if}
+      {/if}
+
+      {#if timelineError}
+        <p class="font-inter text-hister-coral px-1 text-xs">{timelineError}</p>
+      {/if}
+    </div>
+  </ScrollArea>
+{/snippet}
+
+{#snippet historyGroups()}
+  {#each groups as group (group.key)}
+    {@const color = getGlobalGroupColor(group.key)}
+    <section id="group-{encodeURIComponent(group.key)}" class="history-group">
+      <div class="history-group-header" style="--history-color: {getColorVar(color)};">
+        <div class="min-w-0">
+          <h2 class="font-outfit text-text-brand truncate text-base font-black md:text-lg">
+            {group.label}
+          </h2>
+          <p class="font-fira text-text-brand-muted text-xs">
+            {groupCount(group).toLocaleString()} entries
+          </p>
+        </div>
+        <span class="history-group-count">{groupCount(group).toLocaleString()}</span>
+      </div>
+
+      <div class="history-stack">
+        {#each group.items as item, ii (item)}
+          {@const itemColor = color}
+          {@const flatIdx = group.offset + ii}
+          {@const timestamp = itemTimestamp(item)}
+          <article
+            data-result
+            class="history-row flex items-start gap-3 px-3 py-3 transition-all duration-150 md:px-4"
+            class:history-row-active={flatIdx === highlightIdx}
+            style="--history-color: {getColorVar(itemColor)};"
+          >
+            <ResultFavicon
+              favicon={item.favicon}
+              faviconKey={item.favicon_key}
+              class="mt-1 md:mt-0"
+            />
+            <div class="w-0 min-w-0 flex-1 space-y-1">
+              <a
+                data-result-link={item.url}
+                href={historyResultUrl(item)}
+                class="history-title font-outfit text-hister-cyan line-clamp-2 text-base font-bold no-underline hover:underline md:text-lg"
+                title={item.title || item.url}
+                target="_blank"
+                rel="noopener"
+                onclick={() => (highlightIdx = flatIdx)}
+              >
+                {displayText(item.title || item.url).replace(/<[^>]*>/g, '')}
+              </a>
+              <div class="flex min-w-0 flex-col gap-1 md:flex-row md:items-center md:gap-2">
+                {#if timestamp}
+                  <span
+                    class="font-inter bg-muted-surface text-text-brand-secondary w-fit px-1.5 py-0.5 text-xs font-semibold whitespace-nowrap"
+                    title={formatTimestamp(timestamp)}>{formatRelativeTime(timestamp)}</span
+                  >
+                {/if}
+                {#if (item.add_count ?? 0) > 1}
+                  <span
+                    class="font-inter bg-muted-surface text-text-brand-secondary w-fit px-1.5 py-0.5 text-xs font-semibold whitespace-nowrap"
+                    title={`Added ${item.add_count?.toLocaleString()} times`}
+                    >x{item.add_count?.toLocaleString()}</span
+                  >
+                {/if}
+                <span
+                  class="history-url font-fira text-text-brand-muted line-clamp-1 min-w-0 flex-1 text-xs md:text-sm"
+                  title={item.url}>{displayText(item.url)}</span
+                >
+              </div>
+            </div>
+            <nav class="flex shrink-0 items-center gap-1 self-start">
+              {#if !disablePreviews}
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  class="text-text-brand-muted hover:bg-muted-surface hover:text-hister-teal size-8 shrink-0"
+                  aria-label="Preview entry"
+                  title="Preview"
+                  onclick={() => {
+                    highlightIdx = flatIdx;
+                    openPreview(item.url, item.title || item.url, historyDocumentId(item));
+                  }}
+                >
+                  <Eye class="size-3.5" />
+                </Button>
+              {/if}
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                class="text-text-brand-muted hover:bg-muted-surface hover:text-hister-rose size-8 shrink-0"
+                aria-label="Delete entry"
+                title="Delete"
+                onclick={() => deleteItem(item)}
+              >
+                <Trash2 class="size-3.5" />
+              </Button>
+            </nav>
+          </article>
+        {/each}
+      </div>
+    </section>
+  {/each}
+{/snippet}
+
+{#snippet timelineMobile()}
+  <div class="border-brutal-border bg-page-bg shrink-0 border-b-[3px] px-3 py-2 md:hidden">
+    <div class="flex items-center gap-2 overflow-x-auto">
+      <span class="text-text-brand-muted flex shrink-0 items-center">
+        <ListFilter class="size-4" />
+      </span>
+      <Button
+        variant="ghost"
+        size="sm"
+        class="font-inter border-brutal-border h-8 shrink-0 rounded-none border-[2px] px-3 text-xs font-bold {!activeTimelineKey
+          ? 'bg-hister-indigo hover:bg-hister-indigo/90 text-primary-foreground hover:text-primary-foreground'
+          : 'text-text-brand-secondary hover:bg-muted-surface'}"
+        onclick={showAll}
+      >
+        All ({timelineTotalCount.toLocaleString()})
+      </Button>
+      {#each timelineData.days.filter((bucket) => bucket.count > 0) as bucket, i (bucket.key)}
+        {@const color = getGroupColor(i)}
+        {@const isActive = activeTimelineKey === bucket.key}
+        <Button
+          variant="ghost"
+          size="sm"
+          class="font-inter border-brutal-border h-8 shrink-0 rounded-none border-[2px] px-3 text-xs font-semibold {isActive
+            ? 'text-primary-foreground hover:text-primary-foreground'
+            : 'text-text-brand-secondary hover:bg-muted-surface'}"
+          style={isActive ? `background-color: ${getColorVar(color)};` : ''}
+          onclick={() => selectTimelineBucket(bucket)}
+        >
+          {timelineBucketLabel(bucket, 'day')} ({bucket.count.toLocaleString()})
+        </Button>
+      {/each}
+      {#if timelineData.older.count > 0}
+        <Button
+          variant="ghost"
+          size="sm"
+          class="font-inter border-brutal-border text-text-brand-secondary hover:bg-muted-surface h-8 shrink-0 rounded-none border-[2px] px-3 text-xs font-semibold"
+          onclick={toggleOlder}
+        >
+          {olderExpanded ? 'Hide older' : `Older (${timelineData.older.count.toLocaleString()})`}
+        </Button>
+      {/if}
+      {#if olderExpanded}
+        <TimelinePeriodChips
+          {...timelinePeriodRendererProps}
+          buckets={populatedMonths}
+          colorOffset={timelineData.days.length}
+        />
+      {/if}
+    </div>
+  </div>
+{/snippet}
 
 <svelte:window onkeydown={handleKeydown} onpopstate={handlePopState} />
 
@@ -788,6 +1144,10 @@
   </div>
 </header>
 
+{#if deleteError}
+  <StatusMessage message={deleteError} type="error" class="mx-3 mt-4 md:mx-6" />
+{/if}
+
 {#if loading && items.length === 0}
   <StatusMessage message="Loading history..." type="loading" />
 {:else if error}
@@ -797,348 +1157,16 @@
 {:else}
   <div class="flex min-h-0 flex-1 flex-col overflow-hidden md:flex-row">
     <!-- Timeline sidebar: hidden on mobile, shown on md+ -->
-    {#if !previewFullscreen}
-      <ScrollArea
-        class="border-brutal-border bg-page-bg hidden w-72 shrink-0 border-r-[3px] md:block"
-      >
-        <div class="space-y-2 p-4">
-          <span
-            class="font-space text-text-brand-muted flex items-center gap-2 px-1 text-xs font-bold uppercase"
-          >
-            <CalendarDays class="size-3.5" />
-            Timeline
-          </span>
-          <Separator class="bg-border-brand-muted h-[2px]" />
-
-          <Button
-            variant="ghost"
-            class="flex h-auto w-full cursor-pointer items-center justify-start gap-2 rounded-none border-[2px] px-3 py-2 shadow-[2px_2px_0_transparent] hover:shadow-[2px_2px_0_var(--brutal-shadow)] {!activeTimelineKey
-              ? 'border-brutal-border bg-hister-indigo text-primary-foreground hover:bg-hister-indigo/90 hover:text-primary-foreground'
-              : 'hover:border-border-brand hover:bg-muted-surface border-transparent'}"
-            onclick={showAll}
-          >
-            <span
-              class="font-inter text-sm font-semibold"
-              class:text-text-brand-secondary={!!activeTimelineKey}
-            >
-              Show All
-            </span>
-            <Badge
-              variant="secondary"
-              class="ml-auto h-4 border-0 px-1.5 py-0 text-xs {!activeTimelineKey
-                ? 'text-primary-foreground bg-white/20'
-                : 'bg-muted-surface text-text-brand-muted'}"
-            >
-              {timelineTotalCount.toLocaleString()}
-            </Badge>
-          </Button>
-
-          <Separator class="bg-border-brand-muted h-[2px]" />
-
-          {#each timelineData.days as bucket, i (bucket.key)}
-            {@const color = getGroupColor(i)}
-            {@const isActive = activeTimelineKey === bucket.key}
-            <Button
-              variant="ghost"
-              class="flex h-auto w-full cursor-pointer items-center justify-start gap-2 rounded-none border-[2px] px-3 py-2 shadow-[2px_2px_0_transparent] hover:shadow-[2px_2px_0_var(--brutal-shadow)] {isActive
-                ? 'border-brutal-border text-primary-foreground hover:text-primary-foreground'
-                : 'hover:border-border-brand hover:bg-muted-surface border-transparent'}"
-              style={isActive ? `background-color: ${getColorVar(color)};` : ''}
-              disabled={bucket.count === 0}
-              onclick={() => selectTimelineBucket(bucket)}
-            >
-              <span
-                class="h-2 w-2 shrink-0 rounded-full"
-                style={isActive
-                  ? 'background-color: white;'
-                  : `background-color: ${getColorVar(color)};`}
-              ></span>
-              <span
-                class="font-inter truncate text-sm"
-                class:font-semibold={isActive}
-                class:font-medium={!isActive}
-                class:text-text-brand-secondary={!isActive}
-              >
-                {timelineBucketLabel(bucket, 'day')}
-              </span>
-              <Badge
-                variant="secondary"
-                class="ml-auto h-4 shrink-0 border-0 px-1.5 py-0 text-xs {isActive
-                  ? 'text-primary-foreground bg-white/20'
-                  : 'bg-muted-surface text-text-brand-muted'}"
-              >
-                {bucket.count.toLocaleString()}
-              </Badge>
-            </Button>
-          {/each}
-
-          <Button
-            variant="ghost"
-            class="hover:border-border-brand hover:bg-muted-surface text-text-brand-secondary flex h-auto w-full cursor-pointer items-center justify-start gap-2 rounded-none border-[2px] border-transparent px-3 py-2 font-semibold"
-            disabled={timelineData.older.count === 0}
-            onclick={toggleOlder}
-          >
-            {#if olderExpanded}<ChevronDown class="size-4" />{:else}<ChevronRight
-                class="size-4"
-              />{/if}
-            <span class="font-inter text-sm">Older</span>
-            <Badge
-              variant="secondary"
-              class="bg-muted-surface text-text-brand-muted ml-auto h-4 border-0 px-1.5 py-0 text-xs"
-            >
-              {timelineData.older.count.toLocaleString()}
-            </Badge>
-          </Button>
-
-          {#if olderExpanded}
-            <TimelinePeriodRows
-              {...timelinePeriodRendererProps}
-              buckets={populatedMonths}
-              colorOffset={timelineData.days.length}
-            />
-            {#if timelineLoading}
-              <p class="font-inter text-text-brand-muted px-3 py-1 text-xs">Loading months...</p>
-            {/if}
-          {/if}
-
-          {#if timelineError}
-            <p class="font-inter text-hister-coral px-1 text-xs">{timelineError}</p>
-          {/if}
-        </div>
-      </ScrollArea>
+    {#if !preview.fullscreen}
+      {@render timelineSidebar()}
     {/if}
 
     <!-- Mobile timeline: horizontal scrollable filter chips -->
-    {#if !previewFullscreen}
-      <div class="border-brutal-border bg-page-bg shrink-0 border-b-[3px] px-3 py-2 md:hidden">
-        <div class="flex items-center gap-2 overflow-x-auto">
-          <span class="text-text-brand-muted flex shrink-0 items-center">
-            <ListFilter class="size-4" />
-          </span>
-          <Button
-            variant="ghost"
-            size="sm"
-            class="font-inter border-brutal-border h-8 shrink-0 rounded-none border-[2px] px-3 text-xs font-bold {!activeTimelineKey
-              ? 'bg-hister-indigo hover:bg-hister-indigo/90 text-primary-foreground hover:text-primary-foreground'
-              : 'text-text-brand-secondary hover:bg-muted-surface'}"
-            onclick={showAll}
-          >
-            All ({timelineTotalCount.toLocaleString()})
-          </Button>
-          {#each timelineData.days.filter((bucket) => bucket.count > 0) as bucket, i (bucket.key)}
-            {@const color = getGroupColor(i)}
-            {@const isActive = activeTimelineKey === bucket.key}
-            <Button
-              variant="ghost"
-              size="sm"
-              class="font-inter border-brutal-border h-8 shrink-0 rounded-none border-[2px] px-3 text-xs font-semibold {isActive
-                ? 'text-primary-foreground hover:text-primary-foreground'
-                : 'text-text-brand-secondary hover:bg-muted-surface'}"
-              style={isActive ? `background-color: ${getColorVar(color)};` : ''}
-              onclick={() => selectTimelineBucket(bucket)}
-            >
-              {timelineBucketLabel(bucket, 'day')} ({bucket.count.toLocaleString()})
-            </Button>
-          {/each}
-          {#if timelineData.older.count > 0}
-            <Button
-              variant="ghost"
-              size="sm"
-              class="font-inter border-brutal-border text-text-brand-secondary hover:bg-muted-surface h-8 shrink-0 rounded-none border-[2px] px-3 text-xs font-semibold"
-              onclick={toggleOlder}
-            >
-              {olderExpanded
-                ? 'Hide older'
-                : `Older (${timelineData.older.count.toLocaleString()})`}
-            </Button>
-          {/if}
-          {#if olderExpanded}
-            <TimelinePeriodChips
-              {...timelinePeriodRendererProps}
-              buckets={populatedMonths}
-              colorOffset={timelineData.days.length}
-            />
-          {/if}
-        </div>
-      </div>
+    {#if !preview.fullscreen}
+      {@render timelineMobile()}
     {/if}
 
-    <div class="flex min-h-0 flex-1 overflow-hidden" bind:this={splitContainerEl}>
-      {#if !previewFullscreen}
-        <ScrollArea
-          orientation="vertical"
-          class="min-h-0 max-w-full min-w-0 flex-1 overflow-x-hidden"
-        >
-          <div
-            class="mx-auto w-full max-w-5xl space-y-5 overflow-hidden px-3 py-3 md:space-y-7 md:px-6 md:py-5"
-          >
-            {#if groups.length === 0}
-              <StatusMessage message="No entries in this period" type="empty" />
-            {/if}
-            {#each groups as group (group.key)}
-              {@const color = getGlobalGroupColor(group.key)}
-              <section id="group-{encodeURIComponent(group.key)}" class="history-group">
-                <div class="history-group-header" style="--history-color: {getColorVar(color)};">
-                  <div class="min-w-0">
-                    <h2
-                      class="font-outfit text-text-brand truncate text-base font-black md:text-lg"
-                    >
-                      {group.label}
-                    </h2>
-                    <p class="font-fira text-text-brand-muted text-xs">
-                      {groupCount(group).toLocaleString()} entries
-                    </p>
-                  </div>
-                  <span class="history-group-count">{groupCount(group).toLocaleString()}</span>
-                </div>
-
-                <div class="history-stack">
-                  {#each group.items as item, ii (item)}
-                    {@const itemColor = color}
-                    {@const flatIdx = group.offset + ii}
-                    {@const timestamp = itemTimestamp(item)}
-                    <article
-                      data-result
-                      class="history-row flex items-start gap-3 px-3 py-3 transition-all duration-150 md:px-4"
-                      class:history-row-active={flatIdx === highlightIdx}
-                      style="--history-color: {getColorVar(itemColor)};"
-                    >
-                      <ResultFavicon
-                        favicon={item.favicon}
-                        faviconKey={item.favicon_key}
-                        class="mt-1 md:mt-0"
-                      />
-                      <div class="w-0 min-w-0 flex-1 space-y-1">
-                        <a
-                          data-result-link={item.url}
-                          href={historyResultUrl(item)}
-                          class="history-title font-outfit text-hister-cyan line-clamp-2 text-base font-bold no-underline hover:underline md:text-lg"
-                          title={item.title || item.url}
-                          target="_blank"
-                          rel="noopener"
-                          onclick={() => (highlightIdx = flatIdx)}
-                        >
-                          {displayText(item.title || item.url).replace(/<[^>]*>/g, '')}
-                        </a>
-                        <div
-                          class="flex min-w-0 flex-col gap-1 md:flex-row md:items-center md:gap-2"
-                        >
-                          {#if timestamp}
-                            <span
-                              class="font-inter bg-muted-surface text-text-brand-secondary w-fit px-1.5 py-0.5 text-xs font-semibold whitespace-nowrap"
-                              title={formatTimestamp(timestamp)}
-                              >{formatRelativeTime(timestamp)}</span
-                            >
-                          {/if}
-                          {#if (item.add_count ?? 0) > 1}
-                            <span
-                              class="font-inter bg-muted-surface text-text-brand-secondary w-fit px-1.5 py-0.5 text-xs font-semibold whitespace-nowrap"
-                              title={`Added ${item.add_count?.toLocaleString()} times`}
-                              >x{item.add_count?.toLocaleString()}</span
-                            >
-                          {/if}
-                          <span
-                            class="history-url font-fira text-text-brand-muted line-clamp-1 min-w-0 flex-1 text-xs md:text-sm"
-                            title={item.url}>{displayText(item.url)}</span
-                          >
-                        </div>
-                      </div>
-                      <nav class="flex shrink-0 items-center gap-1 self-start">
-                        {#if !disablePreviews}
-                          <Button
-                            variant="ghost"
-                            size="icon-sm"
-                            class="text-text-brand-muted hover:bg-muted-surface hover:text-hister-teal size-8 shrink-0"
-                            aria-label="Preview entry"
-                            title="Preview"
-                            onclick={() => {
-                              highlightIdx = flatIdx;
-                              openPreview(
-                                item.url,
-                                item.title || item.url,
-                                historyDocumentId(item),
-                              );
-                            }}
-                          >
-                            <Eye class="size-3.5" />
-                          </Button>
-                        {/if}
-                        <Button
-                          variant="ghost"
-                          size="icon-sm"
-                          class="text-text-brand-muted hover:bg-muted-surface hover:text-hister-rose size-8 shrink-0"
-                          aria-label="Delete entry"
-                          title="Delete"
-                          onclick={() => deleteItem(item)}
-                        >
-                          <Trash2 class="size-3.5" />
-                        </Button>
-                      </nav>
-                    </article>
-                  {/each}
-                </div>
-              </section>
-            {/each}
-          </div>
-          {#if loading && items.length > 0}
-            <div class="flex justify-center py-4">
-              <span class="font-inter text-text-brand-muted animate-pulse text-xs">Loading...</span>
-            </div>
-          {/if}
-          <div bind:this={sentinel} class="h-px w-full"></div>
-        </ScrollArea>
-      {/if}
-
-      <!-- Preview panel: fullscreen (both mobile and desktop) or split-pane (desktop only) -->
-      {#if !disablePreviews}
-        {#if previewFullscreen}
-          <PreviewPanel
-            url={panelUrl}
-            documentId={panelDocumentId}
-            hintTitle={panelHintTitle}
-            fullscreen={true}
-            onclose={closePanelAndFullscreen}
-            onfullscreentoggle={isDesktop ? exitFullscreen : undefined}
-            initialViewingVersionId={panelViewingVersion}
-            onviewingversionchange={(id) => {
-              panelViewingVersion = id;
-              withSkipUrl(skipUrl, () =>
-                replacePreviewHistory(panelUrl, panelHintTitle, id, panelDocumentId),
-              );
-            }}
-          />
-        {:else if panelOpen && isDesktop}
-          <!-- Drag handle to resize the split-screen panel -->
-          <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
-          <div
-            class="hover:bg-hister-indigo/40 w-1.5 shrink-0 cursor-col-resize bg-transparent transition-colors"
-            onmousedown={startPanelResize}
-            role="separator"
-            aria-label="Resize preview panel"
-          ></div>
-          <div
-            style="width: min({panelWidthPct}%, max(0px, calc(100% - 28rem))); flex: none;"
-            class="flex min-h-0 overflow-hidden"
-          >
-            <PreviewPanel
-              url={panelUrl}
-              documentId={panelDocumentId}
-              hintTitle={panelHintTitle}
-              fullscreen={false}
-              onclose={() => {
-                panelOpen = false;
-                localStorage.setItem('hister-history-panel-open', 'false');
-              }}
-              onfullscreentoggle={enterFullscreen}
-              initialViewingVersionId={panelViewingVersion}
-              onviewingversionchange={(id) => {
-                panelViewingVersion = id;
-              }}
-            />
-          </div>
-        {/if}
-      {/if}
-    </div>
+    {@render historyResultsPane()}
   </div>
 {/if}
 
