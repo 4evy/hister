@@ -18,60 +18,51 @@ type ExtractorCallback = (r: Result) => void;
 
 interface ResultExtractor {
   isMatch(w: Window): boolean;
-  setCallback(d: Document, cb: ExtractorCallback);
+  setCallback(d: Document, cb: ExtractorCallback): void;
 }
 
-class GoogleExtractor implements ResultExtractor {
-  isMatch(w) {
-    return w.location.hostname == 'www.google.com' && w.location.pathname == '/search';
+class SearchResultExtractor implements ResultExtractor {
+  constructor(
+    private matches: (location: Location) => boolean,
+    private titleSelector: string,
+    private resultSelector: string,
+    private querySelector: string,
+  ) {}
+
+  isMatch(w: Window) {
+    return this.matches(w.location);
   }
-  setCallback(d, cb) {
-    d.body.addEventListener('click', (e) => {
-      let el = e.target;
-      if (el.nodeName != 'H3') {
-        return;
-      }
-      let res = el.closest('a[jsname="UWckNb"]');
-      if (!res) {
-        return;
-      }
-      let result = {
-        url: res.getAttribute('href'),
-        title: el.innerText,
-        query: d.querySelector("textarea[name='q']").value,
-      };
-      cb(result);
+
+  setCallback(d: Document, cb: ExtractorCallback) {
+    d.body.addEventListener('click', (event) => {
+      const title = event.target;
+      if (!(title instanceof HTMLElement) || !title.matches(this.titleSelector)) return;
+      const result = title.closest<HTMLAnchorElement>(this.resultSelector);
+      if (!result) return;
+      cb({
+        url: result.getAttribute('href')!,
+        title: title.innerText,
+        query: d.querySelector<HTMLInputElement | HTMLTextAreaElement>(this.querySelector)!.value,
+      });
     });
   }
 }
 
-class DuckDuckGoExtractor implements ResultExtractor {
-  isMatch(w) {
-    return (
-      w.location.hostname.match(/^(noai\.|www\.)?duckduckgo.com$/) && w.location.pathname == '/'
-    );
-  }
-  setCallback(d, cb) {
-    d.body.addEventListener('click', (e) => {
-      let el = e.target;
-      if (el.nodeName != 'SPAN') {
-        return;
-      }
-      let res = el.closest('a[class="eVNpHGjtxRBq_gLOfGDr LQNqh2U1kzYxREs65IJu"]');
-      if (!res) {
-        return;
-      }
-      let result = {
-        url: res.getAttribute('href'),
-        title: el.innerText,
-        query: d.querySelector("input[name='q']").value,
-      };
-      cb(result);
-    });
-  }
-}
-
-let resultExtractors: ResultExtractor[] = [new GoogleExtractor(), new DuckDuckGoExtractor()];
+const resultExtractors: ResultExtractor[] = [
+  new SearchResultExtractor(
+    (location) => location.hostname === 'www.google.com' && location.pathname === '/search',
+    'h3',
+    'a[jsname="UWckNb"]',
+    "textarea[name='q']",
+  ),
+  new SearchResultExtractor(
+    (location) =>
+      /^(noai\.|www\.)?duckduckgo.com$/.test(location.hostname) && location.pathname === '/',
+    'span',
+    'a[class="eVNpHGjtxRBq_gLOfGDr LQNqh2U1kzYxREs65IJu"]',
+    "input[name='q']",
+  ),
+];
 
 function getPageURL() {
   let url = new URL(window.location.href);

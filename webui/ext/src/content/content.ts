@@ -101,20 +101,7 @@ function submit(
     ? { pageData: snapshot.data, action: 'reindex' }
     : { pageData: snapshot.data };
   chrome.runtime.sendMessage(message, (response: SubmissionResponse | undefined) => {
-    // A delayed reply must not mark a newer page or manual submission as skipped.
-    if (number === submissionNumber) {
-      if (response?.status_code === 406) {
-        skippedUrl = snapshot.state.url;
-      } else if (
-        !response ||
-        response.error ||
-        response.status_code === 429 ||
-        (response.status_code !== undefined && response.status_code >= 500)
-      ) {
-        // Retry from a fresh snapshot at the next scheduled check.
-        previous = null;
-      }
-    }
+    applySubmissionResponse(response, number, snapshot);
     sendResponse?.(response ?? { error: 'No response from background' });
   });
 }
@@ -238,6 +225,37 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     return;
   }
   if (request.action !== 'reindex') return;
+  return reindexPage(sendResponse);
+});
+
+function applySubmissionResponse(
+  response: SubmissionResponse | undefined,
+  number: number,
+  snapshot: PageSnapshot,
+) {
+  // A delayed reply must not mark a newer page or manual submission as skipped.
+  if (number === submissionNumber) {
+    if (response?.status_code === 406) {
+      skippedUrl = snapshot.state.url;
+    } else if (shouldRetrySubmission(response)) {
+      // Retry from a fresh snapshot at the next scheduled check.
+      previous = null;
+    }
+  }
+}
+
+function shouldRetrySubmission(response: SubmissionResponse | undefined): boolean {
+  return !!(
+    !response ||
+    response.error ||
+    response.status_code === 429 ||
+    (response.status_code !== undefined && response.status_code >= 500)
+  );
+}
+
+function reindexPage(
+  sendResponse: (response: SubmissionResponse & { content_type?: string }) => void,
+) {
   if (!isContextValid()) return;
   if (!isSupportedPage()) {
     sendResponse({ status: 'unsupported_content_type', content_type: document.contentType });
@@ -259,4 +277,4 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     scheduleUpdate(minimumUpdateInterval);
   }
   return true;
-});
+}

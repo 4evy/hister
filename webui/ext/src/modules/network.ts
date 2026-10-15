@@ -1,3 +1,6 @@
+import type { StoredSettings } from './settings';
+import type { PageData } from './extract';
+
 const FETCHABLE_FAVICON_PROTOCOLS = new Set(['http:', 'https:']);
 
 function isFetchableFaviconURL(rawURL: string): boolean {
@@ -34,7 +37,7 @@ type StoredAuth = {
 
 async function getStoredAuth(): Promise<StoredAuth> {
   return new Promise((resolve) => {
-    chrome.storage.local.get(['histerCookies', 'histerToken'], (data) => {
+    chrome.storage.local.get<StoredSettings>(['histerCookies', 'histerToken'], (data) => {
       resolve({
         cookieHeader: data['histerCookies'] || '',
         accessToken: data['histerToken'] || '',
@@ -167,7 +170,11 @@ async function fetchAPI(
   return fetchWithCookies(url, method, headers, fetchBody, refreshedCookieHeader);
 }
 
-async function sendPageData(url, doc, customHeaders = []) {
+async function sendPageData(
+  url: string,
+  doc: PageData & { favicon?: string },
+  customHeaders: { name: string; value: string }[] = [],
+) {
   try {
     doc['favicon'] = await fetchFavicon(doc.faviconURL);
   } catch (e) {
@@ -176,7 +183,11 @@ async function sendPageData(url, doc, customHeaders = []) {
   return sendResult(url, doc, customHeaders);
 }
 
-async function sendResult(url, res, customHeaders = []) {
+async function sendResult(
+  url: string,
+  res: unknown,
+  customHeaders: { name: string; value: string }[] = [],
+) {
   return fetchAPI(url, { body: res, customHeaders });
 }
 

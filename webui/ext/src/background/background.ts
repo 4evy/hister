@@ -1,3 +1,5 @@
+import type { StoredSettings } from '../modules/settings';
+import type { PageData } from '../modules/extract';
 import { fetchAPI, sendPageData, sendPDFData, sendResult } from '../modules/network';
 import { ensureDefaultServerURL } from '../modules/settings';
 import { getTabPageURL } from '../modules/tabs';
@@ -7,6 +9,17 @@ void ensureDefaultServerURL();
 const missingURLMsg = {
   error: 'Missing or invalid Hister server URL. Configure it in the addon popup.',
 };
+
+interface BackgroundRequest {
+  action?: string;
+  tabId?: number;
+  url: string;
+  sourceURL?: string;
+  pattern: string;
+  deleteQuery?: string;
+  pageData?: PageData & { metadata?: Record<string, unknown>; label?: string };
+  resultData?: unknown;
+}
 
 type CustomHeader = { name: string; value: string };
 type SkipRuleType = 'url' | 'domain';
@@ -246,9 +259,9 @@ async function getIndexingRules(
     return indexingRulesCache.rules;
   }
   try {
-    const u = serverURL.endsWith('/') ? serverURL : serverURL + '/';
+    const u = baseServerURL(serverURL);
     const r = await fetchAPI(u + 'api/rules', { customHeaders });
-    if (!r.ok) return indexingRulesCache?.rules ?? { allow: [], skip: [] };
+    if (!r.ok) return cachedRules();
     const data = await r.json();
     const rules = {
       allow: compilePatterns(data.allow ?? []),
@@ -257,11 +270,11 @@ async function getIndexingRules(
     indexingRulesCache = { rules, timestamp: now };
     return rules;
   } catch (_) {
-    return indexingRulesCache?.rules ?? { allow: [], skip: [] };
+    return cachedRules();
   }
 }
 
-function getCustomHeaders(data): CustomHeader[] {
+function getCustomHeaders(data: StoredSettings): CustomHeader[] {
   const customHeaders: CustomHeader[] = Array.isArray(data['histerCustomHeaders'])
     ? [...data['histerCustomHeaders']]
     : [];
@@ -271,7 +284,7 @@ function getCustomHeaders(data): CustomHeader[] {
   return customHeaders;
 }
 
-function getDocumentSubmissionHeaders(data): CustomHeader[] {
+function getDocumentSubmissionHeaders(data: StoredSettings): CustomHeader[] {
   const customHeaders = getCustomHeaders(data);
   if (data['submitPublicDocuments'] === true) {
     customHeaders.push({ name: 'X-Hister-Public', value: '1' });
@@ -320,16 +333,10 @@ async function saveSkipRule(
 // --- Tab icon state ---
 
 async function updateTabIcon(tabId: number, url: string): Promise<void> {
-  if (
-    !url ||
-    url.startsWith('chrome://') ||
-    url.startsWith('about:') ||
-    url.startsWith('moz-extension://') ||
-    url.startsWith('chrome-extension://')
-  ) {
+  if (!isNormalPageURL(url)) {
     return;
   }
-  const data = await chrome.storage.local.get([
+  const data = await chrome.storage.local.get<StoredSettings>([
     'histerURL',
     'histerToken',
     'indexingEnabled',
@@ -339,22 +346,12 @@ async function updateTabIcon(tabId: number, url: string): Promise<void> {
 
   const serverURL: string = data['histerURL'] || '';
   const showIndexedBadge: boolean = data['showIndexedBadge'] === true;
-  const customHeaders: { name: string; value: string }[] = Array.isArray(
-    data['histerCustomHeaders'],
-  )
-    ? data['histerCustomHeaders']
-    : [];
-  if (data['histerToken']) {
-    customHeaders.push({ name: 'X-Access-Token', value: data['histerToken'] });
-  }
+  const customHeaders = getCustomHeaders(data);
 
   const pageURL = await getTabPageURL(tabId, url);
   if (data['indexingEnabled'] === false) {
     await setGreyIcon(tabId);
-    if (showIndexedBadge && serverURL) {
-      const indexed = await isUrlPreviouslyIndexed(pageURL, serverURL, customHeaders);
-      if (indexed) setPreviouslyIndexedBadge(tabId);
-    }
+    await showPreviousIndex(tabId, pageURL, serverURL, customHeaders, showIndexedBadge);
     return;
   }
 
@@ -369,10 +366,7 @@ async function updateTabIcon(tabId: number, url: string): Promise<void> {
   } else {
     setNormalIcon(tabId);
     clearBadge(tabId);
-    if (showIndexedBadge) {
-      const indexed = await isUrlPreviouslyIndexed(pageURL, serverURL, customHeaders);
-      if (indexed) setPreviouslyIndexedBadge(tabId);
-    }
+    await showPreviousIndex(tabId, pageURL, serverURL, customHeaders, showIndexedBadge);
   }
 }
 
@@ -392,7 +386,7 @@ async function indexPDFTab(
   tab: chrome.tabs.Tab,
   ignoreSkipRules = false,
 ): Promise<IndexingResult> {
-  const data = await chrome.storage.local.get([
+  const data = await chrome.storage.local.get<StoredSettings>([
     'histerURL',
     'histerToken',
     'indexingEnabled',
@@ -417,7 +411,7 @@ async function indexPDFTab(
     return { status: 'ok', status_code: 406 };
   }
 
-  const u = serverURL.endsWith('/') ? serverURL : serverURL + '/';
+  const u = baseServerURL(serverURL);
 
   try {
     const response = await fetch(tab.url!, { credentials: 'include' });
@@ -425,46 +419,15 @@ async function indexPDFTab(
       setErrorBadge(tabId);
       return { error: `Failed to fetch PDF: ${response.status}` };
     }
-    const buffer = await response.arrayBuffer();
-    const bytes = new Uint8Array(buffer);
-    let binary = '';
-    for (let i = 0; i < bytes.length; i++) {
-      binary += String.fromCharCode(bytes[i]);
-    }
-    const pdfBase64 = btoa(binary);
-
-    const doc: Record<string, unknown> = {
-      url: tab.url!,
-      title: tab.title || tab.url!,
-    };
-    if (ignoreSkipRules) {
-      doc.metadata = { ignore_skip_rules: true };
-    }
-    if (data['histerLabel']) {
-      doc['label'] = data['histerLabel'];
-    }
+    const pdfBase64 = encodePDF(await response.arrayBuffer());
+    const doc = pdfDocument(tab, ignoreSkipRules, data['histerLabel']);
 
     const r = await sendPDFData(u + 'api/add_pdf', doc, pdfBase64, customHeaders);
-    if (r.status === 201) {
-      setNormalIcon(tabId);
-      if (showIndexedBadge) {
-        setPreviouslyIndexedBadge(tabId);
-      } else {
-        clearBadge(tabId);
-      }
-    } else if (r.status === 406) {
-      indexingRulesCache = null;
-      setGreyIcon(tabId);
-    } else if (r.status === 422) {
-      tabSensitiveState.set(tabId, tab.url!);
-      setGreyIcon(tabId);
-    } else {
-      setErrorBadge(tabId);
-    }
+    applyIndexStatus(tabId, tab.url!, r.status, showIndexedBadge);
     return { status: 'ok', status_code: r.status };
   } catch (err) {
     setErrorBadge(tabId);
-    return { error: err instanceof Error ? err.message : String(err) };
+    return indexingError(err);
   }
 }
 
@@ -488,12 +451,13 @@ chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
 
 chrome.storage.onChanged.addListener(async (changes, area) => {
   if (area !== 'local') return;
-  const connectionChanged =
-    'histerURL' in changes ||
-    'histerToken' in changes ||
-    'histerCookies' in changes ||
-    'histerCustomHeaders' in changes;
-  if (!(connectionChanged || 'indexingEnabled' in changes || 'showIndexedBadge' in changes)) return;
+  const connectionChanged = [
+    'histerURL',
+    'histerToken',
+    'histerCookies',
+    'histerCustomHeaders',
+  ].some((key) => key in changes);
+  if (!changesAffectIcon(changes, connectionChanged)) return;
   if (connectionChanged) indexingRulesCache = null;
   try {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
@@ -548,7 +512,7 @@ async function disableIndexingForCurrentTab(type: SkipRuleType): Promise<void> {
   if (!tab?.id || !tab.url) return;
 
   try {
-    const data = await chrome.storage.local.get([
+    const data = await chrome.storage.local.get<StoredSettings>([
       'histerURL',
       'histerToken',
       'histerCustomHeaders',
@@ -584,36 +548,18 @@ chrome.commands?.onCommand?.addListener((command) => {
 
 // --- Document submission ---
 
-function applySubmissionStatus(status: number, sender, showIndexedBadge: boolean) {
-  const tabId = sender.tab?.id;
-  if (tabId === undefined) return;
-  if (status === 201) {
-    setNormalIcon(tabId);
-    if (showIndexedBadge) {
-      setPreviouslyIndexedBadge(tabId);
-    } else {
-      clearBadge(tabId);
-    }
-  } else if (status === 406) {
-    // Server indexing rules rejected the URL; invalidate cache and grey out
-    indexingRulesCache = null;
-    setGreyIcon(tabId);
-  } else if (status === 422) {
-    // Document rejected due to sensitive content; not an error
-    tabSensitiveState.set(tabId, sender.tab.url ?? '');
-    setGreyIcon(tabId);
-  } else {
-    setErrorBadge(tabId);
-  }
-}
-
-async function submitPageData(baseURL: string, request, sender, data): Promise<IndexingResult> {
+async function submitPageData(
+  baseURL: string,
+  request: BackgroundRequest,
+  sender: chrome.runtime.MessageSender,
+  data: StoredSettings,
+): Promise<IndexingResult> {
   const force = request.action === 'reindex';
   const tabId = sender.tab?.id;
   if (!force) {
     // The status belongs to the URL that was navigated to, which is not
     // necessarily the submitted URL: a page can declare a canonical URL.
-    const sourceURL = sender.url ?? sender.tab?.url ?? request.pageData.url;
+    const sourceURL = sender.url ?? sender.tab?.url ?? request.pageData!.url;
     if (tabId !== undefined) {
       const statusCode = await isErrorPage(tabId, sourceURL);
       if (statusCode !== undefined) {
@@ -621,13 +567,13 @@ async function submitPageData(baseURL: string, request, sender, data): Promise<I
       }
     }
     const rules = await getIndexingRules(baseURL, getCustomHeaders(data));
-    if (isPageSkipped(request.pageData.url, sourceURL, rules)) {
+    if (isPageSkipped(request.pageData!.url, sourceURL, rules)) {
       if (tabId !== undefined) await setGreyIcon(tabId);
       return { status: 'ok', status_code: 406 };
     }
   }
-  const labelData = await chrome.storage.local.get(['histerLabel']);
-  const pageData = { ...request.pageData };
+  const labelData = await chrome.storage.local.get<StoredSettings>(['histerLabel']);
+  const pageData = { ...request.pageData! };
   if (force) {
     pageData.metadata = { ...pageData.metadata, ignore_skip_rules: true };
   }
@@ -635,14 +581,20 @@ async function submitPageData(baseURL: string, request, sender, data): Promise<I
     pageData.label = labelData['histerLabel'];
   }
   const r = await sendPageData(baseURL + 'api/add', pageData, getDocumentSubmissionHeaders(data));
-  applySubmissionStatus(r.status, sender, data['showIndexedBadge'] === true);
+  if (tabId !== undefined) {
+    applyIndexStatus(tabId, sender.tab?.url ?? '', r.status, data['showIndexedBadge'] === true);
+  }
   return { status: 'ok', status_code: r.status };
 }
 
 // --- Message handler ---
 
 // TODO check source
-function cjsMsgHandler(request, sender, sendResponse) {
+function cjsMsgHandler(
+  request: BackgroundRequest,
+  sender: chrome.runtime.MessageSender,
+  sendResponse: (response: unknown) => void,
+) {
   if (request.action === 'indexCurrentPage') {
     indexCurrentTab()
       .then(sendResponse)
@@ -650,7 +602,7 @@ function cjsMsgHandler(request, sender, sendResponse) {
     return true;
   }
   chrome.storage.local
-    .get([
+    .get<StoredSettings>([
       'histerURL',
       'histerToken',
       'indexingEnabled',
@@ -663,49 +615,11 @@ function cjsMsgHandler(request, sender, sendResponse) {
       const indexingEnabled = data['indexingEnabled'] !== false;
       const customHeaders = getCustomHeaders(data);
 
-      if (request.action === 'getTabState') {
-        const stored = tabSensitiveState.get(request.tabId as number);
-        sendResponse({ isSensitive: stored !== undefined && stored === request.url });
-        return;
-      }
-
-      if (request.action === 'addSkipRule') {
-        if (!u) {
-          sendResponse({ error: 'No server URL configured' });
-          return;
-        }
-        const baseURL = u.endsWith('/') ? u : u + '/';
-        (async () => {
-          try {
-            await saveSkipRule(baseURL, customHeaders, request.pattern, request.deleteQuery);
-            sendResponse({ ok: true });
-            // Grey out the icon on the active tab immediately
-            const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-            if (tab?.id && tab.url) await updateTabIcon(tab.id, tab.url);
-          } catch (e) {
-            sendResponse({ error: e.message });
-          }
-        })();
-        return;
-      }
-
-      if (request.action === 'checkSkipRule') {
-        if (!u) {
-          sendResponse({ isSkipped: false });
-          return;
-        }
-        const baseURL = u.endsWith('/') ? u : u + '/';
-        getIndexingRules(baseURL, customHeaders).then((rules) => {
-          sendResponse({
-            isSkipped: isPageSkipped(request.url, request.sourceURL ?? request.url, rules),
-          });
-        });
-        return true;
-      }
+      if (handleControlMessage(request, sendResponse, u, customHeaders)) return;
 
       if (!u) {
-        chrome.tabs.sendMessage(sender.tab.id, missingURLMsg);
-        setErrorBadge(sender.tab.id);
+        chrome.tabs.sendMessage(sender.tab!.id!, missingURLMsg);
+        setErrorBadge(sender.tab!.id!);
         return;
       }
       if (!u.endsWith('/')) {
@@ -728,24 +642,137 @@ function cjsMsgHandler(request, sender, sendResponse) {
         sendResult(u + 'api/history', request.resultData, customHeaders)
           .then((r) => {
             if (r.status === 201) {
-              clearBadge(sender.tab.id);
+              clearBadge(sender.tab!.id!);
             } else if (r.status != 406) {
-              setErrorBadge(sender.tab.id);
+              setErrorBadge(sender.tab!.id!);
             }
             sendResponse({ status: 'ok', status_code: r.status });
           })
           .catch((err) => {
-            setErrorBadge(sender.tab.id);
+            setErrorBadge(sender.tab!.id!);
             sendResponse({ error: err.message });
           });
         return true;
       }
     })
     .catch((error) => {
-      chrome.tabs.sendMessage(sender.tab.id, missingURLMsg);
-      setErrorBadge(sender.tab.id);
+      chrome.tabs.sendMessage(sender.tab!.id!, missingURLMsg);
+      setErrorBadge(sender.tab!.id!);
     });
   return true;
 }
 
 chrome.runtime.onMessage.addListener(cjsMsgHandler);
+
+function cachedRules(): IndexingRules {
+  return indexingRulesCache?.rules ?? { allow: [], skip: [] };
+}
+
+function isNormalPageURL(url: string): boolean {
+  return (
+    !!url &&
+    !['chrome://', 'about:', 'moz-extension://', 'chrome-extension://'].some((prefix) =>
+      url.startsWith(prefix),
+    )
+  );
+}
+
+async function showPreviousIndex(
+  tabId: number,
+  url: string,
+  serverURL: string,
+  customHeaders: CustomHeader[],
+  enabled: boolean,
+) {
+  if (!enabled || !serverURL) return;
+  if (await isUrlPreviouslyIndexed(url, serverURL, customHeaders)) setPreviouslyIndexedBadge(tabId);
+}
+function applyIndexStatus(tabId: number, url: string, status: number, showIndexedBadge: boolean) {
+  if (status === 201) {
+    setNormalIcon(tabId);
+    if (showIndexedBadge) setPreviouslyIndexedBadge(tabId);
+    else clearBadge(tabId);
+  } else if (status === 406) {
+    indexingRulesCache = null;
+    setGreyIcon(tabId);
+  } else if (status === 422) {
+    tabSensitiveState.set(tabId, url);
+    setGreyIcon(tabId);
+  } else setErrorBadge(tabId);
+}
+function pdfDocument(
+  tab: chrome.tabs.Tab,
+  ignoreSkipRules: boolean,
+  label: string | undefined,
+): Record<string, unknown> {
+  const doc: Record<string, unknown> = { url: tab.url!, title: tab.title || tab.url! };
+  if (ignoreSkipRules) doc.metadata = { ignore_skip_rules: true };
+  if (label) doc.label = label;
+  return doc;
+}
+function encodePDF(buffer: ArrayBuffer): string {
+  const bytes = new Uint8Array(buffer);
+  let binary = '';
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return btoa(binary);
+}
+function indexingError(err: unknown): IndexingResult {
+  return { error: err instanceof Error ? err.message : String(err) };
+}
+
+function baseServerURL(url: string): string {
+  return url.endsWith('/') ? url : url + '/';
+}
+
+function handleControlMessage(
+  request: BackgroundRequest,
+  sendResponse: (response: unknown) => void,
+  u: string,
+  customHeaders: CustomHeader[],
+): boolean {
+  if (request.action === 'getTabState') {
+    const stored = tabSensitiveState.get(request.tabId as number);
+    sendResponse({ isSensitive: stored !== undefined && stored === request.url });
+    return true;
+  }
+
+  if (request.action === 'addSkipRule') {
+    if (!u) {
+      sendResponse({ error: 'No server URL configured' });
+      return true;
+    }
+    const baseURL = u.endsWith('/') ? u : u + '/';
+    (async () => {
+      try {
+        await saveSkipRule(baseURL, customHeaders, request.pattern, request.deleteQuery);
+        sendResponse({ ok: true });
+        // Grey out the icon on the active tab immediately
+        const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+        if (tab?.id && tab.url) await updateTabIcon(tab.id, tab.url);
+      } catch (e) {
+        sendResponse({ error: (e as Error).message });
+      }
+    })();
+    return true;
+  }
+
+  if (request.action === 'checkSkipRule') {
+    if (!u) {
+      sendResponse({ isSkipped: false });
+      return true;
+    }
+    const baseURL = u.endsWith('/') ? u : u + '/';
+    getIndexingRules(baseURL, customHeaders).then((rules) => {
+      sendResponse({
+        isSkipped: isPageSkipped(request.url, request.sourceURL ?? request.url, rules),
+      });
+    });
+    return true;
+  }
+
+  return false;
+}
+
+function changesAffectIcon(changes: Record<string, unknown>, connectionChanged: boolean): boolean {
+  return connectionChanged || 'indexingEnabled' in changes || 'showIndexedBadge' in changes;
+}
