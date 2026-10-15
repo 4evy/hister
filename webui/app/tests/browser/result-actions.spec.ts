@@ -260,5 +260,5 @@ test('preview close buttons are named while loading, after failure, and after re
   await page.getByRole('button', { name: 'Retry', exact: true }).click();
   await expect(page.getByText('Saved article content', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Close preview', exact: true }).click();
-  await expect(page.getByRole('searchbox', { name: 'Search your history' })).toBeVisible();
+  await expect(page.getByRole('combobox', { name: 'Search your history' })).toBeVisible();
 });
