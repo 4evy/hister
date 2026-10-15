@@ -177,7 +177,7 @@ For Home Manager:
 Hister is available through the [Proxmox VE Community Scripts](https://community-scripts.org/scripts/hister) project for LXC installations:
 
 ```bash
-bash -c "$(curl -fsSL https://raw.githubusercontent.com/community-scripts/ProxmoxVED/main/ct/hister.sh)"
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/community-scripts/ProxmoxVE/main/ct/hister.sh)"
 ```
 
 This installer is maintained by the community scripts project, not by Hister. Review the script before running it on your Proxmox host.
