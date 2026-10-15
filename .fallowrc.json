@@ -9,7 +9,9 @@
     "webui/ext/src/content/content.ts",
     "webui/ext/src/popup/popup.ts",
     "webui/ext/src/options/options.ts",
-    "webui/ext/svelte.config.js"
+    "webui/ext/svelte.config.js",
+    "webui/website/src/lib/ConfigReference.svelte",
+    "webui/components/src/lib/components/callout/callout-note.svelte"
   ],
   "ignorePatterns": [
     "webui/package.json",
@@ -23,7 +25,16 @@
     "@fontsource/space-grotesk",
     "@tailwindcss/typography"
   ],
-  "ignoreExports": [{ "file": "webui/components/src/lib/components/ui/**", "exports": ["*"] }],
+  "ignoreExports": [
+    {
+      "file": "webui/components/src/lib/components/ui/**",
+      "exports": ["*"]
+    },
+    {
+      "file": "webui/website/src/routes/**/+server.ts",
+      "exports": ["prerender"]
+    }
+  ],
   "ignoreExportsUsedInFile": true,
   "rules": {
     "duplicate-exports": "warn",

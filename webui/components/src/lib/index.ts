@@ -82,18 +82,8 @@ export {
 export { Textarea } from './components/ui/textarea';
 export { Toaster, toast } from './components/ui/sonner';
 export { PageHeader } from './components/page-header';
-export { BrowserFrame } from './components/browser-frame';
-export { FeatureCard } from './components/feature-card';
 export { Switch } from './components/ui/switch';
-export {
-  Callout,
-  calloutVariants,
-  type CalloutVariant,
-  CalloutNote,
-  CalloutWarning,
-  CalloutDanger,
-  CalloutTip,
-} from './components/callout';
+export { Callout, calloutVariants, type CalloutVariant, CalloutNote } from './components/callout';
 
 export { default as SearchResultCard } from './components/search-result/search-result-card.svelte';
 
