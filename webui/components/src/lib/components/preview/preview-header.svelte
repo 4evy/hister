@@ -25,7 +25,7 @@
       this={`h${headingLevel}`}
       bind:this={heading}
       tabindex="-1"
-      class="font-outfit text-text-brand min-w-0 flex-1 text-lg leading-snug font-bold wrap-anywhere md:text-3xl"
+      class="font-outfit text-text-brand max-h-[min(6.875em,25dvh)] min-w-0 flex-1 overflow-y-auto text-lg leading-snug font-bold wrap-anywhere md:text-3xl"
     >
       {#if url.startsWith('remote-file://')}{title}{:else}
         <a href={url} target="_blank" rel="noopener noreferrer" class="hover:underline">{title}</a>
