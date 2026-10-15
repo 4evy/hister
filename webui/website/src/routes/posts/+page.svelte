@@ -1,9 +1,11 @@
 <script lang="ts">
-  import * as Card from '@hister/components/ui/card';
   import Rss from '@lucide/svelte/icons/rss';
   import Seo from '#lib/Seo.svelte';
 
   let { data } = $props();
+  const months = $derived([
+    ...new Set(data.posts.map((post) => post.date?.slice(0, 7) ?? 'Undated')),
+  ]);
 </script>
 
 <Seo
@@ -12,47 +14,56 @@
   path="/posts"
 />
 
-<section class="mx-auto max-w-4xl px-6 py-12 md:px-12">
-  <div class="mb-10 flex items-center justify-between">
-    <h1
-      class="font-space text-4xl font-black tracking-[-1px] text-(--text-primary) uppercase md:text-5xl"
+<section class="reading-index posts-index">
+  <header class="reading-header">
+    <h1>Posts</h1>
+    <p>News, ideas, and practical guides for making the web your own.</p>
+    <a href="/posts/rss.xml" data-sveltekit-reload class="feed-link"
+      ><Rss size={16} aria-hidden="true" /> Subscribe via RSS</a
     >
-      Posts
-    </h1>
-    <a
-      href="/posts/rss.xml"
-      title="RSS feed"
-      aria-label="RSS feed"
-      data-sveltekit-reload
-      class="text-(--text-secondary) transition-colors hover:text-[#f26522]"
-    >
-      <Rss size={32} />
-    </a>
-  </div>
-
-  <ul class="m-0 flex list-none flex-col gap-4 p-0">
-    {#each data.posts as post}
-      <li>
-        <Card.Root href="/posts/{post.slug}" class="bg-brutal-card p-6">
-          <h2 class="font-space mb-2 text-xl font-extrabold tracking-[0.5px] text-(--text-primary)">
-            {post.title}
-          </h2>
-          {#if post.date}
-            <time class="font-inter text-sm text-(--text-secondary)" datetime={post.date}>
-              {new Date(post.date).toLocaleDateString('en-US', {
-                month: 'long',
-                day: 'numeric',
-                year: 'numeric',
-              })}
-            </time>
-          {/if}
-          {#if post.description}
-            <p class="font-inter mt-3 text-sm text-(--text-secondary)">
-              {post.description}
-            </p>
-          {/if}
-        </Card.Root>
-      </li>
-    {/each}
-  </ul>
+  </header>
+  {#each months as month}
+    <section class="post-month" aria-labelledby={`posts-${month}`}>
+      <h2 id={`posts-${month}`}>
+        {month === 'Undated'
+          ? month
+          : new Date(`${month}-01T00:00:00Z`).toLocaleDateString('en-US', {
+              month: 'long',
+              year: 'numeric',
+              timeZone: 'UTC',
+            })}
+      </h2>
+      <ul class="post-list">
+        {#each data.posts.filter((post) => (post.date?.slice(0, 7) ?? 'Undated') === month) as post}
+          <li>
+            <a href="/posts/{post.slug}">
+              {#if post.date}<time datetime={post.date}
+                  >{new Date(post.date).toLocaleDateString('en-US', {
+                    month: 'long',
+                    day: 'numeric',
+                    year: 'numeric',
+                    timeZone: 'UTC',
+                  })}</time
+                >{/if}
+              <h3>{post.title}</h3>
+              {#if post.description}<p>{post.description}</p>{/if}
+            </a>
+          </li>
+        {/each}
+      </ul>
+    </section>
+  {/each}
 </section>
+
+<style>
+  .post-month {
+    margin-top: 40px;
+  }
+  .post-month > h2 {
+    font:
+      13px 'Fira Code',
+      monospace;
+    color: var(--text-secondary);
+    margin-bottom: 8px;
+  }
+</style>

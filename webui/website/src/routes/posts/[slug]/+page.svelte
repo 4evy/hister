@@ -25,24 +25,17 @@
   ]}
 />
 
-<header class="w-full bg-(--text-primary) px-6 py-12 md:py-16">
-  <div class="mx-auto max-w-3xl">
-    {#if data.date}
-      <time class="font-inter text-sm text-white/70" datetime={data.publishedTime}>{data.date}</time
-      >
-    {/if}
-    <h1
-      class="font-space mt-3 text-3xl leading-tight font-black tracking-[-1px] text-white md:text-5xl"
-    >
-      {data.meta.title}
-    </h1>
-  </div>
-</header>
-
-<article class="mx-auto max-w-3xl px-6 py-12">
-  <div class="content">
-    <data.content />
-  </div>
+<article class="post-article">
+  <header class="reading-header">
+    <nav aria-label="Breadcrumb" class="reading-breadcrumb">
+      <a href="/posts">All posts</a><span aria-hidden="true">/</span><span>Hister journal</span>
+    </nav>
+    {#if data.date}<time datetime={data.publishedTime}>{data.date}</time>{/if}
+    <h1>{data.meta.title}</h1>
+    {#if data.meta.description}<p>{data.meta.description}</p>{/if}
+  </header>
+  <div class="content"><data.content /></div>
+  <footer class="article-footer"><a href="/posts">Back to all posts</a></footer>
 </article>
 
 <ImageLightbox contentKey={data.slug} />
