@@ -45,31 +45,26 @@
   }
 </script>
 
-<article class="not-prose font-inter space-y-4">
-  {#if data.thumbnail}
-    <figure>
-      <img
-        src={data.thumbnail}
-        alt={data.title}
-        class="border-brutal-border w-full border-2 object-cover"
-      />
-      <figcaption class="mt-2">
-        <Button
-          variant="outline"
-          class="brutal-press font-outfit w-full text-sm font-bold tracking-wide uppercase"
-          onclick={() => window.open(data.webpageUrl, '_blank', 'noopener,noreferrer')}
+{#snippet videoTags()}
+  {#if data.categories?.length || data.tags?.length}
+    <nav class="flex flex-wrap gap-1.5" aria-label="Video tags">
+      {#each data.categories || [] as cat}
+        <Badge
+          variant="secondary"
+          class="bg-hister-indigo/15 text-hister-indigo border-hister-indigo/30 text-[11px]"
+          >{cat}</Badge
         >
-          <ExternalLink class="mr-1 size-4" />
-          Open Externally
-        </Button>
-      </figcaption>
-    </figure>
+      {/each}
+      {#each data.tags || [] as tag}
+        <Badge variant="outline" class="text-hister-teal border-hister-teal/30 text-[11px]"
+          >{tag}</Badge
+        >
+      {/each}
+    </nav>
   {/if}
+{/snippet}
 
-  {#if data.uploader}
-    <p class="font-outfit text-text-brand text-base font-bold">{data.uploader}</p>
-  {/if}
-
+{#snippet videoMetadata()}
   <dl class="text-text-brand-secondary flex flex-wrap gap-x-4 gap-y-1.5 text-xs">
     {#if data.durationFormatted}
       <div class="flex items-center gap-1">
@@ -100,6 +95,34 @@
       </div>
     {/if}
   </dl>
+{/snippet}
+
+<article class="not-prose font-inter space-y-4">
+  {#if data.thumbnail}
+    <figure>
+      <img
+        src={data.thumbnail}
+        alt={data.title}
+        class="border-brutal-border w-full border-2 object-cover"
+      />
+      <figcaption class="mt-2">
+        <Button
+          variant="outline"
+          class="brutal-press font-outfit w-full text-sm font-bold tracking-wide uppercase"
+          onclick={() => window.open(data.webpageUrl, '_blank', 'noopener,noreferrer')}
+        >
+          <ExternalLink class="mr-1 size-4" />
+          Open Externally
+        </Button>
+      </figcaption>
+    </figure>
+  {/if}
+
+  {#if data.uploader}
+    <p class="font-outfit text-text-brand text-base font-bold">{data.uploader}</p>
+  {/if}
+
+  {@render videoMetadata()}
 
   {#if data.playlist}
     <aside class="bg-muted-surface border-border-brand border px-3 py-1.5 text-xs">
@@ -111,22 +134,7 @@
     </aside>
   {/if}
 
-  {#if data.categories?.length || data.tags?.length}
-    <nav class="flex flex-wrap gap-1.5" aria-label="Video tags">
-      {#each data.categories || [] as cat}
-        <Badge
-          variant="secondary"
-          class="bg-hister-indigo/15 text-hister-indigo border-hister-indigo/30 text-[11px]"
-          >{cat}</Badge
-        >
-      {/each}
-      {#each data.tags || [] as tag}
-        <Badge variant="outline" class="text-hister-teal border-hister-teal/30 text-[11px]"
-          >{tag}</Badge
-        >
-      {/each}
-    </nav>
-  {/if}
+  {@render videoTags()}
 
   {#if data.chapters?.length}
     <Separator />

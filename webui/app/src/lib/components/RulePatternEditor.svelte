@@ -34,25 +34,39 @@
   let preview = $state<RulePreview | null>(null);
   let retry = $state(0);
 
+  function submitWithKeyboard(event: KeyboardEvent) {
+    if (!onSubmit) return;
+    event.preventDefault();
+    if (valid && !disabled) void onSubmit();
+  }
+  function cancelWithKeyboard(event: KeyboardEvent) {
+    if (!onCancel) return;
+    event.preventDefault();
+    onCancel();
+  }
   function handleKeydown(event: KeyboardEvent) {
     if (event.isComposing) return;
-    if (event.key === 'Enter' && onSubmit) {
-      event.preventDefault();
-      if (valid && !disabled) void onSubmit();
-    } else if (event.key === 'Escape' && onCancel) {
-      event.preventDefault();
-      onCancel();
-    }
+    if (event.key === 'Enter') submitWithKeyboard(event);
+    else if (event.key === 'Escape') cancelWithKeyboard(event);
+  }
+  function patternValue(): string {
+    return (mode === 'domain' ? domain : mode === 'url' ? exactURL : pattern).trim();
+  }
+  function patternDraft(value: string) {
+    if (mode === 'domain') return { domain: value, include_subdomains: includeSubdomains };
+    if (mode === 'url') return { exact_url: value };
+    return { pattern: value };
+  }
+  function previewFailed(controller: AbortController, e: unknown) {
+    if (!controller.signal.aborted) error = e instanceof Error ? e.message : String(e);
+  }
+  function previewFinished(controller: AbortController) {
+    if (!controller.signal.aborted) checking = false;
   }
 
   $effect(() => {
-    const value = (mode === 'domain' ? domain : mode === 'url' ? exactURL : pattern).trim();
-    const draft =
-      mode === 'domain'
-        ? { domain: value, include_subdomains: includeSubdomains }
-        : mode === 'url'
-          ? { exact_url: value }
-          : { pattern: value };
+    const value = patternValue();
+    const draft = patternDraft(value);
     const url = testURL.trim();
     const generatedMode = mode !== 'regex';
     void retry;
@@ -72,11 +86,9 @@
         if (generatedMode) pattern = result.pattern;
         valid = true;
       } catch (e) {
-        if (!controller.signal.aborted) {
-          error = e instanceof Error ? e.message : String(e);
-        }
+        previewFailed(controller, e);
       } finally {
-        if (!controller.signal.aborted) checking = false;
+        previewFinished(controller);
       }
     }, 300);
 

@@ -18,12 +18,16 @@
     documentId = params.get('document_id') || '';
     docTitle = params.get('title') || '';
     const v = params.get('version');
-    panelVersionId = v ? parseInt(v, 10) || null : null;
+    panelVersionId = parseVersion(v);
   }
 
   onMount(() => {
     readParams();
   });
+
+  function parseVersion(value: string | null) {
+    return value ? parseInt(value, 10) || null : null;
+  }
 </script>
 
 <svelte:window onpopstate={readParams} />

@@ -163,12 +163,9 @@
   const ruleRows = $derived.by(() => {
     const rows: RuleRow[] = [];
     let addedOrder = 0;
-    for (const p of rules.allow) rows.push({ pattern: p, type: 'allow', addedOrder: addedOrder++ });
-    for (const p of rules.skip) rows.push({ pattern: p, type: 'skip', addedOrder: addedOrder++ });
-    for (const p of rules.priority)
-      rows.push({ pattern: p, type: 'priority', addedOrder: addedOrder++ });
-    for (const p of rules.versioning)
-      rows.push({ pattern: p, type: 'versioning', addedOrder: addedOrder++ });
+    for (const type of ['allow', 'skip', 'priority', 'versioning'] as const) {
+      for (const pattern of rules[type]) rows.push({ pattern, type, addedOrder: addedOrder++ });
+    }
     return rows;
   });
 
@@ -265,7 +262,7 @@
 
   async function addRule() {
     const pattern = newRulePattern.trim();
-    if (!pattern || !newRuleValid || saving) return;
+    if (!canSaveRule(pattern, newRuleValid)) return;
 
     if (existingRulePatterns.includes(pattern)) {
       message = `Rule "${pattern}" already exists.`;
@@ -273,7 +270,7 @@
       return;
     }
 
-    const shouldDeleteMatches = newRuleType === 'skip' && deleteMatchingDocuments;
+    const shouldDeleteMatches = shouldDeleteForRule(newRuleType, deleteMatchingDocuments);
     if (!(await saveRules(rulesWithPatterns([pattern])))) return;
     newRulePattern = '';
     newRuleValid = false;
@@ -322,7 +319,7 @@
         backslashCount++;
         continue;
       }
-      if (char === '"' && backslashCount % 2 === 0) escaped += '\\';
+      if (needsQuoteEscape(char, backslashCount)) escaped += '\\';
       escaped += char;
       backslashCount = 0;
     }
@@ -401,7 +398,7 @@
 
   async function addAlias(e: Event) {
     e.preventDefault();
-    if (!newAliasKeyword || !newAliasValue) return;
+    if (!hasAliasValues(newAliasKeyword, newAliasValue)) return;
     const keyword = newAliasKeyword.trim();
     if (Object.prototype.hasOwnProperty.call(rules.aliases, keyword)) {
       message = `Alias "${keyword}" already exists.`;
@@ -437,14 +434,11 @@
   async function saveEditAlias() {
     const trimmedKeyword = editAliasKeyword.trim();
     const trimmedValue = editAliasValue.trim();
-    if (!trimmedKeyword || !trimmedValue) return;
+    if (!hasAliasValues(trimmedKeyword, trimmedValue)) return;
     const oldKey = editingAliasKey!;
 
     // If the keyword is being renamed, check the new keyword doesn't already exist
-    if (
-      trimmedKeyword !== oldKey &&
-      Object.prototype.hasOwnProperty.call(rules.aliases, trimmedKeyword)
-    ) {
+    if (aliasNameTaken(trimmedKeyword, oldKey)) {
       message = `Alias "${trimmedKeyword}" already exists.`;
       isError = true;
       return;
@@ -462,14 +456,7 @@
     });
     if (!addRes.ok) return;
 
-    // If the keyword was renamed, delete the old key
-    if (trimmedKeyword !== oldKey) {
-      await apiFetch('/delete_alias', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: new URLSearchParams({ alias: oldKey }).toString(),
-      });
-    }
+    await removeRenamedAlias(trimmedKeyword, oldKey);
 
     editingAliasKey = null;
     await loadRules();
@@ -508,12 +495,10 @@
 
   async function saveEditRule() {
     const trimmed = editRulePattern.trim();
-    if (!trimmed || !editRuleValid || saving) return;
+    if (!canSaveRule(trimmed, editRuleValid)) return;
     const row = ruleRows[editingRuleIndex!];
     // Reject duplicate patterns within the selected rule type.
-    const isDuplicate =
-      rules[editRuleType].includes(trimmed) &&
-      !(editRuleType === row.type && trimmed === row.pattern);
+    const isDuplicate = duplicateEditedRule(row, trimmed);
     if (isDuplicate) {
       message = `Rule "${trimmed}" already exists.`;
       isError = true;
@@ -521,14 +506,579 @@
       editDeleteMatchingDocuments = false;
       return;
     }
-    const shouldDeleteMatches = editRuleType === 'skip' && editDeleteMatchingDocuments;
+    const shouldDeleteMatches = shouldDeleteForRule(editRuleType, editDeleteMatchingDocuments);
     const nextRules = rulesWithEditedRule(row, trimmed, editRuleType);
     editingRuleIndex = null;
     editDeleteMatchingDocuments = false;
     if (!(await saveRules(nextRules))) return;
     await deleteMatchesAfterSaving([trimmed], shouldDeleteMatches, 'Rule updated.');
   }
+  function canSaveRule(pattern: string, valid: boolean) {
+    return !!pattern && valid && !saving;
+  }
+  function shouldDeleteForRule(type: RuleType, enabled: boolean) {
+    return type === 'skip' && enabled;
+  }
+  function duplicateEditedRule(row: RuleRow, pattern: string) {
+    return (
+      rules[editRuleType].includes(pattern) &&
+      !(editRuleType === row.type && pattern === row.pattern)
+    );
+  }
+  function needsQuoteEscape(char: string, backslashCount: number) {
+    return char === '"' && backslashCount % 2 === 0;
+  }
+  function hasAliasValues(keyword: string, value: string) {
+    return !!keyword && !!value;
+  }
+  function aliasNameTaken(keyword: string, oldKey: string) {
+    return keyword !== oldKey && Object.prototype.hasOwnProperty.call(rules.aliases, keyword);
+  }
+  async function removeRenamedAlias(trimmedKeyword: string, oldKey: string) {
+    // If the keyword was renamed, delete the old key
+    if (trimmedKeyword !== oldKey) {
+      await apiFetch('/delete_alias', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({ alias: oldKey }).toString(),
+      });
+    }
+  }
 </script>
+
+{#snippet ruleTableRows()}
+  {#each sortedRuleRows as { row, i }}
+    <Table.Row class="border-brutal-border border-b-[3px]">
+      {#if editingRuleIndex === i}
+        <Table.Cell class="px-2 py-2 md:px-3" colspan={2}>
+          <div class="flex flex-col gap-2">
+            {#key row.pattern}
+              <RulePatternEditor
+                id="edit-rule"
+                bind:pattern={editRulePattern}
+                bind:valid={editRuleValid}
+                disabled={saving}
+                onSubmit={saveEditRule}
+                onCancel={cancelEditRule}
+              />
+            {/key}
+            <div class="flex items-center gap-2">
+              <Label for="edit-rule-type" class="font-outfit text-sm font-bold">Action</Label>
+              <select
+                id="edit-rule-type"
+                value={editRuleType}
+                disabled={saving}
+                aria-describedby="edit-rule-action-help"
+                onchange={(event) => {
+                  editRuleType = (event.currentTarget as HTMLSelectElement)
+                    .value as typeof editRuleType;
+                  if (editRuleType !== 'skip') editDeleteMatchingDocuments = false;
+                }}
+                class="bg-card-surface border-brutal-border font-inter text-text-brand h-10 min-w-0 border-[3px] px-2 text-sm"
+              >
+                <option value="skip">Skip indexing</option>
+                <option value="priority">Prioritize in search</option>
+                <option value="allow">Allow indexing</option>
+                <option value="versioning">Keep document versions</option>
+              </select>
+            </div>
+            <p id="edit-rule-action-help" class="font-inter text-text-brand-secondary text-sm">
+              {ruleDescriptions[editRuleType]}
+            </p>
+            {#if editRuleType === 'skip'}
+              <DeleteMatchingDocumentsOption bind:checked={editDeleteMatchingDocuments} />
+            {/if}
+          </div>
+        </Table.Cell>
+        <Table.Cell class="w-16 px-1 py-2 md:w-20 md:px-3">
+          {@render editCancelButtons(saveEditRule, cancelEditRule, saving || !editRuleValid)}
+        </Table.Cell>
+      {:else}
+        <Table.Cell class="font-fira text-text-brand max-w-0 truncate px-2 py-3 text-sm md:px-5"
+          >{row.pattern}</Table.Cell
+        >
+        <Table.Cell class="w-20 px-2 py-3 md:w-28 md:px-5">
+          <Badge
+            variant="default"
+            class="font-space border-0 px-2 py-1 text-xs font-bold tracking-[0.5px] uppercase md:px-3 {row.type ===
+            'skip'
+              ? 'bg-hister-rose text-white'
+              : row.type === 'allow'
+                ? 'bg-hister-indigo text-white'
+                : row.type === 'priority'
+                  ? 'bg-hister-teal text-white'
+                  : 'bg-violet-500 text-white'}"
+          >
+            {row.type}
+          </Badge>
+        </Table.Cell>
+        <Table.Cell class="w-16 px-1 py-3 md:w-20 md:px-3">
+          {@render editDeleteButtons(
+            () => startEditRule(i),
+            () => removeRule(row.pattern, row.type),
+            'hover:text-hister-coral',
+          )}
+        </Table.Cell>
+      {/if}
+    </Table.Row>
+  {/each}
+{/snippet}
+
+{#snippet indexingRules()}
+  <Card.Root id="indexing-rules" class="scroll-mt-6">
+    <Card.Header color="hister-coral">
+      <div class="flex h-12 w-12 shrink-0 items-center justify-center bg-white/20">
+        <Shield class="size-6 text-white" />
+      </div>
+      <div class="flex flex-col gap-1">
+        <Card.Title class="font-space text-xl font-extrabold tracking-[1px] text-white uppercase"
+          >Indexing rules</Card.Title
+        >
+        <Card.Description class="font-inter text-sm text-white/80">
+          {ruleRows.length} rules configured. Choose what to match and which action to apply.
+        </Card.Description>
+      </div>
+    </Card.Header>
+
+    <p class="font-inter text-text-brand-muted px-4 py-3 text-sm md:px-5">
+      When allow rules exist, URLs must match at least one. Skip rules take precedence. Reindexing
+      removes excluded documents, except pages explicitly saved manually. Removing all allow rules
+      restores indexing of any URL without a skip match.
+    </p>
+
+    <details
+      id="add-rule-section"
+      class="group/rule-add bg-muted-surface border-brutal-border border-b-[3px]"
+    >
+      <summary
+        class="font-outfit text-text-brand hover:bg-card-surface focus-visible:outline-hister-coral box-border flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 font-bold focus-visible:outline-2 focus-visible:outline-offset-[-4px] md:px-5 [&::-webkit-details-marker]:hidden"
+      >
+        <span class="flex items-center gap-2">
+          <Plus class="size-4" aria-hidden="true" />
+          Add rule
+        </span>
+        <ChevronDown
+          class="size-4 transition-transform group-open/rule-add:rotate-180"
+          aria-hidden="true"
+        />
+      </summary>
+      <!-- Reset inherited box sizing across the native details content boundary. -->
+      <div class="box-border flex w-full min-w-0 flex-col gap-4 px-4 pb-4 md:px-5 md:pb-5">
+        <fieldset>
+          <legend class="font-outfit text-text-brand mb-2 text-sm font-bold">Match by</legend>
+          <div class="flex flex-wrap gap-2">
+            {#each ruleMatchModes as option}
+              <Button
+                variant={newRuleMode === option.mode ? 'default' : 'outline'}
+                disabled={saving}
+                aria-pressed={newRuleMode === option.mode}
+                onclick={() => (newRuleMode = option.mode)}
+              >
+                {option.label}
+              </Button>
+            {/each}
+          </div>
+        </fieldset>
+
+        {#key ruleDraftID}
+          <RulePatternEditor
+            id="new-rule"
+            mode={newRuleMode}
+            bind:pattern={newRulePattern}
+            bind:valid={newRuleValid}
+            disabled={saving}
+            onSubmit={addRule}
+          />
+        {/key}
+
+        <div class="space-y-1.5">
+          <div class="flex flex-col gap-1.5 sm:flex-row sm:items-center sm:gap-3">
+            <Label for="rule-type" class="font-outfit text-text-brand text-sm font-bold"
+              >Action</Label
+            >
+            <select
+              id="rule-type"
+              value={newRuleType}
+              disabled={saving}
+              aria-describedby="rule-action-help"
+              onchange={(event) => {
+                newRuleType = (event.currentTarget as HTMLSelectElement)
+                  .value as typeof newRuleType;
+                if (newRuleType !== 'skip') deleteMatchingDocuments = false;
+              }}
+              class="bg-card-surface border-brutal-border font-inter text-text-brand h-10 border-[3px] px-3 text-sm"
+            >
+              <option value="skip">Skip indexing</option>
+              <option value="priority">Prioritize in search</option>
+              <option value="allow">Allow indexing</option>
+              <option value="versioning">Keep document versions</option>
+            </select>
+          </div>
+          <p id="rule-action-help" class="font-inter text-text-brand-secondary text-sm">
+            {ruleDescriptions[newRuleType]}
+          </p>
+        </div>
+        {#if newRuleType === 'skip'}
+          <DeleteMatchingDocumentsOption bind:checked={deleteMatchingDocuments} />
+        {/if}
+        <div class="flex flex-wrap justify-end gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            onclick={openBulkAdd}
+            disabled={saving}
+            class="bg-card-surface text-text-brand-secondary font-space border-brutal-border brutal-press h-10 flex-1 gap-2 rounded-none border-[3px] px-4 text-xs font-bold tracking-[0.5px] uppercase md:flex-none"
+          >
+            <ListPlus class="size-4 shrink-0" />
+            Bulk add
+          </Button>
+          <Button
+            type="button"
+            onclick={addRule}
+            disabled={saving || !newRuleValid || !newRulePattern.trim()}
+            class="bg-hister-coral font-space border-brutal-border brutal-press h-10 flex-1 gap-2 border-[3px] px-5 text-sm font-bold tracking-[1px] text-white uppercase md:flex-none"
+          >
+            <Plus class="size-4 shrink-0" />
+            Add rule
+          </Button>
+        </div>
+      </div>
+    </details>
+
+    <Card.Content class="flex-1 p-0">
+      <!-- Rules table -->
+      <Table.Root>
+        <Table.Header>
+          <Table.Row
+            class="bg-muted-surface border-brutal-border hover:bg-muted-surface border-b-[3px]"
+          >
+            {@render sortableHead(
+              'Pattern',
+              'pattern',
+              ruleSort.col,
+              ruleSort.dir,
+              () => ruleSort.toggle('pattern'),
+              'font-space text-text-brand-muted h-auto px-2 py-3 text-xs font-bold tracking-[1px] uppercase md:px-5',
+            )}
+            {@render sortableHead(
+              'Type',
+              'type',
+              ruleSort.col,
+              ruleSort.dir,
+              () => ruleSort.toggle('type'),
+              'font-space text-text-brand-muted h-auto w-20 px-2 py-3 text-xs font-bold tracking-[1px] uppercase md:w-28 md:px-5',
+            )}
+            <Table.Head class="h-auto w-16 px-2 py-3 md:w-20 md:px-5">
+              {@render filterToggleButton('bg-hister-coral text-white', () => {
+                ruleFilterOpen = !ruleFilterOpen;
+                if (!ruleFilterOpen) ruleFilter = '';
+              })}
+            </Table.Head>
+          </Table.Row>
+          {@render filterInputRow(
+            ruleFilterOpen,
+            ruleFilter,
+            (v) => (ruleFilter = v),
+            'Filter rules...',
+            'focus-visible:border-hister-coral',
+          )}
+        </Table.Header>
+        <Table.Body>
+          {@render ruleTableRows()}
+        </Table.Body>
+      </Table.Root>
+
+      {#if sortedRuleRows.length === 0}
+        <div class="flex flex-col items-center justify-center gap-3 py-10">
+          <div
+            class="flex h-12 w-12 items-center justify-center"
+            style="background-color: color-mix(in srgb, var(--hister-coral) 10%, transparent); color: var(--hister-coral);"
+          >
+            <Shield class="size-5" />
+          </div>
+          <p class="font-inter text-text-brand-muted text-sm">
+            {ruleFilter ? 'No rules match the filter.' : 'No rules defined yet.'}
+          </p>
+        </div>
+      {/if}
+    </Card.Content>
+  </Card.Root>
+{/snippet}
+
+{#snippet searchAliases()}
+  <Card.Root id="search-aliases" class="scroll-mt-6">
+    <Card.Header color="hister-indigo">
+      <div class="flex h-12 w-12 shrink-0 items-center justify-center bg-white/20">
+        <Link2 class="size-6 text-white" />
+      </div>
+      <div class="flex flex-col gap-1">
+        <Card.Title class="font-space text-xl font-extrabold tracking-[1px] text-white uppercase"
+          >Search aliases</Card.Title
+        >
+        <Card.Description class="font-inter text-sm text-white/80"
+          >{Object.keys(rules.aliases).length} aliases configured</Card.Description
+        >
+      </div>
+    </Card.Header>
+
+    <p class="font-inter text-text-brand-muted px-4 py-3 text-sm md:px-5">
+      Aliases are shortcuts for search queries. Enter a keyword and the query it should expand to,
+      then use that keyword in the search bar. For example, set <code>gh</code> to
+      <code>domain:github.com</code> so searching for <code>gh svelte</code> searches indexed GitHub
+      pages for <code>svelte</code>.
+    </p>
+
+    <div
+      class="bg-muted-surface border-brutal-border flex items-center border-b-[3px] px-4 py-4 md:px-5 md:py-5"
+    >
+      <form
+        onsubmit={addAlias}
+        class="flex w-full flex-col items-stretch gap-3 md:flex-row md:items-end"
+      >
+        <div class="flex flex-col gap-1">
+          <Label class="font-outfit text-text-brand text-sm font-bold">Keyword</Label>
+          <Input
+            type="text"
+            variant="brutal"
+            bind:value={newAliasKeyword}
+            placeholder="keyword..."
+            class="bg-card-surface focus-visible:border-hister-indigo h-10 w-full px-3 md:w-35"
+          />
+        </div>
+        <div class="flex flex-1 flex-col gap-1">
+          <Label class="font-outfit text-text-brand text-sm font-bold">Expands to</Label>
+          <Input
+            type="text"
+            variant="brutal"
+            bind:value={newAliasValue}
+            placeholder="expands to..."
+            class="bg-card-surface focus-visible:border-hister-indigo h-10 w-full px-3"
+          />
+        </div>
+        <Button
+          type="submit"
+          class="bg-hister-indigo font-space border-brutal-border brutal-press h-10 gap-2 border-[3px] px-5 text-sm font-bold tracking-[1px] text-white uppercase"
+        >
+          <Plus class="size-4 shrink-0" />
+          Add
+        </Button>
+      </form>
+    </div>
+
+    <Card.Content class="flex-1 p-0">
+      <!-- Aliases table -->
+      <Table.Root>
+        <Table.Header>
+          <Table.Row
+            class="bg-muted-surface border-brutal-border hover:bg-muted-surface border-b-[3px]"
+          >
+            {@render sortableHead(
+              'Keyword',
+              'keyword',
+              aliasSort.col,
+              aliasSort.dir,
+              () => aliasSort.toggle('keyword'),
+              'font-space text-text-brand-muted h-auto w-20 px-2 py-3 text-xs font-bold tracking-[1px] uppercase md:w-35 md:px-5',
+            )}
+            {@render sortableHead(
+              'Expands to',
+              'value',
+              aliasSort.col,
+              aliasSort.dir,
+              () => aliasSort.toggle('value'),
+              'font-space text-text-brand-muted h-auto px-2 py-3 text-xs font-bold tracking-[1px] uppercase md:px-5',
+            )}
+            <Table.Head class="h-auto w-16 px-2 py-3 md:w-20 md:px-5">
+              {@render filterToggleButton('bg-hister-indigo text-white', () => {
+                aliasFilterOpen = !aliasFilterOpen;
+                if (!aliasFilterOpen) aliasFilter = '';
+              })}
+            </Table.Head>
+          </Table.Row>
+          {@render filterInputRow(
+            aliasFilterOpen,
+            aliasFilter,
+            (v) => (aliasFilter = v),
+            'Filter aliases...',
+            'focus-visible:border-hister-indigo',
+          )}
+        </Table.Header>
+        <Table.Body>
+          {#each sortedAliases as [keyword, value]}
+            <Table.Row class="border-brutal-border border-b-[3px]">
+              {#if editingAliasKey === keyword}
+                <Table.Cell class="px-2 py-2 md:px-3" colspan={2}>
+                  <div class="flex items-center gap-2">
+                    <Input
+                      type="text"
+                      variant="brutal"
+                      bind:value={editAliasKeyword}
+                      class="bg-card-surface focus-visible:border-hister-indigo h-8 w-20 px-2 text-sm md:w-28"
+                    />
+                    <Input
+                      type="text"
+                      variant="brutal"
+                      bind:value={editAliasValue}
+                      class="bg-card-surface focus-visible:border-hister-indigo h-8 flex-1 px-2 text-sm"
+                      onkeydown={(e) => {
+                        if (e.key === 'Enter') saveEditAlias();
+                        if (e.key === 'Escape') cancelEditAlias();
+                      }}
+                    />
+                  </div>
+                </Table.Cell>
+                <Table.Cell class="w-16 px-1 py-2 md:w-20 md:px-3">
+                  {@render editCancelButtons(saveEditAlias, cancelEditAlias)}
+                </Table.Cell>
+              {:else}
+                <Table.Cell
+                  class="font-fira text-text-brand w-20 px-2 py-3 text-sm font-semibold md:w-35 md:px-5"
+                  >{keyword}</Table.Cell
+                >
+                <Table.Cell
+                  class="font-fira text-text-brand-secondary max-w-0 truncate px-2 py-3 text-sm md:px-5"
+                  >{value}</Table.Cell
+                >
+                <Table.Cell class="w-16 px-1 py-3 md:w-20 md:px-3">
+                  {@render editDeleteButtons(
+                    () => startEditAlias(keyword, value),
+                    () => deleteAlias(keyword),
+                    'hover:text-hister-indigo',
+                  )}
+                </Table.Cell>
+              {/if}
+            </Table.Row>
+          {/each}
+        </Table.Body>
+      </Table.Root>
+
+      {#if sortedAliases.length === 0}
+        <div class="flex flex-col items-center justify-center gap-3 py-10">
+          <div
+            class="flex h-12 w-12 items-center justify-center"
+            style="background-color: color-mix(in srgb, var(--hister-indigo) 10%, transparent); color: var(--hister-indigo);"
+          >
+            <Link2 class="size-5" />
+          </div>
+          <p class="font-inter text-text-brand-muted text-sm">
+            {aliasFilter ? 'No aliases match the filter.' : 'No aliases defined yet.'}
+          </p>
+        </div>
+      {/if}
+    </Card.Content>
+  </Card.Root>
+{/snippet}
+
+{#snippet editDeleteButtons(onEdit: () => void, onDelete: () => void, editHoverClass: string)}
+  <div class="flex items-center gap-1">
+    <Button
+      variant="ghost"
+      size="icon-sm"
+      class="text-text-brand-muted shrink-0 transition-colors {editHoverClass}"
+      onclick={onEdit}
+    >
+      <Pencil class="size-4" />
+    </Button>
+    <Button
+      variant="ghost"
+      size="icon-sm"
+      class="text-text-brand-muted hover:text-hister-rose shrink-0 transition-colors"
+      onclick={onDelete}
+    >
+      <Trash2 class="size-4" />
+    </Button>
+  </div>
+{/snippet}
+
+{#snippet editCancelButtons(
+  onSave: () => void,
+  onCancel: () => void,
+  saveDisabled: boolean = false,
+)}
+  <div class="flex items-center gap-1">
+    <Button
+      variant="ghost"
+      size="icon-sm"
+      class="text-hister-teal shrink-0 transition-colors"
+      onclick={onSave}
+      disabled={saveDisabled}
+      aria-label="Save changes"
+    >
+      <Check class="size-4" />
+    </Button>
+    <Button
+      variant="ghost"
+      size="icon-sm"
+      class="text-text-brand-muted shrink-0 transition-colors"
+      onclick={onCancel}
+      aria-label="Cancel editing"
+    >
+      <X class="size-4" />
+    </Button>
+  </div>
+{/snippet}
+
+{#snippet sortableHead(
+  label: string,
+  col: string,
+  sortCol: string | null,
+  sortDir: 'asc' | 'desc',
+  onToggle: () => void,
+  headClass: string,
+)}
+  <Table.Head class={headClass}>
+    <button
+      class="flex cursor-pointer items-center gap-1 border-0 bg-transparent p-0 font-[inherit] tracking-[inherit] text-[inherit] uppercase opacity-80 hover:opacity-100"
+      onclick={onToggle}
+    >
+      {label}
+      {#if sortCol === col}
+        {#if sortDir === 'asc'}
+          <ChevronUp class="size-3 shrink-0" />
+        {:else}
+          <ChevronDown class="size-3 shrink-0" />
+        {/if}
+      {:else}
+        <ChevronsUpDown class="size-3 shrink-0 opacity-50" />
+      {/if}
+    </button>
+  </Table.Head>
+{/snippet}
+
+{#snippet filterInputRow(
+  open: boolean,
+  filterValue: string,
+  setFilter: (v: string) => void,
+  placeholder: string,
+  focusClass: string,
+)}
+  {#if open}
+    <Table.Row class="bg-muted-surface border-brutal-border border-b-[3px]">
+      <Table.Head colspan={3} class="h-auto px-2 py-2 md:px-5">
+        <div use:focusInput>
+          <Input
+            type="text"
+            variant="brutal"
+            value={filterValue}
+            oninput={(e) => setFilter((e.target as HTMLInputElement).value)}
+            {placeholder}
+            class="bg-card-surface h-8 w-full px-3 text-sm font-normal {focusClass}"
+          />
+        </div>
+      </Table.Head>
+    </Table.Row>
+  {/if}
+{/snippet}
+
+{#snippet filterToggleButton(colorClass: string, toggle: () => void)}
+  <Button
+    size="sm"
+    onclick={toggle}
+    class="font-space border-brutal-border brutal-press h-8 gap-1.5 border-[3px] px-3 text-xs font-bold tracking-[1px] uppercase {colorClass}"
+  >
+    <Search class="size-3" />Filter
+  </Button>
+{/snippet}
 
 <svelte:head>
   <title>Hister - Rules</title>
@@ -551,117 +1101,6 @@
     </Alert.Root>
   {/if}
 
-  {#snippet filterToggleButton(colorClass: string, toggle: () => void)}
-    <Button
-      size="sm"
-      onclick={toggle}
-      class="font-space border-brutal-border brutal-press h-8 gap-1.5 border-[3px] px-3 text-xs font-bold tracking-[1px] uppercase {colorClass}"
-    >
-      <Search class="size-3" />Filter
-    </Button>
-  {/snippet}
-
-  {#snippet filterInputRow(
-    open: boolean,
-    filterValue: string,
-    setFilter: (v: string) => void,
-    placeholder: string,
-    focusClass: string,
-  )}
-    {#if open}
-      <Table.Row class="bg-muted-surface border-brutal-border border-b-[3px]">
-        <Table.Head colspan={3} class="h-auto px-2 py-2 md:px-5">
-          <div use:focusInput>
-            <Input
-              type="text"
-              variant="brutal"
-              value={filterValue}
-              oninput={(e) => setFilter((e.target as HTMLInputElement).value)}
-              {placeholder}
-              class="bg-card-surface h-8 w-full px-3 text-sm font-normal {focusClass}"
-            />
-          </div>
-        </Table.Head>
-      </Table.Row>
-    {/if}
-  {/snippet}
-
-  {#snippet sortableHead(
-    label: string,
-    col: string,
-    sortCol: string | null,
-    sortDir: 'asc' | 'desc',
-    onToggle: () => void,
-    headClass: string,
-  )}
-    <Table.Head class={headClass}>
-      <button
-        class="flex cursor-pointer items-center gap-1 border-0 bg-transparent p-0 font-[inherit] tracking-[inherit] text-[inherit] uppercase opacity-80 hover:opacity-100"
-        onclick={onToggle}
-      >
-        {label}
-        {#if sortCol === col}
-          {#if sortDir === 'asc'}
-            <ChevronUp class="size-3 shrink-0" />
-          {:else}
-            <ChevronDown class="size-3 shrink-0" />
-          {/if}
-        {:else}
-          <ChevronsUpDown class="size-3 shrink-0 opacity-50" />
-        {/if}
-      </button>
-    </Table.Head>
-  {/snippet}
-
-  {#snippet editCancelButtons(
-    onSave: () => void,
-    onCancel: () => void,
-    saveDisabled: boolean = false,
-  )}
-    <div class="flex items-center gap-1">
-      <Button
-        variant="ghost"
-        size="icon-sm"
-        class="text-hister-teal shrink-0 transition-colors"
-        onclick={onSave}
-        disabled={saveDisabled}
-        aria-label="Save changes"
-      >
-        <Check class="size-4" />
-      </Button>
-      <Button
-        variant="ghost"
-        size="icon-sm"
-        class="text-text-brand-muted shrink-0 transition-colors"
-        onclick={onCancel}
-        aria-label="Cancel editing"
-      >
-        <X class="size-4" />
-      </Button>
-    </div>
-  {/snippet}
-
-  {#snippet editDeleteButtons(onEdit: () => void, onDelete: () => void, editHoverClass: string)}
-    <div class="flex items-center gap-1">
-      <Button
-        variant="ghost"
-        size="icon-sm"
-        class="text-text-brand-muted shrink-0 transition-colors {editHoverClass}"
-        onclick={onEdit}
-      >
-        <Pencil class="size-4" />
-      </Button>
-      <Button
-        variant="ghost"
-        size="icon-sm"
-        class="text-text-brand-muted hover:text-hister-rose shrink-0 transition-colors"
-        onclick={onDelete}
-      >
-        <Trash2 class="size-4" />
-      </Button>
-    </div>
-  {/snippet}
-
   {#if loading}
     <div class="flex items-center justify-center py-16">
       <p class="font-inter text-text-brand-muted text-lg">Loading rules...</p>
@@ -669,435 +1108,10 @@
   {:else}
     <div class="grid grid-cols-1 gap-6 lg:grid-cols-2">
       <!-- Search Aliases Card -->
-      <Card.Root id="search-aliases" class="scroll-mt-6">
-        <Card.Header color="hister-indigo">
-          <div class="flex h-12 w-12 shrink-0 items-center justify-center bg-white/20">
-            <Link2 class="size-6 text-white" />
-          </div>
-          <div class="flex flex-col gap-1">
-            <Card.Title
-              class="font-space text-xl font-extrabold tracking-[1px] text-white uppercase"
-              >Search aliases</Card.Title
-            >
-            <Card.Description class="font-inter text-sm text-white/80"
-              >{Object.keys(rules.aliases).length} aliases configured</Card.Description
-            >
-          </div>
-        </Card.Header>
-
-        <p class="font-inter text-text-brand-muted px-4 py-3 text-sm md:px-5">
-          Aliases are shortcuts for search queries. Enter a keyword and the query it should expand
-          to, then use that keyword in the search bar. For example, set <code>gh</code> to
-          <code>domain:github.com</code> so searching for <code>gh svelte</code> searches indexed
-          GitHub pages for <code>svelte</code>.
-        </p>
-
-        <div
-          class="bg-muted-surface border-brutal-border flex items-center border-b-[3px] px-4 py-4 md:px-5 md:py-5"
-        >
-          <form
-            onsubmit={addAlias}
-            class="flex w-full flex-col items-stretch gap-3 md:flex-row md:items-end"
-          >
-            <div class="flex flex-col gap-1">
-              <Label class="font-outfit text-text-brand text-sm font-bold">Keyword</Label>
-              <Input
-                type="text"
-                variant="brutal"
-                bind:value={newAliasKeyword}
-                placeholder="keyword..."
-                class="bg-card-surface focus-visible:border-hister-indigo h-10 w-full px-3 md:w-35"
-              />
-            </div>
-            <div class="flex flex-1 flex-col gap-1">
-              <Label class="font-outfit text-text-brand text-sm font-bold">Expands to</Label>
-              <Input
-                type="text"
-                variant="brutal"
-                bind:value={newAliasValue}
-                placeholder="expands to..."
-                class="bg-card-surface focus-visible:border-hister-indigo h-10 w-full px-3"
-              />
-            </div>
-            <Button
-              type="submit"
-              class="bg-hister-indigo font-space border-brutal-border brutal-press h-10 gap-2 border-[3px] px-5 text-sm font-bold tracking-[1px] text-white uppercase"
-            >
-              <Plus class="size-4 shrink-0" />
-              Add
-            </Button>
-          </form>
-        </div>
-
-        <Card.Content class="flex-1 p-0">
-          <!-- Aliases table -->
-          <Table.Root>
-            <Table.Header>
-              <Table.Row
-                class="bg-muted-surface border-brutal-border hover:bg-muted-surface border-b-[3px]"
-              >
-                {@render sortableHead(
-                  'Keyword',
-                  'keyword',
-                  aliasSort.col,
-                  aliasSort.dir,
-                  () => aliasSort.toggle('keyword'),
-                  'font-space text-text-brand-muted h-auto w-20 px-2 py-3 text-xs font-bold tracking-[1px] uppercase md:w-35 md:px-5',
-                )}
-                {@render sortableHead(
-                  'Expands to',
-                  'value',
-                  aliasSort.col,
-                  aliasSort.dir,
-                  () => aliasSort.toggle('value'),
-                  'font-space text-text-brand-muted h-auto px-2 py-3 text-xs font-bold tracking-[1px] uppercase md:px-5',
-                )}
-                <Table.Head class="h-auto w-16 px-2 py-3 md:w-20 md:px-5">
-                  {@render filterToggleButton('bg-hister-indigo text-white', () => {
-                    aliasFilterOpen = !aliasFilterOpen;
-                    if (!aliasFilterOpen) aliasFilter = '';
-                  })}
-                </Table.Head>
-              </Table.Row>
-              {@render filterInputRow(
-                aliasFilterOpen,
-                aliasFilter,
-                (v) => (aliasFilter = v),
-                'Filter aliases...',
-                'focus-visible:border-hister-indigo',
-              )}
-            </Table.Header>
-            <Table.Body>
-              {#each sortedAliases as [keyword, value]}
-                <Table.Row class="border-brutal-border border-b-[3px]">
-                  {#if editingAliasKey === keyword}
-                    <Table.Cell class="px-2 py-2 md:px-3" colspan={2}>
-                      <div class="flex items-center gap-2">
-                        <Input
-                          type="text"
-                          variant="brutal"
-                          bind:value={editAliasKeyword}
-                          class="bg-card-surface focus-visible:border-hister-indigo h-8 w-20 px-2 text-sm md:w-28"
-                        />
-                        <Input
-                          type="text"
-                          variant="brutal"
-                          bind:value={editAliasValue}
-                          class="bg-card-surface focus-visible:border-hister-indigo h-8 flex-1 px-2 text-sm"
-                          onkeydown={(e) => {
-                            if (e.key === 'Enter') saveEditAlias();
-                            if (e.key === 'Escape') cancelEditAlias();
-                          }}
-                        />
-                      </div>
-                    </Table.Cell>
-                    <Table.Cell class="w-16 px-1 py-2 md:w-20 md:px-3">
-                      {@render editCancelButtons(saveEditAlias, cancelEditAlias)}
-                    </Table.Cell>
-                  {:else}
-                    <Table.Cell
-                      class="font-fira text-text-brand w-20 px-2 py-3 text-sm font-semibold md:w-35 md:px-5"
-                      >{keyword}</Table.Cell
-                    >
-                    <Table.Cell
-                      class="font-fira text-text-brand-secondary max-w-0 truncate px-2 py-3 text-sm md:px-5"
-                      >{value}</Table.Cell
-                    >
-                    <Table.Cell class="w-16 px-1 py-3 md:w-20 md:px-3">
-                      {@render editDeleteButtons(
-                        () => startEditAlias(keyword, value),
-                        () => deleteAlias(keyword),
-                        'hover:text-hister-indigo',
-                      )}
-                    </Table.Cell>
-                  {/if}
-                </Table.Row>
-              {/each}
-            </Table.Body>
-          </Table.Root>
-
-          {#if sortedAliases.length === 0}
-            <div class="flex flex-col items-center justify-center gap-3 py-10">
-              <div
-                class="flex h-12 w-12 items-center justify-center"
-                style="background-color: color-mix(in srgb, var(--hister-indigo) 10%, transparent); color: var(--hister-indigo);"
-              >
-                <Link2 class="size-5" />
-              </div>
-              <p class="font-inter text-text-brand-muted text-sm">
-                {aliasFilter ? 'No aliases match the filter.' : 'No aliases defined yet.'}
-              </p>
-            </div>
-          {/if}
-        </Card.Content>
-      </Card.Root>
+      {@render searchAliases()}
 
       <!-- Indexing Rules Card -->
-      <Card.Root id="indexing-rules" class="scroll-mt-6">
-        <Card.Header color="hister-coral">
-          <div class="flex h-12 w-12 shrink-0 items-center justify-center bg-white/20">
-            <Shield class="size-6 text-white" />
-          </div>
-          <div class="flex flex-col gap-1">
-            <Card.Title
-              class="font-space text-xl font-extrabold tracking-[1px] text-white uppercase"
-              >Indexing rules</Card.Title
-            >
-            <Card.Description class="font-inter text-sm text-white/80">
-              {ruleRows.length} rules configured. Choose what to match and which action to apply.
-            </Card.Description>
-          </div>
-        </Card.Header>
-
-        <p class="font-inter text-text-brand-muted px-4 py-3 text-sm md:px-5">
-          When allow rules exist, URLs must match at least one. Skip rules take precedence.
-          Reindexing removes excluded documents, except pages explicitly saved manually. Removing
-          all allow rules restores indexing of any URL without a skip match.
-        </p>
-
-        <details
-          id="add-rule-section"
-          class="group/rule-add bg-muted-surface border-brutal-border border-b-[3px]"
-        >
-          <summary
-            class="font-outfit text-text-brand hover:bg-card-surface focus-visible:outline-hister-coral box-border flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 font-bold focus-visible:outline-2 focus-visible:outline-offset-[-4px] md:px-5 [&::-webkit-details-marker]:hidden"
-          >
-            <span class="flex items-center gap-2">
-              <Plus class="size-4" aria-hidden="true" />
-              Add rule
-            </span>
-            <ChevronDown
-              class="size-4 transition-transform group-open/rule-add:rotate-180"
-              aria-hidden="true"
-            />
-          </summary>
-          <!-- Reset inherited box sizing across the native details content boundary. -->
-          <div class="box-border flex w-full min-w-0 flex-col gap-4 px-4 pb-4 md:px-5 md:pb-5">
-            <fieldset>
-              <legend class="font-outfit text-text-brand mb-2 text-sm font-bold">Match by</legend>
-              <div class="flex flex-wrap gap-2">
-                {#each ruleMatchModes as option}
-                  <Button
-                    variant={newRuleMode === option.mode ? 'default' : 'outline'}
-                    disabled={saving}
-                    aria-pressed={newRuleMode === option.mode}
-                    onclick={() => (newRuleMode = option.mode)}
-                  >
-                    {option.label}
-                  </Button>
-                {/each}
-              </div>
-            </fieldset>
-
-            {#key ruleDraftID}
-              <RulePatternEditor
-                id="new-rule"
-                mode={newRuleMode}
-                bind:pattern={newRulePattern}
-                bind:valid={newRuleValid}
-                disabled={saving}
-                onSubmit={addRule}
-              />
-            {/key}
-
-            <div class="space-y-1.5">
-              <div class="flex flex-col gap-1.5 sm:flex-row sm:items-center sm:gap-3">
-                <Label for="rule-type" class="font-outfit text-text-brand text-sm font-bold"
-                  >Action</Label
-                >
-                <select
-                  id="rule-type"
-                  value={newRuleType}
-                  disabled={saving}
-                  aria-describedby="rule-action-help"
-                  onchange={(event) => {
-                    newRuleType = (event.currentTarget as HTMLSelectElement)
-                      .value as typeof newRuleType;
-                    if (newRuleType !== 'skip') deleteMatchingDocuments = false;
-                  }}
-                  class="bg-card-surface border-brutal-border font-inter text-text-brand h-10 border-[3px] px-3 text-sm"
-                >
-                  <option value="skip">Skip indexing</option>
-                  <option value="priority">Prioritize in search</option>
-                  <option value="allow">Allow indexing</option>
-                  <option value="versioning">Keep document versions</option>
-                </select>
-              </div>
-              <p id="rule-action-help" class="font-inter text-text-brand-secondary text-sm">
-                {ruleDescriptions[newRuleType]}
-              </p>
-            </div>
-            {#if newRuleType === 'skip'}
-              <DeleteMatchingDocumentsOption bind:checked={deleteMatchingDocuments} />
-            {/if}
-            <div class="flex flex-wrap justify-end gap-2">
-              <Button
-                type="button"
-                variant="outline"
-                onclick={openBulkAdd}
-                disabled={saving}
-                class="bg-card-surface text-text-brand-secondary font-space border-brutal-border brutal-press h-10 flex-1 gap-2 rounded-none border-[3px] px-4 text-xs font-bold tracking-[0.5px] uppercase md:flex-none"
-              >
-                <ListPlus class="size-4 shrink-0" />
-                Bulk add
-              </Button>
-              <Button
-                type="button"
-                onclick={addRule}
-                disabled={saving || !newRuleValid || !newRulePattern.trim()}
-                class="bg-hister-coral font-space border-brutal-border brutal-press h-10 flex-1 gap-2 border-[3px] px-5 text-sm font-bold tracking-[1px] text-white uppercase md:flex-none"
-              >
-                <Plus class="size-4 shrink-0" />
-                Add rule
-              </Button>
-            </div>
-          </div>
-        </details>
-
-        <Card.Content class="flex-1 p-0">
-          <!-- Rules table -->
-          <Table.Root>
-            <Table.Header>
-              <Table.Row
-                class="bg-muted-surface border-brutal-border hover:bg-muted-surface border-b-[3px]"
-              >
-                {@render sortableHead(
-                  'Pattern',
-                  'pattern',
-                  ruleSort.col,
-                  ruleSort.dir,
-                  () => ruleSort.toggle('pattern'),
-                  'font-space text-text-brand-muted h-auto px-2 py-3 text-xs font-bold tracking-[1px] uppercase md:px-5',
-                )}
-                {@render sortableHead(
-                  'Type',
-                  'type',
-                  ruleSort.col,
-                  ruleSort.dir,
-                  () => ruleSort.toggle('type'),
-                  'font-space text-text-brand-muted h-auto w-20 px-2 py-3 text-xs font-bold tracking-[1px] uppercase md:w-28 md:px-5',
-                )}
-                <Table.Head class="h-auto w-16 px-2 py-3 md:w-20 md:px-5">
-                  {@render filterToggleButton('bg-hister-coral text-white', () => {
-                    ruleFilterOpen = !ruleFilterOpen;
-                    if (!ruleFilterOpen) ruleFilter = '';
-                  })}
-                </Table.Head>
-              </Table.Row>
-              {@render filterInputRow(
-                ruleFilterOpen,
-                ruleFilter,
-                (v) => (ruleFilter = v),
-                'Filter rules...',
-                'focus-visible:border-hister-coral',
-              )}
-            </Table.Header>
-            <Table.Body>
-              {#each sortedRuleRows as { row, i }}
-                <Table.Row class="border-brutal-border border-b-[3px]">
-                  {#if editingRuleIndex === i}
-                    <Table.Cell class="px-2 py-2 md:px-3" colspan={2}>
-                      <div class="flex flex-col gap-2">
-                        {#key row.pattern}
-                          <RulePatternEditor
-                            id="edit-rule"
-                            bind:pattern={editRulePattern}
-                            bind:valid={editRuleValid}
-                            disabled={saving}
-                            onSubmit={saveEditRule}
-                            onCancel={cancelEditRule}
-                          />
-                        {/key}
-                        <div class="flex items-center gap-2">
-                          <Label for="edit-rule-type" class="font-outfit text-sm font-bold"
-                            >Action</Label
-                          >
-                          <select
-                            id="edit-rule-type"
-                            value={editRuleType}
-                            disabled={saving}
-                            aria-describedby="edit-rule-action-help"
-                            onchange={(event) => {
-                              editRuleType = (event.currentTarget as HTMLSelectElement)
-                                .value as typeof editRuleType;
-                              if (editRuleType !== 'skip') editDeleteMatchingDocuments = false;
-                            }}
-                            class="bg-card-surface border-brutal-border font-inter text-text-brand h-10 min-w-0 border-[3px] px-2 text-sm"
-                          >
-                            <option value="skip">Skip indexing</option>
-                            <option value="priority">Prioritize in search</option>
-                            <option value="allow">Allow indexing</option>
-                            <option value="versioning">Keep document versions</option>
-                          </select>
-                        </div>
-                        <p
-                          id="edit-rule-action-help"
-                          class="font-inter text-text-brand-secondary text-sm"
-                        >
-                          {ruleDescriptions[editRuleType]}
-                        </p>
-                        {#if editRuleType === 'skip'}
-                          <DeleteMatchingDocumentsOption
-                            bind:checked={editDeleteMatchingDocuments}
-                          />
-                        {/if}
-                      </div>
-                    </Table.Cell>
-                    <Table.Cell class="w-16 px-1 py-2 md:w-20 md:px-3">
-                      {@render editCancelButtons(
-                        saveEditRule,
-                        cancelEditRule,
-                        saving || !editRuleValid,
-                      )}
-                    </Table.Cell>
-                  {:else}
-                    <Table.Cell
-                      class="font-fira text-text-brand max-w-0 truncate px-2 py-3 text-sm md:px-5"
-                      >{row.pattern}</Table.Cell
-                    >
-                    <Table.Cell class="w-20 px-2 py-3 md:w-28 md:px-5">
-                      <Badge
-                        variant="default"
-                        class="font-space border-0 px-2 py-1 text-xs font-bold tracking-[0.5px] uppercase md:px-3 {row.type ===
-                        'skip'
-                          ? 'bg-hister-rose text-white'
-                          : row.type === 'allow'
-                            ? 'bg-hister-indigo text-white'
-                            : row.type === 'priority'
-                              ? 'bg-hister-teal text-white'
-                              : 'bg-violet-500 text-white'}"
-                      >
-                        {row.type}
-                      </Badge>
-                    </Table.Cell>
-                    <Table.Cell class="w-16 px-1 py-3 md:w-20 md:px-3">
-                      {@render editDeleteButtons(
-                        () => startEditRule(i),
-                        () => removeRule(row.pattern, row.type),
-                        'hover:text-hister-coral',
-                      )}
-                    </Table.Cell>
-                  {/if}
-                </Table.Row>
-              {/each}
-            </Table.Body>
-          </Table.Root>
-
-          {#if sortedRuleRows.length === 0}
-            <div class="flex flex-col items-center justify-center gap-3 py-10">
-              <div
-                class="flex h-12 w-12 items-center justify-center"
-                style="background-color: color-mix(in srgb, var(--hister-coral) 10%, transparent); color: var(--hister-coral);"
-              >
-                <Shield class="size-5" />
-              </div>
-              <p class="font-inter text-text-brand-muted text-sm">
-                {ruleFilter ? 'No rules match the filter.' : 'No rules defined yet.'}
-              </p>
-            </div>
-          {/if}
-        </Card.Content>
-      </Card.Root>
+      {@render indexingRules()}
     </div>
   {/if}
 </div>
