@@ -1,4 +1,12 @@
 <script lang="ts">
+  import type { StoredSettings } from '../modules/settings';
+
+  import {
+    serverBaseURL,
+    profileUserID as readProfileUserID,
+    connectionSettings,
+  } from '../modules/settings';
+
   import { Button } from '@hister/components/ui/button';
   import { Input } from '@hister/components/ui/input';
   import { Label } from '@hister/components/ui/label';
@@ -22,7 +30,7 @@
     return userID > 0;
   }
 
-  chrome.storage.local.get(
+  chrome.storage.local.get<StoredSettings>(
     [
       'histerURL',
       'histerToken',
@@ -34,9 +42,10 @@
       if (!data['histerURL']) {
         chrome.storage.local.set({ histerURL: DEFAULT_SERVER_URL });
       }
-      url = data['histerURL'] || DEFAULT_SERVER_URL;
-      accessToken = data['histerToken'] || '';
-      customHeaders = Array.isArray(data['histerCustomHeaders']) ? data['histerCustomHeaders'] : [];
+      const settings = connectionSettings(data);
+      url = settings.url;
+      accessToken = settings.token;
+      customHeaders = settings.headers;
       submitPublicDocuments = data['submitPublicDocuments'] === true;
       profileUserID = Number(data['histerProfileUserID'] ?? 0);
       refreshProfileUserID(url, customHeaders);
@@ -57,10 +66,7 @@
     headersList = customHeaders,
     token = accessToken,
   ): Promise<boolean> {
-    let profileURL = serverURL;
-    if (!profileURL.endsWith('/')) {
-      profileURL += '/';
-    }
+    const profileURL = serverBaseURL(serverURL);
     try {
       const response = await fetchAPI(profileURL + 'api/profile', {
         customHeaders: headersList,
@@ -70,12 +76,7 @@
         setProfileUserID(0);
         return false;
       }
-      let userID = 0;
-      try {
-        const profile = await response.json();
-        userID = Number(profile?.user_id ?? 0);
-      } catch (_) {}
-      setProfileUserID(userID);
+      setProfileUserID(await readProfileUserID(response));
       return true;
     } catch (_) {
       setProfileUserID(0);
@@ -120,10 +121,7 @@
   }
 
   async function authenticate() {
-    let authURL = url;
-    if (!authURL.endsWith('/')) {
-      authURL += '/';
-    }
+    const authURL = serverBaseURL(url);
     try {
       const cookieHeader = await syncServerCookies(authURL);
       if (!cookieHeader) {
@@ -140,9 +138,12 @@
         messageType = 'error';
       }
     } catch (error) {
-      message = (error as Error).message ?? 'Failed to read browser cookies.';
+      message = cookieErrorMessage(error);
       messageType = 'error';
     }
+  }
+  function cookieErrorMessage(error: unknown) {
+    return (error as Error).message ?? 'Failed to read browser cookies.';
   }
 </script>
 
@@ -150,12 +151,12 @@
 
 <div class="bg-page-bg min-h-screen">
   <!-- Page header -->
-  <div
+  <header
     class="bg-brutal-bg border-brutal-border flex items-center justify-between border-b-[3px] px-8 py-5"
   >
-    <span class="font-outfit text-text-brand-muted text-sm font-bold tracking-widest uppercase">
+    <h1 class="font-outfit text-text-brand-muted text-sm font-bold tracking-widest uppercase">
       Hister <span class="mx-1">/</span> Options
-    </span>
+    </h1>
     <button
       onclick={toggleMode}
       class="text-text-brand-muted hover:text-hister-coral cursor-pointer border-0 bg-transparent p-0 transition-colors"
@@ -167,17 +168,15 @@
         <Sun size={18} />
       {/if}
     </button>
-  </div>
+  </header>
 
-  <div class="mx-auto max-w-2xl space-y-8 px-8 py-10">
+  <main class="mx-auto max-w-2xl space-y-8 px-8 py-10">
     <!-- Connection settings card -->
     <Card.Root
       class="bg-card-surface border-hister-indigo gap-0 overflow-hidden rounded-none border-[3px] py-0 shadow-[6px_6px_0_var(--hister-indigo)]"
     >
       <Card.Header class="bg-hister-indigo px-7 py-5">
-        <Card.Title class="font-outfit text-xl font-black tracking-wide text-white"
-          >Connection Settings</Card.Title
-        >
+        <h2 class="font-outfit text-xl font-black tracking-wide text-white">Connection Settings</h2>
         <Card.Description class="font-inter text-sm text-white/70"
           >Configure how the extension connects to your Hister server.</Card.Description
         >
@@ -185,13 +184,14 @@
 
       <Card.Content class="space-y-6 p-7">
         {#if message}
-          <div
+          <p
+            role={messageType === 'success' ? 'status' : 'alert'}
             class="font-inter border-l-[4px] px-4 py-3 text-sm {messageType === 'success'
               ? 'border-l-hister-teal bg-hister-teal/10 text-hister-teal'
               : 'border-l-hister-rose bg-hister-rose/10 text-hister-rose'}"
           >
             {message}
-          </div>
+          </p>
         {/if}
 
         <form onsubmit={save} class="space-y-6">
@@ -211,23 +211,23 @@
           />
 
           <!-- Custom Headers -->
-          <div class="space-y-3">
-            <div>
-              <Label class="font-outfit text-text-brand text-sm font-bold">Custom Headers</Label>
-              <p class="text-text-brand-muted font-inter mt-1 text-xs">
-                Add custom HTTP headers sent with every request. Useful for reverse proxy
-                authentication.
-              </p>
-            </div>
+          <fieldset class="space-y-3">
+            <legend class="font-outfit text-text-brand text-sm font-bold">Custom Headers</legend>
+            <p class="text-text-brand-muted font-inter mt-1 text-xs">
+              Add custom HTTP headers sent with every request. Useful for reverse proxy
+              authentication.
+            </p>
             {#each customHeaders as header, i}
               <div class="flex items-center gap-2">
                 <Input
                   bind:value={header.name}
+                  aria-label={`Header ${i + 1} name`}
                   placeholder="Header name"
                   class="bg-page-bg border-hister-indigo font-fira text-text-brand placeholder:text-text-brand-muted focus-visible:border-hister-coral h-10 border-[3px] px-3 text-sm shadow-none transition-colors focus-visible:ring-0"
                 />
                 <Input
                   bind:value={header.value}
+                  aria-label={`Header ${i + 1} value`}
                   placeholder="Header value"
                   class="bg-page-bg border-hister-indigo font-fira text-text-brand placeholder:text-text-brand-muted focus-visible:border-hister-coral h-10 border-[3px] px-3 text-sm shadow-none transition-colors focus-visible:ring-0"
                 />
@@ -250,7 +250,7 @@
               <Plus size={16} class="mr-1" />
               Add Header
             </Button>
-          </div>
+          </fieldset>
 
           {#if isAuthenticated(profileUserID)}
             <div class="flex items-center justify-between">
@@ -299,12 +299,11 @@
       class="bg-card-surface border-brutal-border gap-0 overflow-hidden rounded-none border-[3px] py-0 opacity-50"
     >
       <Card.Header class="px-7 py-5">
-        <Card.Title class="font-outfit text-text-brand text-lg font-bold">Indexing Rules</Card.Title
-        >
+        <h2 class="font-outfit text-text-brand text-lg font-bold">Indexing Rules</h2>
         <Card.Description class="font-inter text-text-brand-muted text-sm"
           >Coming soon — configure which pages to index or skip.</Card.Description
         >
       </Card.Header>
     </Card.Root>
-  </div>
+  </main>
 </div>

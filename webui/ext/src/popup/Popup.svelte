@@ -1,4 +1,12 @@
 <script lang="ts">
+  import type { StoredSettings } from '../modules/settings';
+
+  import {
+    serverBaseURL,
+    profileUserID as readProfileUserID,
+    connectionSettings as readConnectionSettings,
+  } from '../modules/settings';
+
   import { Button } from '@hister/components/ui/button';
   import { Input } from '@hister/components/ui/input';
   import { Label } from '@hister/components/ui/label';
@@ -30,21 +38,21 @@
   let messageKey = $state(0); // to reappear message every time it is updated
   let pageLabel = $state('');
 
-  function setMessage(mType, msg) {
+  function setMessage(mType: 'success' | 'error' | 'info', msg: string) {
     message = msg;
     messageType = mType;
     messageKey++;
   }
 
-  function setErrorMessage(msg) {
+  function setErrorMessage(msg: string) {
     setMessage('error', msg);
   }
 
-  function setInfoMessage(msg) {
+  function setInfoMessage(msg: string) {
     setMessage('info', msg);
   }
 
-  function setSuccessMessage(msg) {
+  function setSuccessMessage(msg: string) {
     setMessage('success', msg);
   }
 
@@ -64,10 +72,7 @@
   }
 
   function checkAuth(serverURL: string, token = accessToken): Promise<boolean> {
-    let authURL = serverURL;
-    if (!authURL.endsWith('/')) {
-      authURL += '/';
-    }
+    const authURL = serverBaseURL(serverURL);
     return fetchAPI(authURL + 'api/profile', { customHeaders, accessToken: token })
       .then(async (r) => {
         if (!r.ok) {
@@ -75,12 +80,7 @@
           setProfileUserID(0);
           return false;
         }
-        try {
-          const profile = await r.json();
-          setProfileUserID(Number(profile?.user_id ?? 0));
-        } catch (_) {
-          setProfileUserID(0);
-        }
+        setProfileUserID(await readProfileUserID(r));
         authCheckPassed = true;
         return authCheckPassed;
       })
@@ -91,7 +91,7 @@
       });
   }
 
-  chrome.storage.local.get(
+  chrome.storage.local.get<StoredSettings>(
     [
       'histerURL',
       'histerToken',
@@ -106,9 +106,10 @@
       if (!data['histerURL']) {
         chrome.storage.local.set({ histerURL: DEFAULT_SERVER_URL });
       }
-      url = data['histerURL'] || DEFAULT_SERVER_URL;
-      accessToken = data['histerToken'] || '';
-      customHeaders = Array.isArray(data['histerCustomHeaders']) ? data['histerCustomHeaders'] : [];
+      const settings = readConnectionSettings(data);
+      url = settings.url;
+      accessToken = settings.token;
+      customHeaders = settings.headers;
       indexingEnabled = data['indexingEnabled'] !== false;
       showIndexedBadge = data['showIndexedBadge'] === true;
       submitPublicDocuments = data['submitPublicDocuments'] === true;
@@ -144,12 +145,7 @@
   );
 
   async function handleAddSkipRule(type: 'url' | 'domain', deleteMatches: boolean) {
-    const pattern = type === 'url' ? buildUrlSkipPattern(tabURL) : buildDomainSkipPattern(tabURL);
-    const deleteQuery = deleteMatches
-      ? type === 'url'
-        ? `url:"${tabURL.replaceAll('"', '\\"')}"`
-        : `domain:${new URL(tabURL).hostname}`
-      : undefined;
+    const { pattern, deleteQuery } = skipRuleRequest(type, deleteMatches);
     try {
       const response = await chrome.runtime.sendMessage({
         action: 'addSkipRule',
@@ -159,10 +155,10 @@
       if (response?.ok) {
         await checkTabSkipRule(tabURL);
       } else {
-        setErrorMessage(response?.error ?? 'Failed to add skip rule');
+        skipRuleFailed(response);
       }
     } catch (e: any) {
-      setErrorMessage(e.message ?? 'Failed to add skip rule');
+      skipRuleFailed({ error: e.message });
     }
   }
 
@@ -180,10 +176,7 @@
   async function save(e: Event) {
     e.preventDefault();
 
-    let verifyURL = url;
-    if (!verifyURL.endsWith('/')) {
-      verifyURL += '/';
-    }
+    const verifyURL = serverBaseURL(url);
 
     const tokenToSave = accessToken.trim();
     try {
@@ -195,25 +188,16 @@
         setErrorMessage(`Server returned status ${response.status}`);
         return;
       }
-      try {
-        await response.json();
-      } catch (_) {
-        setErrorMessage('Server response is not valid JSON - probably invalid server URL.');
-        return;
-      }
+      if (!(await validServerResponse(response))) return;
       await chrome.storage.local.set({
         histerURL: url,
         histerToken: tokenToSave,
         histerCustomHeaders: $state.snapshot(customHeaders),
-        submitPublicDocuments: isAuthenticated(profileUserID) && submitPublicDocuments,
+        submitPublicDocuments: canSubmitPublicDocuments(),
       });
       accessToken = tokenToSave;
       const authenticated = await checkAuth(url, tokenToSave);
-      if (tokenToSave && !authenticated) {
-        setErrorMessage('Settings saved, but the access token was rejected.');
-      } else {
-        setSuccessMessage('Settings saved');
-      }
+      savedSettingsMessage(tokenToSave, authenticated);
 
       chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
         if (tabs?.length) {
@@ -236,15 +220,12 @@
 
   function toggleSubmitPublicDocuments() {
     chrome.storage.local.set({
-      submitPublicDocuments: isAuthenticated(profileUserID) && submitPublicDocuments,
+      submitPublicDocuments: canSubmitPublicDocuments(),
     });
   }
 
   async function authenticate() {
-    let authURL = url;
-    if (!authURL.endsWith('/')) {
-      authURL += '/';
-    }
+    const authURL = serverBaseURL(url);
     try {
       const cookieHeader = await syncServerCookies(authURL);
       if (!cookieHeader) {
@@ -261,7 +242,7 @@
         );
       }
     } catch (error) {
-      setErrorMessage((error as Error).message ?? 'Failed to read browser cookies.');
+      setErrorMessage(cookieErrorMessage(error));
     }
   }
 
@@ -272,15 +253,7 @@
         setSuccessMessage('Index successful');
         return;
       }
-      let msg = 'Reindex failed';
-      if (error) {
-        msg += ': ' + error.message;
-      } else if (r?.error) {
-        msg += ': ' + r.error;
-      }
-      if (r?.status_code === 403) {
-        msg += ': Unauthorized';
-      }
+      const msg = reindexErrorMessage(r, error);
       setErrorMessage(msg);
     });
   }
@@ -306,7 +279,7 @@
         setErrorMessage('Failed to apply label');
       }
     } catch (e: unknown) {
-      setErrorMessage((e as Error).message ?? 'Failed to apply label');
+      labelFailed(e);
     }
   }
 
@@ -314,13 +287,139 @@
     showSettings = !showSettings;
     message = '';
   }
+  function cookieErrorMessage(error: unknown) {
+    return (error as Error).message ?? 'Failed to read browser cookies.';
+  }
+  function skipRuleRequest(type: 'url' | 'domain', deleteMatches: boolean) {
+    const pattern = type === 'url' ? buildUrlSkipPattern(tabURL) : buildDomainSkipPattern(tabURL);
+    const deleteQuery = deleteMatches
+      ? type === 'url'
+        ? `url:"${tabURL.replaceAll('"', '\\"')}"`
+        : `domain:${new URL(tabURL).hostname}`
+      : undefined;
+    return { pattern, deleteQuery };
+  }
+  function skipRuleFailed(response: { error?: string } | undefined) {
+    setErrorMessage(response?.error ?? 'Failed to add skip rule');
+  }
+  async function validServerResponse(response: Response) {
+    try {
+      await response.json();
+      return true;
+    } catch {
+      setErrorMessage('Server response is not valid JSON - probably invalid server URL.');
+      return false;
+    }
+  }
+  function savedSettingsMessage(token: string, authenticated: boolean) {
+    if (token && !authenticated)
+      setErrorMessage('Settings saved, but the access token was rejected.');
+    else setSuccessMessage('Settings saved');
+  }
+  function canSubmitPublicDocuments() {
+    return isAuthenticated(profileUserID) && submitPublicDocuments;
+  }
+  function reindexErrorMessage(
+    r: { error?: string; status_code?: number } | undefined,
+    error: chrome.runtime.LastError | undefined,
+  ) {
+    let msg = 'Reindex failed';
+    if (error) {
+      msg += ': ' + error.message;
+    } else if (r?.error) {
+      msg += ': ' + r.error;
+    }
+    msg += reindexStatusMessage(r);
+    return msg;
+  }
+  function reindexStatusMessage(r: { status_code?: number } | undefined) {
+    return r?.status_code === 403 ? ': Unauthorized' : '';
+  }
+  function labelFailed(error: unknown) {
+    setErrorMessage((error as Error).message ?? 'Failed to apply label');
+  }
 </script>
+
+{#snippet connectionSettings()}
+  <Card.Root
+    class="border-brutal-border gap-0 rounded-none border-0 border-b-[3px] py-0 shadow-none"
+  >
+    <Card.Content class="space-y-4 p-5">
+      <form onsubmit={save} class="space-y-4">
+        <SettingsInput label="Server URL" bind:value={url} placeholder="Server URL..." />
+
+        <SettingsInput
+          label="Access Token"
+          bind:value={accessToken}
+          type="password"
+          placeholder="Optional access token..."
+          description="Authenticate with a global or personal access token. Leave blank to use browser cookies."
+        />
+
+        <Button
+          type="submit"
+          class="bg-hister-coral border-brutal-border font-outfit h-9 w-full border-[3px] text-sm font-bold tracking-wide text-white shadow-[3px_3px_0_var(--brutal-shadow)] transition-all hover:translate-x-px hover:translate-y-px hover:shadow-[1px_1px_0_var(--brutal-shadow)]"
+        >
+          Save
+        </Button>
+
+        <div class="flex items-center justify-between">
+          <Label
+            for="show-indexed-badge"
+            class="font-outfit text-text-brand cursor-pointer text-sm font-bold"
+          >
+            Show indicator for indexed pages
+          </Label>
+          <Switch
+            id="show-indexed-badge"
+            bind:checked={showIndexedBadge}
+            onCheckedChange={toggleShowIndexedBadge}
+          />
+        </div>
+
+        {#if isAuthenticated(profileUserID)}
+          <div class="flex items-center justify-between">
+            <Label
+              for="submit-public-documents"
+              class="font-outfit text-text-brand cursor-pointer text-sm font-bold"
+            >
+              Submit as public documents
+            </Label>
+            <Switch
+              id="submit-public-documents"
+              bind:checked={submitPublicDocuments}
+              onCheckedChange={toggleSubmitPublicDocuments}
+            />
+          </div>
+        {/if}
+
+        <div class="flex items-center justify-between">
+          <span class="font-outfit text-text-brand text-sm font-bold">Theme</span>
+          <button
+            type="button"
+            onclick={toggleMode}
+            class="border-brutal-border hover:border-hister-indigo flex cursor-pointer items-center gap-2 rounded border-[3px] bg-transparent px-3 py-1.5 transition-all"
+            aria-label="Toggle theme"
+          >
+            {#if mode.current === 'light'}
+              <Sun size={16} />
+              <span class="font-outfit text-text-brand text-sm font-bold">Light</span>
+            {:else}
+              <Moon size={16} />
+              <span class="font-outfit text-text-brand text-sm font-bold">Dark</span>
+            {/if}
+          </button>
+        </div>
+      </form>
+    </Card.Content>
+  </Card.Root>
+{/snippet}
 
 <ModeWatcher />
 
 <main class="w-80">
   <!-- Header bar -->
-  <div
+  <header
     class="bg-hister-indigo/90 border-brutal-border flex items-center justify-between border-b-[3px] px-5 py-3"
   >
     <a
@@ -332,90 +431,18 @@
       class="font-outfit cursor-pointer text-lg font-black tracking-widest text-white uppercase hover:underline"
       >Hister</a
     >
-    <div class="flex items-center gap-2">
-      <button
-        onclick={toggleSettings}
-        class="hover:text-hister-coral cursor-pointer border-0 bg-transparent p-0 text-white transition-colors"
-        aria-label="Settings"
-      >
-        <Settings size={20} />
-      </button>
-    </div>
-  </div>
+    <button
+      onclick={toggleSettings}
+      class="hover:text-hister-coral cursor-pointer border-0 bg-transparent p-0 text-white transition-colors"
+      aria-label="Settings"
+    >
+      <Settings size={20} />
+    </button>
+  </header>
 
   {#if showSettings}
     <!-- Settings View -->
-    <Card.Root
-      class="border-brutal-border gap-0 rounded-none border-0 border-b-[3px] py-0 shadow-none"
-    >
-      <Card.Content class="space-y-4 p-5">
-        <form onsubmit={save} class="space-y-4">
-          <SettingsInput label="Server URL" bind:value={url} placeholder="Server URL..." />
-
-          <SettingsInput
-            label="Access Token"
-            bind:value={accessToken}
-            type="password"
-            placeholder="Optional access token..."
-            description="Authenticate with a global or personal access token. Leave blank to use browser cookies."
-          />
-
-          <Button
-            type="submit"
-            class="bg-hister-coral border-brutal-border font-outfit h-9 w-full border-[3px] text-sm font-bold tracking-wide text-white shadow-[3px_3px_0_var(--brutal-shadow)] transition-all hover:translate-x-px hover:translate-y-px hover:shadow-[1px_1px_0_var(--brutal-shadow)]"
-          >
-            Save
-          </Button>
-
-          <div class="flex items-center justify-between">
-            <Label
-              for="show-indexed-badge"
-              class="font-outfit text-text-brand cursor-pointer text-sm font-bold"
-            >
-              Show indicator for indexed pages
-            </Label>
-            <Switch
-              id="show-indexed-badge"
-              bind:checked={showIndexedBadge}
-              onCheckedChange={toggleShowIndexedBadge}
-            />
-          </div>
-
-          {#if isAuthenticated(profileUserID)}
-            <div class="flex items-center justify-between">
-              <Label
-                for="submit-public-documents"
-                class="font-outfit text-text-brand cursor-pointer text-sm font-bold"
-              >
-                Submit as public documents
-              </Label>
-              <Switch
-                id="submit-public-documents"
-                bind:checked={submitPublicDocuments}
-                onCheckedChange={toggleSubmitPublicDocuments}
-              />
-            </div>
-          {/if}
-
-          <div class="flex items-center justify-between">
-            <Label class="font-outfit text-text-brand text-sm font-bold">Theme</Label>
-            <button
-              onclick={toggleMode}
-              class="border-brutal-border hover:border-hister-indigo flex cursor-pointer items-center gap-2 rounded border-[3px] bg-transparent px-3 py-1.5 transition-all"
-              aria-label="Toggle theme"
-            >
-              {#if mode.current === 'light'}
-                <Sun size={16} />
-                <span class="font-outfit text-text-brand text-sm font-bold">Light</span>
-              {:else}
-                <Moon size={16} />
-                <span class="font-outfit text-text-brand text-sm font-bold">Dark</span>
-              {/if}
-            </button>
-          </div>
-        </form>
-      </Card.Content>
-    </Card.Root>
+    {@render connectionSettings()}
   {:else}
     <!-- Main View -->
     <!-- Automatic Indexing Toggle -->

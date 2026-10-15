@@ -4,7 +4,8 @@
     "module": "ES2015",
     "moduleResolution": "bundler",
     "skipLibCheck": true,
-    "types": ["chrome"]
+    "types": ["chrome", "vite/client"],
+    "lib": ["ES2021", "DOM"]
   },
   "include": ["src/**/*.ts", "src/**/*.svelte"]
 }
