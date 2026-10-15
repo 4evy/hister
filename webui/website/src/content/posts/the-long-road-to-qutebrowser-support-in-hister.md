@@ -57,7 +57,7 @@ the rendered document that was already available in the browser.
 Any acceptable design therefore had to preserve this flow:
 
 ```text
-rendered browser DOM → Hister document
+rendered browser DOM then Hister document
 ```
 
 No second page download.

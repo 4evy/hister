@@ -231,7 +231,7 @@ Authenticated users can still add, delete, label, manage their own content, and 
 
 Every user account has a personal access token used for API authentication. Tokens are random and stored in the database.
 
-- Generate a new token from the web UI (Profile → Generate Token) or via `hister update-user --regen-token`.
+- Generate a new token from the web UI (Profile then Generate Token) or via `hister update-user --regen-token`.
 - Generating a new token immediately invalidates the previous one. Update any clients (browser extension, scripts) accordingly.
 - Tokens are not displayed in `show-user` output by default; use `--token` to reveal them.
 

@@ -170,12 +170,12 @@ The indexed page indicator is off by default. To enable it, click the extension 
 
 ## Options Page
 
-The full options page is accessible via your browser's extension manager (right-click the icon → _Options_, or navigate to the extensions settings page). It provides all configuration in one place.
+The full options page is accessible via your browser's extension manager (right-click the icon then _Options_, or navigate to the extensions settings page). It provides all configuration in one place.
 
 To open it directly, right click on the extension icon and select "Options", or with:
 
-- **Chrome**: `chrome://extensions` → find Hister → click **Details** → **Extension options**
-- **Firefox**: `about:addons` → find Hister → click the **…** menu → **Preferences**
+- **Chrome**: `chrome://extensions` then find Hister then click **Details** then **Extension options**
+- **Firefox**: `about:addons` then find Hister then click the **…** menu then **Preferences**
 
 ### Connection Settings
 
