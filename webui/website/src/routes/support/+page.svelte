@@ -1,16 +1,15 @@
 <script lang="ts">
   import Heart from '@lucide/svelte/icons/heart';
   import GitPullRequest from '@lucide/svelte/icons/git-pull-request';
-  import ArrowRight from '@lucide/svelte/icons/arrow-right';
   import Puzzle from '@lucide/svelte/icons/puzzle';
   import Database from '@lucide/svelte/icons/database';
   import Globe from '@lucide/svelte/icons/globe';
   import Network from '@lucide/svelte/icons/network';
   import Bitcoin from '@lucide/svelte/icons/bitcoin';
-  import Coins from '@lucide/svelte/icons/coins';
+  import EthereumIcon from '#lib/EthereumIcon.svelte';
   import Copy from '@lucide/svelte/icons/copy';
   import Check from '@lucide/svelte/icons/check';
-  import { Button } from '@hister/components';
+  import { onDestroy } from 'svelte';
   import Seo from '#lib/Seo.svelte';
 
   const cryptoWallets = [
@@ -20,17 +19,22 @@
       address: '1JwT5gEFYP358GvcdNCKbwgTKvwFujnHSF',
       href: 'bitcoin:1JwT5gEFYP358GvcdNCKbwgTKvwFujnHSF',
       icon: Bitcoin,
-      color: 'bg-hister-amber',
     },
     {
       name: 'Ethereum',
       ticker: 'ETH',
       address: '0x4Eb476D91c92b744600F282F7B727e8b46eDe8Bb',
       href: 'ethereum:0x4Eb476D91c92b744600F282F7B727e8b46eDe8Bb',
-      icon: Coins,
-      color: 'bg-hister-indigo',
+      icon: EthereumIcon,
     },
   ];
+
+  let copyError = $state(false);
+  let disposed = false;
+  onDestroy(() => {
+    disposed = true;
+    clearTimeout(copyTimer);
+  });
 
   let copiedAddress = $state<string | null>(null);
   let copyTimer: ReturnType<typeof setTimeout> | undefined;
@@ -38,12 +42,16 @@
   async function copyWalletAddress(address: string) {
     try {
       await navigator.clipboard.writeText(address);
+      if (disposed) return;
+      copyError = false;
       copiedAddress = address;
       clearTimeout(copyTimer);
       copyTimer = setTimeout(() => {
         copiedAddress = null;
       }, 1500);
     } catch {
+      if (disposed) return;
+      copyError = true;
       copiedAddress = null;
     }
   }
@@ -55,7 +63,6 @@
       desc: 'Connect trusted Hister instances so they can exchange selected public results, datasets, and index metadata while administrators remain in control of what they share and import.',
       href: null,
       linkLabel: null,
-      color: 'bg-hister-amber',
     },
     {
       icon: Puzzle,
@@ -63,7 +70,6 @@
       desc: 'Add extractors for more content types to improve integration and index quality so Hister understands the web deeply, not just superficially.',
       href: '/docs/extractors',
       linkLabel: 'Learn about extractors',
-      color: 'bg-hister-indigo',
     },
     {
       icon: Database,
@@ -71,7 +77,6 @@
       desc: 'Create infrastructure for importable, pre-indexed databases organized by topic, letting users quickly expand their local index with curated, relevant content.',
       href: '/datasets',
       linkLabel: 'Explore datasets',
-      color: 'bg-hister-teal',
     },
     {
       icon: Globe,
@@ -79,7 +84,6 @@
       desc: 'Support importing data from public datasets such as the Open Search Foundation and the Internet Archive, giving Hister access to the breadth of human knowledge.',
       href: null,
       linkLabel: null,
-      color: 'bg-hister-coral',
     },
   ];
 </script>
@@ -90,224 +94,331 @@
   path="/support"
 />
 
-<section class="border-brutal-border border-t-[3px] bg-[var(--text-primary)] px-6 py-10">
-  <div class="mx-auto flex max-w-5xl flex-col items-center gap-8">
-    <Heart size={256} class="fill-[var(--hister-rose)] text-[var(--hister-rose)]" />
-    <h1
-      class="font-outfit text-center text-4xl leading-[0.95] font-black tracking-[-1.5px] text-white uppercase md:text-6xl"
-    >
-      Join Us in Redefining Search
-    </h1>
-    <p class="font-inter max-w-[50em] text-center text-lg leading-relaxed text-white/65">
+<div class="support-page">
+  <header class="support-intro">
+    <h1>Help build the future<br />of <span>private search</span></h1>
+    <p class="intro-copy">
       Whether through code, suggestions or sponsorship, every contribution helps make private,
       powerful search available to everyone.
     </p>
-    <div class="grid w-full grid-cols-1 gap-6 md:grid-cols-2">
-      <!-- Sponsor -->
-      <div
-        class="border-brutal-border brutal-press-card flex flex-col gap-6 border-[3px] bg-white p-8 md:p-10"
+  </header>
+
+  <section class="ways" aria-label="Ways to support Hister">
+    <article>
+      <Heart size={24} class="accent" aria-hidden="true" />
+      <h2>Sponsor development</h2>
+      <p>
+        Financial support funds work on Hister: faster bug fixes, new features, and a more polished
+        experience for everyone.
+      </p>
+      <a
+        class="action primary"
+        href="https://github.com/sponsors/asciimoo"
+        target="_blank"
+        rel="noopener noreferrer"
       >
-        <div class="border-brutal-border bg-hister-rose inline-flex w-fit border-[3px] p-3">
-          <Heart size={28} class="fill-white text-white" />
-        </div>
-        <div class="flex flex-col gap-3">
-          <h3
-            class="font-space text-2xl font-black tracking-[-0.5px] text-[var(--text-primary)] uppercase"
-          >
-            Sponsor Development
-          </h3>
-          <p class="font-inter text-base leading-[1.7] text-[var(--text-secondary)]">
-            Financial support directly funds to work on Hister. Faster bug fixes, new features, and
-            a more polished experience for everyone.
-          </p>
-        </div>
-        <div class="mt-auto">
-          <Button
-            href="https://github.com/sponsors/asciimoo"
-            target="_blank"
-            rel="noopener noreferrer"
-            class="bg-hister-rose font-space border-brutal-border brutal-press h-auto rounded-none border-[3px] px-7 py-3.5 text-[14px] font-bold tracking-[1.5px] text-white uppercase no-underline"
-          >
-            <Heart size={16} class="shrink-0 fill-white text-white" />
-            Donate
-            <ArrowRight size={16} class="shrink-0" />
-          </Button>
-        </div>
-      </div>
-
-      <!-- Contribute -->
-      <div
-        class="border-brutal-border brutal-press-card flex flex-col gap-6 border-[3px] bg-white p-8 md:p-10"
-      >
-        <div class="border-brutal-border bg-hister-indigo inline-flex w-fit border-[3px] p-3">
-          <GitPullRequest size={28} class="text-white" />
-        </div>
-        <div class="flex flex-col gap-3">
-          <h3
-            class="font-space text-2xl font-black tracking-[-0.5px] text-[var(--text-primary)] uppercase"
-          >
-            Contribute Code
-          </h3>
-          <p class="font-inter text-base leading-[1.7] text-[var(--text-secondary)]">
-            Hister is free, open-source software. Whether it's a bug report, a pull request, or
-            improving documentation, every contribution moves the project forward.
-          </p>
-        </div>
-        <div class="mt-auto">
-          <Button
-            href="https://github.com/asciimoo/hister"
-            target="_blank"
-            rel="noopener noreferrer"
-            class="bg-hister-indigo font-space border-brutal-border brutal-press h-auto rounded-none border-[3px] px-7 py-3.5 text-[14px] font-bold tracking-[1.5px] text-white uppercase no-underline"
-          >
-            <GitPullRequest size={16} class="shrink-0" />
-            View on GitHub
-            <ArrowRight size={16} class="shrink-0" />
-          </Button>
-        </div>
-      </div>
-
-      <!-- Cryptocurrency -->
-      <div
-        class="border-brutal-border brutal-press-card flex flex-col gap-6 border-[3px] bg-white p-8 md:col-span-2 md:p-10"
-      >
-        <div class="flex flex-col gap-3">
-          <h3
-            class="font-space text-2xl font-black tracking-[-0.5px] text-[var(--text-primary)] uppercase"
-          >
-            Donate with Cryptocurrency
-          </h3>
-          <p class="font-inter text-base leading-[1.7] text-[var(--text-secondary)]">
-            Send BTC or ETH directly to support Hister development.
-          </p>
-        </div>
-
-        <div class="grid grid-cols-1 gap-5 md:grid-cols-2">
-          {#each cryptoWallets as wallet}
-            {@const WalletIcon = wallet.icon}
-            <div class="border-brutal-border flex min-w-0 flex-col gap-4 border-[3px] p-5">
-              <div class="flex items-center gap-3">
-                <div class="border-brutal-border {wallet.color} border-[3px] p-2.5">
-                  <WalletIcon size={24} class="text-white" />
-                </div>
-                <div>
-                  <h4 class="font-space text-lg font-black text-[var(--text-primary)] uppercase">
-                    {wallet.name}
-                  </h4>
-                  <p
-                    class="font-space text-xs font-bold tracking-[1.5px] text-[var(--text-secondary)] uppercase"
-                  >
-                    {wallet.ticker}
-                  </p>
-                </div>
-              </div>
-
-              <a
-                href={wallet.href}
-                class="font-fira text-sm leading-relaxed font-semibold break-all text-[var(--text-primary)] underline hover:no-underline"
-                title="Open {wallet.ticker} wallet"
-              >
-                {wallet.address}
-              </a>
-
-              <button
-                type="button"
-                class="font-space border-brutal-border brutal-press inline-flex w-fit cursor-pointer items-center gap-2 border-[3px] bg-[var(--text-primary)] px-4 py-2 text-xs font-bold tracking-[1px] text-white uppercase"
-                aria-label="Copy {wallet.ticker} wallet address"
-                onclick={() => copyWalletAddress(wallet.address)}
-              >
-                {#if copiedAddress === wallet.address}
-                  <Check size={15} class="shrink-0" />
-                  <span aria-live="polite">Copied</span>
-                {:else}
-                  <Copy size={15} class="shrink-0" />
-                  Copy address
-                {/if}
-              </button>
-            </div>
-          {/each}
-        </div>
-      </div>
-    </div>
-  </div>
-</section>
-
-<!-- Mission -->
-<section class="bg-brutal-bg border-brutal-border w-full border-b-[3px]">
-  <div class="mx-auto grid max-w-5xl grid-cols-1 gap-0 md:grid-cols-2">
-    <article class="border-brutal-border flex flex-col gap-6 p-10 md:border-r-[3px] md:p-14">
-      <div
-        class="bg-hister-rose border-brutal-border inline-flex w-fit items-center gap-2 border-[3px] px-3.5 py-1.5"
-      >
-        <span class="font-space text-[11px] font-bold tracking-[2px] text-white uppercase"
-          >The Mission</span
-        >
-      </div>
-      <h2
-        class="font-outfit text-4xl leading-[1] font-black tracking-[-1.5px] text-[var(--text-primary)] uppercase md:text-5xl"
-      >
-        Break Free From Untrusted Search
-      </h2>
+        Sponsor on GitHub
+      </a>
     </article>
+    <article>
+      <GitPullRequest size={24} class="accent" aria-hidden="true" />
+      <h2>Contribute code</h2>
+      <p>
+        Hister is free, open-source software. Whether it's a bug report, a pull request, or
+        improving documentation, every contribution moves the project forward.
+      </p>
+      <a
+        class="action"
+        href="https://github.com/asciimoo/hister"
+        target="_blank"
+        rel="noopener noreferrer"
+      >
+        View on GitHub
+      </a>
+    </article>
+  </section>
 
-    <article class="flex flex-col justify-center gap-5 p-10 md:p-14">
-      <p class="font-inter text-lg leading-[1.8] text-[var(--text-secondary)]">
-        Our goal is to <strong class="text-[var(--text-primary)]"
+  <section class="crypto" aria-labelledby="crypto-heading">
+    <header>
+      <h2 id="crypto-heading">Donate with cryptocurrency</h2>
+      <p>Send BTC or ETH directly to support Hister development.</p>
+    </header>
+    <ul class="wallets">
+      {#each cryptoWallets as wallet (wallet.ticker)}
+        <li>
+          <h3>
+            <wallet.icon size={20} aria-hidden="true" />{wallet.name}<span>{wallet.ticker}</span>
+          </h3>
+          <a class="wallet-address" href={wallet.href} title="Open {wallet.ticker} wallet"
+            ><code>{wallet.address}</code></a
+          >
+          <button
+            type="button"
+            class="copy-button"
+            aria-label="Copy {wallet.ticker} wallet address"
+            onclick={() => copyWalletAddress(wallet.address)}
+          >
+            {#if copiedAddress === wallet.address}<Check
+                size={15}
+                aria-hidden="true"
+              />Copied{:else}<Copy size={15} aria-hidden="true" />Copy address{/if}
+          </button>
+        </li>
+      {/each}
+    </ul>
+    <output class="copy-status" class:sr-only={!copyError}
+      >{copyError
+        ? 'Couldn’t copy automatically. Select the address above to copy it manually.'
+        : copiedAddress
+          ? 'Wallet address copied to clipboard'
+          : ''}</output
+    >
+  </section>
+
+  <section class="mission" aria-labelledby="mission-heading">
+    <header>
+      <h2 id="mission-heading">Break free from<br />untrusted search</h2>
+    </header>
+    <div>
+      <p>
+        Our goal is to <strong
           >reduce and ultimately eliminate dependence on untrusted search services</strong
         > by providing the best overall private search experience that comes with batteries included and
         supports privacy at every level.
       </p>
-      <p class="font-inter text-lg leading-[1.8] text-[var(--text-secondary)]">
+      <p>
         This is a fresh, independent approach to search. To make it a reality, we need your support.
       </p>
-    </article>
-  </div>
-</section>
-
-<!-- Future Plans -->
-<section class="bg-hister-rose w-full px-6 py-14 text-white md:px-12 md:py-20">
-  <div class="mx-auto max-w-5xl">
-    <div class="mb-12 flex flex-col items-center gap-4 text-center">
-      <h2
-        class="font-outfit text-4xl leading-[0.95] tracking-[-1.5px] text-[var(--text-primary)] text-white uppercase md:text-6xl"
-      >
-        Future Plans
-      </h2>
-      <p class="font-inter max-w-[540px] text-lg leading-relaxed text-white">
-        Where your support takes Hister next.<br /> These are the major pillars of the roadmap.
-      </p>
     </div>
+  </section>
 
-    <div class="flex flex-col gap-6">
-      {#each futurePlans as plan, i}
-        {@const PlanIcon = plan.icon}
-        <div
-          class="border-brutal-border grid grid-cols-1 overflow-hidden border-[3px] md:grid-cols-[auto_1fr]"
-        >
-          <div class="{plan.color} flex items-center justify-center p-8 md:w-[120px]">
-            <PlanIcon size={40} class="text-white" />
-          </div>
-          <div class="bg-brutal-card flex flex-col justify-center gap-3 p-8 md:p-10">
-            <h3
-              class="font-space text-xl font-black tracking-[-0.5px] text-[var(--text-primary)] uppercase md:text-2xl"
-            >
-              {plan.title}
-            </h3>
-            <p class="font-inter text-base leading-[1.7] text-[var(--text-secondary)]">
-              {plan.desc}
-            </p>
-            {#if plan.href}
-              <a
-                href={plan.href}
-                class="font-space mt-1 inline-flex items-center gap-1.5 text-[13px] font-semibold tracking-[1px] text-[var(--text-primary)] uppercase underline hover:no-underline"
-              >
-                {plan.linkLabel}
-                <ArrowRight size={14} class="shrink-0" />
-              </a>
-            {/if}
-          </div>
-        </div>
+  <section class="roadmap" aria-labelledby="roadmap-heading">
+    <header>
+      <h2 id="roadmap-heading">Where your support takes Hister</h2>
+      <p>These are the major pillars of the roadmap.</p>
+    </header>
+    <ul>
+      {#each futurePlans as plan (plan.title)}
+        <li>
+          <plan.icon size={24} class="accent" aria-hidden="true" />
+          <h3>{plan.title}</h3>
+          <p>{plan.desc}</p>
+          {#if plan.href}<a href={plan.href}>{plan.linkLabel}</a>{/if}
+        </li>
       {/each}
-    </div>
-  </div>
-</section>
+    </ul>
+  </section>
+</div>
+
+<style>
+  .support-page {
+    max-width: 1240px;
+    margin: auto;
+    padding: 56px 48px 64px;
+    color: var(--text-primary);
+  }
+  .support-intro {
+    max-width: 760px;
+    margin-bottom: 56px;
+  }
+  h1 {
+    font:
+      500 clamp(38px, 4.5vw, 65px)/1.1 'Inter',
+      sans-serif;
+    letter-spacing: -0.055em;
+    margin: 0;
+  }
+  h1 span {
+    color: var(--hister-indigo);
+  }
+  h2 {
+    font:
+      500 clamp(24px, 3vw, 34px)/1.2 'Inter',
+      sans-serif;
+    letter-spacing: -0.04em;
+    margin: 0 0 16px;
+  }
+  h3 {
+    font-size: 17px;
+    font-weight: 500;
+    letter-spacing: -0.025em;
+    margin: 0 0 14px;
+  }
+  p {
+    font-size: 14px;
+    line-height: 1.8;
+    color: var(--text-secondary);
+    margin: 0;
+  }
+  .intro-copy {
+    max-width: 600px;
+    font-size: 15px;
+    margin-top: 26px;
+  }
+  strong {
+    color: var(--text-primary);
+    font-weight: 600;
+  }
+  a {
+    text-underline-offset: 5px;
+  }
+  .support-page :global(.accent) {
+    color: var(--hister-indigo);
+  }
+  .ways {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 32px;
+  }
+  .ways article {
+    display: flex;
+    flex-direction: column;
+    align-items: start;
+    padding: 28px;
+    border-radius: 6px;
+    background: var(--muted-surface);
+  }
+  .ways h2 {
+    font-size: 23px;
+    margin-top: 22px;
+  }
+  .ways p {
+    margin-bottom: 28px;
+  }
+  .action {
+    display: inline-flex;
+    align-items: center;
+    gap: 16px;
+    padding: 13px 16px;
+    border: 1px solid var(--border);
+    text-decoration: none;
+    font-size: 13px;
+    font-weight: 500;
+    margin-top: auto;
+  }
+  .action:hover {
+    border-color: var(--hister-indigo);
+  }
+  .primary {
+    background: var(--hister-indigo);
+    color: #18191b;
+    border-color: transparent;
+  }
+  .primary:hover {
+    background: var(--hister-coral);
+    border-color: transparent;
+  }
+  .crypto,
+  .mission,
+  .roadmap {
+    border-top: 1px solid var(--border);
+    margin-top: 56px;
+    padding-top: 40px;
+  }
+  ul {
+    list-style: none;
+    padding: 0;
+    margin: 28px 0 0;
+  }
+  .wallets {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 32px;
+  }
+  .wallets li {
+    min-width: 0;
+    padding: 24px;
+    background: var(--brutal-card);
+    border: 1px solid var(--border);
+  }
+  .wallets h3 {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .wallets h3 span {
+    margin-left: auto;
+    color: var(--text-secondary);
+    font:
+      11px 'Fira Code',
+      monospace;
+  }
+  .wallet-address {
+    display: block;
+    overflow-wrap: anywhere;
+    font:
+      12px/1.9 'Fira Code',
+      monospace;
+  }
+  .copy-button {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 20px;
+    padding: 8px 0;
+    cursor: pointer;
+    font-size: 12px;
+    color: var(--text-primary);
+  }
+  .copy-button:hover {
+    text-decoration: underline;
+    text-underline-offset: 4px;
+  }
+  .copy-status {
+    display: block;
+    margin-top: 12px;
+    color: var(--text-secondary);
+    font-size: 13px;
+  }
+  .mission {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 48px;
+  }
+  .mission p + p {
+    margin-top: 18px;
+  }
+  .roadmap ul {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 36px 48px;
+  }
+  .roadmap li {
+    padding-top: 8px;
+  }
+  .roadmap h3 {
+    margin-top: 18px;
+  }
+  .roadmap a {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 20px;
+    font-size: 13px;
+  }
+  @media (max-width: 700px) {
+    .support-page {
+      padding: 48px 24px;
+    }
+    .support-intro {
+      margin-bottom: 36px;
+    }
+    .ways,
+    .wallets,
+    .mission,
+    .roadmap ul {
+      grid-template-columns: 1fr;
+      gap: 24px;
+    }
+    .ways article,
+    .wallets li {
+      padding: 22px;
+    }
+    .crypto,
+    .mission,
+    .roadmap {
+      margin-top: 40px;
+      padding-top: 28px;
+    }
+  }
+</style>
