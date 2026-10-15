@@ -13,18 +13,22 @@ export function getStoredThemePreference(): ThemePreference | null {
   if (isThemePreference(preference)) return preference;
   if (preference !== null) return null;
 
-  const legacyMode = localStorage.getItem(modeStorageKey.current);
-  if (legacyMode === 'light' || legacyMode === 'dark') {
-    localStorage.setItem(preferenceStorageKey, legacyMode);
-    return legacyMode;
-  }
-
-  // Record the migration without creating an explicit visitor preference.
-  localStorage.setItem(preferenceStorageKey, '');
-  return null;
+  return migrateThemePreference();
 }
 
 export function setThemePreference(preference: ThemePreference): void {
   localStorage.setItem(preferenceStorageKey, preference);
   setMode(preference);
+}
+
+function migrateThemePreference(): ThemePreference | null {
+  const legacyMode = localStorage.getItem(modeStorageKey.current);
+  if (['light', 'dark'].includes(legacyMode ?? '')) {
+    localStorage.setItem(preferenceStorageKey, legacyMode!);
+    return legacyMode as ThemePreference;
+  }
+
+  // Record the migration without creating an explicit visitor preference.
+  localStorage.setItem(preferenceStorageKey, '');
+  return null;
 }

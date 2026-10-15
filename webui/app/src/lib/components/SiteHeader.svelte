@@ -3,23 +3,13 @@
   import { resolve } from '$app/paths';
   import { Button } from '@hister/components/ui/button';
   import * as DropdownMenu from '@hister/components/ui/dropdown-menu';
-  import { userPrefersMode } from 'mode-watcher';
-  import {
-    ExternalLink,
-    Keyboard,
-    LogIn,
-    LogOut,
-    Menu,
-    Monitor,
-    Moon,
-    Sun,
-    UserRound,
-  } from '@lucide/svelte';
+  import { ThemeOptions } from '@hister/components';
+  import { ExternalLink, Keyboard, LogIn, LogOut, Menu, UserRound } from '@lucide/svelte';
   import type { AppConfig } from '#lib/api.js';
   import { redirectToAuth } from '#lib/auth-navigation.js';
   import { detectExtensionBrowser, extensionStores } from '#lib/extension.js';
   import { showHelp } from '#lib/stores.js';
-  import { setThemePreference, type ThemePreference } from '#lib/theme.js';
+  import { setThemePreference } from '#lib/theme.js';
 
   let { config, onLogout }: { config: AppConfig | null; onLogout: () => void } = $props();
 
@@ -52,8 +42,6 @@
 
   const menuItem =
     'font-space text-text-brand-muted data-[highlighted]:bg-muted-surface data-[highlighted]:text-text-brand cursor-pointer rounded-none px-3 py-2 text-xs font-semibold tracking-wider uppercase';
-  const themeMenuItem =
-    'font-space text-text-brand-muted focus:bg-muted-surface focus:text-text-brand cursor-pointer rounded-none py-2 text-xs font-semibold tracking-wider uppercase';
   const navLink =
     'primary-link font-space relative p-3 text-[11px] font-semibold tracking-[1px] uppercase no-underline transition-colors hover:no-underline md:p-6 md:text-[13px] md:tracking-[1.5px]';
 
@@ -71,6 +59,99 @@
   );
   const appTitle = $derived(config?.title ?? 'Hister');
 </script>
+
+{#snippet navigationMenu()}
+  {#each menuItems as item (item.href)}
+    {@const active = !item.external && page.route.id === `/${item.href}`}
+    <DropdownMenu.Item
+      class="secondary-menu-item {menuItem} {active ? 'is-active text-text-brand' : ''}"
+      style="--menu-color: {item.color};"
+    >
+      {#snippet child({ props })}
+        <a
+          {...props}
+          aria-current={active ? 'page' : undefined}
+          href={item.href}
+          target={item.external ? '_blank' : undefined}
+          rel={item.external ? 'noopener' : undefined}
+        >
+          {item.label}
+          {#if item.external}<ExternalLink class="ml-auto size-3.5" />{/if}
+        </a>
+      {/snippet}
+    </DropdownMenu.Item>
+  {/each}
+{/snippet}
+
+{#snippet headerMenu()}
+  <DropdownMenu.Content
+    align="end"
+    sideOffset={8}
+    class="border-brutal-border bg-card-surface w-64 rounded-none border-[3px] p-2 shadow-[4px_4px_0_var(--brutal-shadow)]"
+  >
+    {#if showWriteNav}
+      {@const active = page.route.id === `/${addMenuItem.href}`}
+      <DropdownMenu.Item
+        class="primary-menu-item font-space cursor-pointer rounded-none border-l-4 px-3 py-2.5 text-sm font-extrabold tracking-widest uppercase {active
+          ? 'is-active text-text-brand'
+          : 'text-text-brand-muted'}"
+        style="--menu-color: {addMenuItem.color};"
+      >
+        {#snippet child({ props })}
+          <a {...props} aria-current={active ? 'page' : undefined} href={addMenuItem.href}>
+            {addMenuItem.label}
+          </a>
+        {/snippet}
+      </DropdownMenu.Item>
+      <DropdownMenu.Separator class="bg-border-brand-muted mx-0 my-2 h-[2px]" />
+    {/if}
+
+    {@render navigationMenu()}
+
+    <DropdownMenu.Separator class="bg-border-brand-muted mx-0 my-2 h-[2px]" />
+
+    {#if page.route.id === '/'}
+      <DropdownMenu.Item
+        class={menuItem}
+        onSelect={() => ($showHelp = !$showHelp)}
+        textValue="Keyboard shortcuts"
+      >
+        <Keyboard class="size-4" />
+        Keyboard shortcuts
+      </DropdownMenu.Item>
+    {/if}
+    <DropdownMenu.Label
+      class="font-space text-text-brand-muted px-3 pt-2 pb-1 text-[10px] font-bold tracking-widest uppercase"
+    >
+      Appearance
+    </DropdownMenu.Label>
+    <ThemeOptions onchange={setThemePreference} />
+
+    {#if showProfile || showLogin || showLogout}
+      <DropdownMenu.Separator class="bg-border-brand-muted mx-0 my-2 h-[2px]" />
+    {/if}
+    {#if showProfile}
+      <DropdownMenu.Item
+        class={menuItem}
+        onSelect={() => (window.location.href = resolve('profile'))}
+      >
+        <UserRound class="size-4" />
+        Profile
+      </DropdownMenu.Item>
+    {:else if showLogin}
+      <DropdownMenu.Item class={menuItem} onSelect={() => redirectToAuth()}>
+        <LogIn class="size-4" />
+        Login
+      </DropdownMenu.Item>
+    {/if}
+    {#if showLogout}
+      <DropdownMenu.Item class={menuItem} onSelect={() => onLogout()}>
+        <LogOut class="size-4" />
+        {config?.username ? `Logout ${config.username}` : 'Logout'}
+      </DropdownMenu.Item>
+    {/if}
+  </DropdownMenu.Content>
+{/snippet}
 
 <header
   class="site-header bg-brutal-bg border-brutal-border sticky top-0 z-50 flex h-12 shrink-0 items-center justify-between gap-2 overflow-hidden border-b-[3px] px-3 md:grid md:h-16 md:grid-cols-[12rem_auto_12rem] md:justify-stretch md:gap-4 md:px-6"
@@ -123,109 +204,7 @@
         {/snippet}
       </DropdownMenu.Trigger>
 
-      <DropdownMenu.Content
-        align="end"
-        sideOffset={8}
-        class="border-brutal-border bg-card-surface w-64 rounded-none border-[3px] p-2 shadow-[4px_4px_0_var(--brutal-shadow)]"
-      >
-        {#if showWriteNav}
-          {@const active = page.route.id === `/${addMenuItem.href}`}
-          <DropdownMenu.Item
-            class="primary-menu-item font-space cursor-pointer rounded-none border-l-4 px-3 py-2.5 text-sm font-extrabold tracking-widest uppercase {active
-              ? 'is-active text-text-brand'
-              : 'text-text-brand-muted'}"
-            style="--menu-color: {addMenuItem.color};"
-          >
-            {#snippet child({ props })}
-              <a {...props} aria-current={active ? 'page' : undefined} href={addMenuItem.href}>
-                {addMenuItem.label}
-              </a>
-            {/snippet}
-          </DropdownMenu.Item>
-          <DropdownMenu.Separator class="bg-border-brand-muted mx-0 my-2 h-[2px]" />
-        {/if}
-
-        {#each menuItems as item (item.href)}
-          {@const active = !item.external && page.route.id === `/${item.href}`}
-          <DropdownMenu.Item
-            class="secondary-menu-item {menuItem} {active ? 'is-active text-text-brand' : ''}"
-            style="--menu-color: {item.color};"
-          >
-            {#snippet child({ props })}
-              <a
-                {...props}
-                aria-current={active ? 'page' : undefined}
-                href={item.href}
-                target={item.external ? '_blank' : undefined}
-                rel={item.external ? 'noopener' : undefined}
-              >
-                {item.label}
-                {#if item.external}<ExternalLink class="ml-auto size-3.5" />{/if}
-              </a>
-            {/snippet}
-          </DropdownMenu.Item>
-        {/each}
-
-        <DropdownMenu.Separator class="bg-border-brand-muted mx-0 my-2 h-[2px]" />
-
-        {#if page.route.id === '/'}
-          <DropdownMenu.Item
-            class={menuItem}
-            onSelect={() => ($showHelp = !$showHelp)}
-            textValue="Keyboard shortcuts"
-          >
-            <Keyboard class="size-4" />
-            Keyboard shortcuts
-          </DropdownMenu.Item>
-        {/if}
-        <DropdownMenu.Label
-          class="font-space text-text-brand-muted px-3 pt-2 pb-1 text-[10px] font-bold tracking-widest uppercase"
-        >
-          Appearance
-        </DropdownMenu.Label>
-        <DropdownMenu.RadioGroup
-          aria-label="Appearance"
-          value={userPrefersMode.current}
-          onValueChange={(value) => setThemePreference(value as ThemePreference)}
-        >
-          <DropdownMenu.RadioItem class={themeMenuItem} value="system">
-            <Monitor class="size-4" />
-            Automatic
-          </DropdownMenu.RadioItem>
-          <DropdownMenu.RadioItem class={themeMenuItem} value="light">
-            <Sun class="size-4" />
-            Light
-          </DropdownMenu.RadioItem>
-          <DropdownMenu.RadioItem class={themeMenuItem} value="dark">
-            <Moon class="size-4" />
-            Dark
-          </DropdownMenu.RadioItem>
-        </DropdownMenu.RadioGroup>
-
-        {#if showProfile || showLogin || showLogout}
-          <DropdownMenu.Separator class="bg-border-brand-muted mx-0 my-2 h-[2px]" />
-        {/if}
-        {#if showProfile}
-          <DropdownMenu.Item
-            class={menuItem}
-            onSelect={() => (window.location.href = resolve('profile'))}
-          >
-            <UserRound class="size-4" />
-            Profile
-          </DropdownMenu.Item>
-        {:else if showLogin}
-          <DropdownMenu.Item class={menuItem} onSelect={() => redirectToAuth()}>
-            <LogIn class="size-4" />
-            Login
-          </DropdownMenu.Item>
-        {/if}
-        {#if showLogout}
-          <DropdownMenu.Item class={menuItem} onSelect={() => onLogout()}>
-            <LogOut class="size-4" />
-            {config?.username ? `Logout ${config.username}` : 'Logout'}
-          </DropdownMenu.Item>
-        {/if}
-      </DropdownMenu.Content>
+      {@render headerMenu()}
     </DropdownMenu.Root>
   </div>
 </header>
