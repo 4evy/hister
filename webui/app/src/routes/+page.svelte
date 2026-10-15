@@ -1,12 +1,8 @@
 <script lang="ts">
+  import { PreviewState } from '#lib/preview-state.svelte.js';
+  import FullscreenPreview from '#lib/components/FullscreenPreview.svelte';
   import { onMount, tick, untrack, type Component } from 'svelte';
-  import {
-    buildPreviewUrl,
-    pushPreviewHistory,
-    replacePreviewHistory,
-    withSkipUrl,
-    createResizeHandler,
-  } from '#lib/preview.js';
+  import { buildPreviewUrl, withSkipUrl, createResizeHandler } from '#lib/preview.js';
   import { resolve } from '$app/paths';
   import { beforeNavigate } from '$app/navigation';
   import {
@@ -215,16 +211,12 @@
   let showPopup = $state(false);
   let popupUrl = $state('');
   let popupHintTitle = $state('');
-  let previewFullscreen = $state(false);
   let disablePreviews = $state(false);
 
+  const preview = new PreviewState('hister-panel-open', true);
+
   // Desktop split-pane readability panel state
-  let panelUrl = $state('');
-  let panelDocumentId = $state('');
-  let panelHintTitle = $state('');
-  let panelViewingVersion = $state<number | null>(null);
   let isDesktop = $state(false);
-  let panelOpen = $state(true);
   let panelWidthPct = $state(parseFloat(localStorage.getItem('hister-panel-width') ?? '') || 50);
   let splitContainerEl: HTMLDivElement | undefined = $state();
   const startPanelResize = createResizeHandler({
@@ -243,7 +235,7 @@
     const stored = localStorage.getItem(key);
     if (!stored?.trim()) return undefined;
     const value = Number(stored);
-    return Number.isFinite(value) && value >= 0 && value <= 1 ? value : undefined;
+    return semanticValueInRange(value) ? value : undefined;
   }
 
   const savedSimilarityThreshold = storedSemanticValue('hister-semantic-threshold');
@@ -481,7 +473,7 @@
   const totalResults = $derived(historyLen + docsLen);
   const hasResults = $derived(!searchPending && totalResults > 0);
   const showPreviewPanel = $derived(
-    hasResults && !disablePreviews && (previewFullscreen || (panelOpen && isDesktop)),
+    hasResults && !disablePreviews && (preview.fullscreen || (preview.panelOpen && isDesktop)),
   );
   const displayResults = $derived<DisplayResult[]>([
     ...(lastResults?.history ?? []).map((r): DisplayResult => ({
@@ -533,17 +525,12 @@
   const currentFacets = $derived(facetsCache.get(facetsCacheKey()));
 
   async function fetchFacets() {
-    if (!query || facetsLoading) return;
+    if (!canFetchFacets()) return;
     const key = facetsCacheKey();
     if (facetsCache.has(key)) return;
     facetsLoading = true;
     try {
-      const params = new URLSearchParams({ q: query });
-      for (const [name, size] of facetSizes) {
-        const defaultSize =
-          config.search.facets.find((definition) => definition.name === name)?.defaultSize ?? 0;
-        if (size !== defaultSize) params.set(`size_${name}`, String(size));
-      }
+      const params = facetRequestParams();
       const res = await fetch(`api/facets?${params}`);
       if (res.ok) {
         const data: FacetsResult = await res.json();
@@ -580,24 +567,7 @@
     ]),
   ]);
   const activeQueryFilters = $derived(queryFilters(query, filterFields, config.search));
-  const activeFilterChips = $derived(
-    activeQueryFilters.map((filter) => {
-      const facet = config.search.facets.find((facet) => facet.queryField === filter.field);
-      const field = config.search.fields.find((field) => field.name === filter.field);
-      const values = facet
-        ? valuesForFacet(config.search, facet)
-        : (config.search.valueSets[field?.valueSet ?? ''] ?? []);
-      const valueLabel =
-        values.find((value) => value.value === filter.value)?.label ??
-        currentFacets?.terms?.[facet?.name ?? '']?.terms?.find((term) => term.term === filter.value)
-          ?.label ??
-        filter.value;
-      return {
-        filter,
-        label: `${field?.label ?? facet?.label ?? filter.field}: ${filter.negated ? 'Not ' : ''}${valueLabel}`,
-      };
-    }),
-  );
+  const activeFilterChips = $derived(activeQueryFilters.map(filterChip));
   const activeFacetFilters = $derived(
     new Map(
       termFacetDefinitions.map((facet) => [
@@ -634,9 +604,7 @@
   }
 
   function facetTerms(facet: SearchFacetDefinition) {
-    const terms = new Map(
-      (currentFacets?.terms?.[facet.name]?.terms ?? []).map((term) => [term.term, term]),
-    );
+    const terms = new Map(facetTermValues(facet.name).map((term) => [term.term, term]));
     for (const value of activeFiltersForFacet(facet.name)) {
       if (!terms.has(value)) {
         terms.set(value, {
@@ -651,10 +619,7 @@
   }
 
   function showFacetCategory(facet: SearchFacetDefinition) {
-    return (
-      (currentFacets?.terms?.[facet.name]?.terms?.length ?? 0) > 1 ||
-      (activeFacetFilters.get(facet.name)?.size ?? 0) > 0
-    );
+    return facetTermValues(facet.name).length > 1 || activeFiltersForFacet(facet.name).size > 0;
   }
   function activeFiltersForFacet(name: string): Set<string> {
     return activeFacetFilters.get(name) ?? new Set<string>();
@@ -668,7 +633,7 @@
   }
 
   function toggleDateBucket(name: string) {
-    const field = dateFacetDefinition?.queryField ?? '';
+    const field = dateFilterField();
     if (activeDateBucket === name) {
       query = removeTimeFilters(query, field, config.search);
     } else {
@@ -682,14 +647,10 @@
     const to = field === 'to' ? value : dateTo;
     dateFrom = from;
     dateTo = to;
-    const filters: string[] = [];
-    if (shiftISODate(from, 0)) filters.push(`>=${from}`);
-    const exclusiveTo = shiftISODate(to, 1);
-    if (exclusiveTo) filters.push(`<${exclusiveTo}`);
     query = replaceTimeFilters(
       query,
-      dateFacetDefinition?.queryField ?? '',
-      filters,
+      dateFilterField(),
+      customDateFilters(from, to),
       config.search,
     );
   }
@@ -760,7 +721,7 @@
   }
 
   function loadMoreResults() {
-    if (searchPending || !pageKey || !hasMore || loadingMoreForQuery) return;
+    if (!canLoadMoreResults()) return;
     loadingMoreForQuery = query;
     latestPageRequest =
       wsManager?.sendImmediate(JSON.stringify(buildSearchQuery(query, searchQueryOpts(pageKey)))) ??
@@ -774,7 +735,7 @@
   // --- URL builders ---
 
   function queryFromSearchParams(params: URLSearchParams): string {
-    let value = params.get('q') || '';
+    let value = searchParamQuery(params);
     const legacySort = params.get('sort');
     if (
       legacySort &&
@@ -809,7 +770,7 @@
 
   function updateURL() {
     if (skipUrl.value) return;
-    if (previewFullscreen) return;
+    if (preview.fullscreen) return;
     const isEmpty = !query;
     if (isEmpty !== lastPushedEmpty) {
       pushSearchHistory();
@@ -820,28 +781,13 @@
 
   function handlePopState(event: PopStateEvent) {
     debouncedURLUpdate.cancel();
-    const state = event.state as {
-      type?: string;
-      id?: string;
-      documentId?: string;
-      title?: string;
-      versionId?: number | null;
-    } | null;
-    if (state?.type === 'preview') {
-      panelUrl = state.id || '';
-      panelDocumentId = state.documentId || '';
-      panelHintTitle = state.title || '';
-      panelOpen = true;
-      previewFullscreen = true;
-      panelViewingVersion = state.versionId ?? null;
-      return;
-    }
-    previewFullscreen = false;
+    if (preview.restore(event.state)) return;
+    preview.fullscreen = false;
     skipUrl.value = true;
     const params = new URLSearchParams(window.location.search);
     query = queryFromSearchParams(params);
     lastPushedEmpty = !query;
-    if (query && connected) sendQuery(query);
+    refreshCurrentQuery();
     if (!query) {
       autocomplete = '';
       lastResults = null;
@@ -853,27 +799,11 @@
 
   function renderResults(event: MessageEvent, request: WebSocketRequest) {
     if (!query) return;
-    const isLoadMore =
-      request.id === latestPageRequest && !searchPending && loadingMoreForQuery === query;
-    if (
-      !isLoadMore &&
-      (request.id !== latestSearchRequest || request.message !== currentSearchMessage)
-    )
-      return;
+    const isLoadMore = isPageResponse(request);
+    if (shouldIgnoreSearchResponse(request, isLoadMore)) return;
     const res = parseSearchResults(event.data);
     loadingMoreForQuery = '';
-    if (isLoadMore) {
-      accumulatedDocs = [...accumulatedDocs, ...(res.documents ?? [])];
-      lastResults = { ...lastResults!, ...res, documents: accumulatedDocs };
-    } else {
-      searchInProgress = false;
-      completedSearchMessage = request.message;
-      accumulatedDocs = res.documents ?? [];
-      lastResults = res;
-      autocomplete = (query && res.query_suggestion) || '';
-      highlightIdx = 0;
-      if (!isComposing) resultsShown = true;
-    }
+    applySearchResults(res, request.message, isLoadMore);
     hasMore = !!res.page_key;
     pageKey = res.page_key ?? '';
   }
@@ -928,7 +858,7 @@
     });
     if (!res.ok) {
       const text = await res.text();
-      setDeleteError(text || 'Delete failed.');
+      setResponseDeleteError(text, 'Delete failed.');
       return;
     }
     const data = await res.json();
@@ -942,18 +872,9 @@
   function deleteSelectedResult(e?: KeyboardEvent) {
     if (e) e.preventDefault();
     if (!config.canWrite) return;
-    const links = document.querySelectorAll<HTMLAnchorElement>('[data-result] [data-result-link]');
-    const link = links[highlightIdx];
-    if (!link) return;
-    const url = link.getAttribute('data-result-link') ?? link.getAttribute('href');
+    const url = selectedResultUrl();
     if (!url) return;
-    if (localStorage.getItem('hister-skip-delete-confirm') === 'true') {
-      deleteResult(url);
-      return;
-    }
-    deleteConfirmUrl = url;
-    deleteConfirmSkip = false;
-    showDeleteConfirm = true;
+    requestResultDeletion(url);
   }
 
   function confirmDelete() {
@@ -972,8 +893,7 @@
 
   async function deleteAllResults() {
     if (!config.canWrite) return;
-    const searchText = removeSortDirectives(query, config.search.sort) || '*';
-    const q = searchText + (getUserId() !== undefined ? ' user_id:' + getUserId() : '');
+    const q = deleteAllQuery();
     const res = await apiFetch('/delete', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -981,7 +901,7 @@
     });
     if (!res.ok) {
       const text = await res.text();
-      setDeleteError(text || 'Delete all failed.');
+      setResponseDeleteError(text, 'Delete all failed.');
       return;
     }
     const data = await res.json();
@@ -992,8 +912,7 @@
       return;
     }
     // Refresh because semantic and history matches may fall outside the deleted query.
-    if (connected) sendQuery(query);
-    else removeMatchingResults(() => true);
+    refreshAfterDelete();
   }
 
   function confirmDeleteAll() {
@@ -1023,7 +942,7 @@
     // Discard a page fetched before deletion so it cannot restore stale results.
     latestPageRequest = 0;
     loadingMoreForQuery = '';
-    if (lastResults.total === 0 && totalResults === 0) {
+    if (noResultsRemain(lastResults)) {
       hasMore = false;
       pageKey = '';
     }
@@ -1056,45 +975,22 @@
 
   function openReadable(e: Event, url: string, title: string, documentId = '') {
     e.preventDefault();
-    if (e.stopPropagation) e.stopPropagation();
+    e.stopPropagation();
     debouncedURLUpdate.flush();
-    if (isDesktop) {
-      if (!panelOpen) {
-        panelOpen = true;
-        localStorage.setItem('hister-panel-open', 'true');
-      }
-      panelViewingVersion = null;
-      panelDocumentId = documentId;
-      panelHintTitle = title;
-      panelUrl = url;
-      return;
-    }
-    panelViewingVersion = null;
-    panelDocumentId = documentId;
-    panelUrl = url;
-    panelHintTitle = title;
-    previewFullscreen = true;
-    withSkipUrl(skipUrl, () => pushPreviewHistory(url, title, null, documentId));
+    preview.open(url, title, documentId, isDesktop, skipUrl);
   }
 
   function enterFullscreen() {
     debouncedURLUpdate.flush();
-    previewFullscreen = true;
-    withSkipUrl(skipUrl, () =>
-      pushPreviewHistory(panelUrl, panelHintTitle, panelViewingVersion, panelDocumentId),
-    );
+    preview.enterFullscreen(skipUrl);
   }
 
   function exitFullscreen() {
-    previewFullscreen = false;
-    withSkipUrl(skipUrl, () => pushSearchHistory());
+    preview.exitFullscreen(skipUrl, pushSearchHistory);
   }
 
   function closePanelAndFullscreen() {
-    previewFullscreen = false;
-    panelOpen = false;
-    localStorage.setItem('hister-panel-open', 'false');
-    withSkipUrl(skipUrl, () => pushSearchHistory());
+    preview.close(skipUrl, pushSearchHistory);
   }
 
   function selectNthResult(n: number) {
@@ -1121,37 +1017,13 @@
       return;
     }
     if (searchPending) return;
-    const res = document.querySelectorAll<HTMLAnchorElement>('[data-result] [data-result-link]')[
-      highlightIdx
-    ];
-    if (res) {
-      const href = res.getAttribute('href')!;
-      openResult(href, res.innerText, newWindow, res.dataset.resultLink || href);
-    }
+    openHighlightedResult(newWindow);
   }
 
   function viewResultPopup(e?: KeyboardEvent) {
     if (e) e.preventDefault();
     if (searchPending) return;
-    if (isDesktop) {
-      if (previewFullscreen) {
-        // Fullscreen → back to split-screen
-        exitFullscreen();
-      } else if (panelOpen) {
-        // Split-screen → fullscreen
-        enterFullscreen();
-      } else {
-        // No preview → open split-screen
-        openHighlightedReadable();
-      }
-    } else {
-      // Mobile: toggle fullscreen
-      if (previewFullscreen) {
-        closePanelAndFullscreen();
-      } else {
-        openHighlightedReadable();
-      }
-    }
+    preview.toggle(isDesktop, skipUrl, pushSearchHistory, openHighlightedReadable);
   }
 
   function openHighlightedReadable() {
@@ -1171,7 +1043,7 @@
 
   function autocompleteQuery(e?: KeyboardEvent, isInputFocus?: boolean) {
     if (e) e.preventDefault();
-    if (isInputFocus && autocomplete && query !== autocomplete) {
+    if (canAutocomplete(isInputFocus)) {
       query = autocomplete;
       sendQuery(query);
     } else {
@@ -1183,12 +1055,7 @@
     const target = event.currentTarget as HTMLInputElement;
     query = target.value;
     queryCursor = target.selectionStart ?? target.value.length;
-    if (compositionEndPending && !(event as InputEvent).isComposing) {
-      if (compositionEndFrame !== undefined) cancelAnimationFrame(compositionEndFrame);
-      isComposing = false;
-      compositionEndPending = false;
-      compositionEndFrame = undefined;
-    }
+    finishPendingComposition(event);
     querySuggestionIndex = 0;
     querySuggestionKeyboardActive = false;
     querySuggestionOpen = true;
@@ -1247,42 +1114,52 @@
     querySuggestionKeyboardActive = true;
   }
 
+  function ignoreSuggestionKey(event: KeyboardEvent) {
+    return isIMEKeyboardEvent(event) || !querySuggestionsVisible || querySuggestions.length === 0;
+  }
+
+  function moveQuerySuggestion(event: KeyboardEvent) {
+    event.preventDefault();
+    event.stopPropagation();
+    const down = event.key === 'ArrowDown';
+    if (!querySuggestionKeyboardActive)
+      querySuggestionIndex = down ? 0 : querySuggestions.length - 1;
+    else {
+      const direction = down ? 1 : -1;
+      querySuggestionIndex =
+        (querySuggestionIndex + direction + querySuggestions.length) % querySuggestions.length;
+    }
+    querySuggestionKeyboardActive = true;
+  }
+
+  function selectSuggestionKey(event: KeyboardEvent) {
+    return event.key === 'Tab' || (event.key === 'Enter' && querySuggestionKeyboardActive);
+  }
+
+  function applySuggestionKey(event: KeyboardEvent) {
+    event.preventDefault();
+    event.stopPropagation();
+    selectQuerySuggestion(querySuggestions[querySuggestionIndex] ?? querySuggestions[0]);
+  }
+
+  function dismissSuggestionKey(event: KeyboardEvent) {
+    if (event.key !== 'Escape') return;
+    event.preventDefault();
+    event.stopPropagation();
+    querySuggestionOpen = false;
+    querySuggestionKeyboardActive = false;
+  }
+
+  function navigateSuggestions(event: KeyboardEvent) {
+    if (['ArrowDown', 'ArrowUp'].includes(event.key)) moveQuerySuggestion(event);
+    else if (selectSuggestionKey(event)) applySuggestionKey(event);
+    else dismissSuggestionKey(event);
+  }
+
   function handleQueryInputKeydown(event: KeyboardEvent) {
-    if (isIMEKeyboardEvent(event)) return;
-    if (!querySuggestionsVisible || querySuggestions.length === 0) return;
-
-    if (event.key === 'Tab' && event.shiftKey) {
-      event.stopPropagation();
-      return;
-    }
-
-    if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
-      event.preventDefault();
-      event.stopPropagation();
-      if (!querySuggestionKeyboardActive) {
-        querySuggestionIndex = event.key === 'ArrowDown' ? 0 : querySuggestions.length - 1;
-      } else {
-        const direction = event.key === 'ArrowDown' ? 1 : -1;
-        querySuggestionIndex =
-          (querySuggestionIndex + direction + querySuggestions.length) % querySuggestions.length;
-      }
-      querySuggestionKeyboardActive = true;
-      return;
-    }
-
-    if (event.key === 'Tab' || (event.key === 'Enter' && querySuggestionKeyboardActive)) {
-      event.preventDefault();
-      event.stopPropagation();
-      selectQuerySuggestion(querySuggestions[querySuggestionIndex] ?? querySuggestions[0]);
-      return;
-    }
-
-    if (event.key === 'Escape') {
-      event.preventDefault();
-      event.stopPropagation();
-      querySuggestionOpen = false;
-      querySuggestionKeyboardActive = false;
-    }
+    if (ignoreSuggestionKey(event)) return;
+    if (event.key === 'Tab' && event.shiftKey) event.stopPropagation();
+    else navigateSuggestions(event);
   }
 
   function openQueryInSearchEngine(e?: KeyboardEvent) {
@@ -1298,7 +1175,7 @@
   }
 
   function closePopup(): boolean {
-    if (previewFullscreen) {
+    if (preview.fullscreen) {
       closePanelAndFullscreen();
       return true;
     }
@@ -1320,37 +1197,13 @@
   }
 
   function handleKeydown(e: KeyboardEvent) {
-    if (e.defaultPrevented || isIMEKeyboardEvent(e)) return;
+    if (ignoreSearchKey(e)) return;
     if (showDeleteConfirm) {
-      if (e.key === 'Enter') {
-        e.preventDefault();
-        confirmDelete();
-      } else if (e.key === 'Escape') {
-        e.preventDefault();
-        cancelDelete();
-      }
+      handleDeleteConfirmKey(e);
       return;
     }
-    const isInputFocus =
-      document.activeElement instanceof HTMLInputElement ||
-      document.activeElement instanceof HTMLTextAreaElement;
-    keyHandler?.handle(e, isInputFocus);
-    if (e.key === 'Escape') {
-      if ($showHelp) {
-        $showHelp = false;
-        e.preventDefault();
-        return;
-      }
-      if (closePopup()) {
-        e.preventDefault();
-        return;
-      }
-      if (isSearching) {
-        query = '';
-        resultsShown = false;
-        return;
-      }
-    }
+    dispatchHotkey(e);
+    handleEscapeKey(e);
   }
 
   function clickChip(q: string) {
@@ -1386,7 +1239,7 @@
       });
       if (!res.ok) return;
       const data = await res.json();
-      searchAliases = data.aliases ?? {};
+      applySearchAliases(data);
     } catch {}
   }
 
@@ -1397,20 +1250,7 @@
 
       if (statsRes.ok) {
         const stats = await statsRes.json();
-        rulesCount = stats.rule_count ?? 0;
-        aliasesCount = stats.alias_count ?? 0;
-        historyCount = stats.doc_count ?? 0;
-        fileCount = stats.file_count ?? 0;
-        statsAvailable = true;
-        recentSearches = [];
-        if (stats.recent_searches) {
-          const deletedSearches: string[] = JSON.parse(
-            localStorage.getItem('deletedSearches') || '[]',
-          );
-          recentSearches = stats.recent_searches
-            .map((s: { query: string }) => s.query)
-            .filter((q: string) => !deletedSearches.includes(q));
-        }
+        applyHomeStats(stats);
       }
     } catch (e) {
       console.log('Failed to retrieve stats', e);
@@ -1547,11 +1387,9 @@
         querySuggestionFacets = await res.json();
         querySuggestionFacetKey = context.key;
       } catch (error) {
-        if (!(error instanceof DOMException && error.name === 'AbortError')) {
-          querySuggestionFacets = null;
-        }
+        suggestionFacetsFailed(error);
       } finally {
-        if (request === querySuggestionFacetRequest) querySuggestionFacetsLoading = false;
+        suggestionFacetsFinished(request);
       }
     }, 120);
     return () => {
@@ -1582,12 +1420,12 @@
   // Persist and react to semantic setting changes.
   $effect(() => {
     localStorage.setItem('hister-semantic-on', String(semanticOn));
-    if (query && connected) sendQuery(query);
+    refreshCurrentQuery();
   });
   $effect(() => {
     if (!semanticSettingsReady) return;
     localStorage.setItem('hister-semantic-threshold', String(similarityThreshold));
-    if (query && connected) sendQuery(query);
+    refreshCurrentQuery();
   });
   $effect(() => {
     if (!semanticSettingsReady) return;
@@ -1595,40 +1433,18 @@
   });
 
   $effect(() => {
-    if (lastResults && !searchPending && !hasResults && previewFullscreen) exitFullscreen();
+    if (shouldCloseEmptyPreview()) exitFullscreen();
   });
 
   // Auto-load the readability panel for the focused result on desktop.
   // Tracks mergedResults (not just lastResults) so that reordering caused by
   // the semantic weight slider also refreshes the panel.
   // Uses data instead of DOM queries so it works when results are hidden (fullscreen mode).
+  $effect(syncHighlightedPreview);
   $effect(() => {
-    if (searchPending) return;
-    const idx = highlightIdx;
-    const result = displayResults[idx]; // reactive: covers both pinned and regular results
-    const isFullscreen = previewFullscreen;
-    if (!isDesktop || (!panelOpen && !isFullscreen)) return;
-    if (!result) {
-      panelUrl = '';
-      panelDocumentId = '';
-      panelHintTitle = '';
-      return;
-    }
-    const url = result.url;
-    const documentId = result.id || '';
-    if (url === untrack(() => panelUrl) && documentId === untrack(() => panelDocumentId)) return;
-    panelViewingVersion = null;
-    panelDocumentId = documentId;
-    panelHintTitle = result.title || '';
-    panelUrl = url;
-    if (isFullscreen) {
-      withSkipUrl(skipUrl, () => replacePreviewHistory(url, result.title || '', null, documentId));
-    }
-  });
-  $effect(() => {
-    // Read the query synchronously so each edit restarts the URL debounce.
+    // Read the query synchronously so each edit restarts the URL debounce
     const url = buildSearchUrl();
-    if (skipUrl.value || previewFullscreen) return;
+    if (skipUrl.value || preview.fullscreen) return;
     if (url === window.location.pathname + window.location.search + window.location.hash) return;
     debouncedURLUpdate.schedule();
     return debouncedURLUpdate.cancel;
@@ -1663,14 +1479,11 @@
       const wsUrl = new URL(appConfig.wsUrl);
       config = {
         wsUrl: `${wsProto}//${location.host}${wsUrl.pathname}`,
-        title: appConfig.title ?? 'Hister',
-        subtitle: appConfig.subtitle ?? 'Your own search engine',
+        ...appDisplayConfig(appConfig),
         searchUrl: appConfig.searchUrl,
         openResultsOnNewTab: appConfig.openResultsOnNewTab,
         hotkeys: appConfig.hotkeys,
-        semanticEnabled: appConfig.semanticEnabled ?? false,
-        similarityThreshold: appConfig.similarityThreshold ?? 0.1,
-        semanticWeight: appConfig.semanticWeight ?? 0.4,
+        ...appSemanticConfig(appConfig),
         authenticated: appConfig.authenticated,
         public: appConfig.public,
         canWrite: appConfig.canWrite,
@@ -1678,19 +1491,7 @@
         search: appConfig.search,
       };
       disablePreviews = (appConfig as any).disablePreviews ?? false;
-      if (config.semanticEnabled) {
-        // Apply server defaults only when the user has not yet customised these.
-        similarityThreshold = savedSimilarityThreshold ?? config.similarityThreshold;
-        semanticWeight = savedSemanticWeight ?? config.semanticWeight;
-        semanticSettingsReady = true;
-      }
-      if (
-        !config.canWrite &&
-        currentTip.some((part) => part.type === 'link' && part.href.endsWith('/rules'))
-      ) {
-        const choices = visibleTips();
-        currentTip = choices[Math.floor(Math.random() * choices.length)];
-      }
+      initializeSearchPreferences();
       inputEl?.focus();
       connect();
       keyHandler = new KeyHandler(config.hotkeys, hotkeyActions);
@@ -1700,7 +1501,7 @@
     const mq = window.matchMedia('(min-width: 1280px)');
     isDesktop = mq.matches;
     const stored = localStorage.getItem('hister-panel-open');
-    if (stored !== null) panelOpen = stored !== 'false';
+    if (stored !== null) preview.panelOpen = stored !== 'false';
     const mqHandler = (e: MediaQueryListEvent) => {
       isDesktop = e.matches;
     };
@@ -1711,6 +1512,309 @@
       mq.removeEventListener('change', mqHandler);
     };
   });
+  function semanticValueInRange(value: number) {
+    return Number.isFinite(value) && value >= 0 && value <= 1;
+  }
+  function facetRequestParams() {
+    const params = new URLSearchParams({ q: query });
+    for (const [name, size] of facetSizes) {
+      const defaultSize = defaultFacetSize(name);
+      if (size !== defaultSize) params.set(`size_${name}`, String(size));
+    }
+    return params;
+  }
+  function canFetchFacets() {
+    return !!query && !facetsLoading;
+  }
+  function facetTermValues(name: string) {
+    return facetTermsOrEmpty(currentFacets?.terms?.[name]);
+  }
+  function facetTermsOrEmpty(facet: import('#lib/search.js').TermFacet | undefined) {
+    return facet?.terms ?? [];
+  }
+  function filterChip(filter: QueryFilter) {
+    const facet = config.search.facets.find((facet) => facet.queryField === filter.field);
+    const field = config.search.fields.find((field) => field.name === filter.field);
+    const valueLabel = filterValueLabel(filter, facet, field);
+    return {
+      filter,
+      label: `${filterFieldLabel(filter, facet, field)}: ${filter.negated ? 'Not ' : ''}${valueLabel}`,
+    };
+  }
+  type FilterField = SearchCapabilities['fields'][number] | undefined;
+  function filterFieldLabel(
+    filter: QueryFilter,
+    facet: SearchFacetDefinition | undefined,
+    field: FilterField,
+  ): string {
+    return field?.label ?? fallbackFacetLabel(filter, facet);
+  }
+  function fallbackFacetLabel(
+    filter: QueryFilter,
+    facet: SearchFacetDefinition | undefined,
+  ): string {
+    return facet?.label ?? filter.field;
+  }
+  function filterValues(facet: SearchFacetDefinition | undefined, field: FilterField) {
+    if (facet) return valuesForFacet(config.search, facet);
+    return fieldValues(field);
+  }
+  function fieldValues(field: FilterField) {
+    return config.search.valueSets[field?.valueSet ?? ''] ?? [];
+  }
+  function filterValueLabel(
+    filter: QueryFilter,
+    facet: SearchFacetDefinition | undefined,
+    field: FilterField,
+  ): string {
+    return (
+      filterValues(facet, field).find((value) => value.value === filter.value)?.label ??
+      facetValueLabel(filter, facet)
+    );
+  }
+  function facetValueLabel(filter: QueryFilter, facet: SearchFacetDefinition | undefined): string {
+    const terms = facetTermValues(facet?.name ?? '');
+    return termLabel(terms, filter.value);
+  }
+  function termLabel(terms: import('#lib/search.js').TermCount[], value: string): string {
+    return terms.find((term) => term.term === value)?.label ?? value;
+  }
+
+  function dateFilterField() {
+    return dateFacetDefinition?.queryField ?? '';
+  }
+  function customDateFilters(from: string, to: string) {
+    const filters: string[] = [];
+    if (shiftISODate(from, 0)) filters.push(`>=${from}`);
+    const exclusiveTo = shiftISODate(to, 1);
+    if (exclusiveTo) filters.push(`<${exclusiveTo}`);
+    return filters;
+  }
+  function canLoadMoreResults() {
+    return ![searchPending, !pageKey, !hasMore, loadingMoreForQuery].some(Boolean);
+  }
+  function searchParamQuery(params: URLSearchParams) {
+    return params.get('q') || '';
+  }
+  function applySearchResults(res: SearchResults, message: string, append: boolean) {
+    if (append) {
+      accumulatedDocs = [...accumulatedDocs, ...(res.documents ?? [])];
+      lastResults = { ...lastResults!, ...res, documents: accumulatedDocs };
+    } else {
+      replaceResults(res, message);
+    }
+  }
+  function isPageResponse(request: WebSocketRequest) {
+    return request.id === latestPageRequest && !searchPending && loadingMoreForQuery === query;
+  }
+  function isCurrentSearchResponse(request: WebSocketRequest) {
+    return request.id === latestSearchRequest && request.message === currentSearchMessage;
+  }
+
+  function replaceResults(res: SearchResults, message: string) {
+    searchInProgress = false;
+    completedSearchMessage = message;
+    accumulatedDocs = res.documents ?? [];
+    lastResults = res;
+    autocomplete = suggestedQuery(res);
+    highlightIdx = 0;
+    if (!isComposing) resultsShown = true;
+  }
+  function suggestedQuery(res: SearchResults) {
+    return (query && res.query_suggestion) || '';
+  }
+  function setResponseDeleteError(text: string, fallback: string) {
+    setDeleteError(text || fallback);
+  }
+  function deleteAllQuery() {
+    const searchText = removeSortDirectives(query, config.search.sort) || '*';
+    const q = searchText + (getUserId() !== undefined ? ' user_id:' + getUserId() : '');
+    return q;
+  }
+  function refreshAfterDelete() {
+    if (connected) sendQuery(query);
+    else removeMatchingResults(() => true);
+  }
+  function selectedResultUrl() {
+    const links = document.querySelectorAll<HTMLAnchorElement>('[data-result] [data-result-link]');
+    const link = links[highlightIdx];
+    if (!link) return null;
+    const url = link.getAttribute('data-result-link') ?? link.getAttribute('href');
+    return url;
+  }
+  function noResultsRemain(results: SearchResults) {
+    return results.total === 0 && totalResults === 0;
+  }
+  function openResultLink(link: HTMLAnchorElement, href: string, newWindow: boolean) {
+    openResult(href, link.innerText, newWindow, link.dataset.resultLink || href);
+  }
+  function canAutocomplete(focused?: boolean) {
+    return focused && autocomplete && query !== autocomplete;
+  }
+  function finishPendingComposition(event: Event) {
+    if (compositionEndPending && !(event as InputEvent).isComposing) {
+      if (compositionEndFrame !== undefined) cancelAnimationFrame(compositionEndFrame);
+      isComposing = false;
+      compositionEndPending = false;
+      compositionEndFrame = undefined;
+    }
+  }
+  function applySearchAliases(data: { aliases?: Record<string, string> }) {
+    searchAliases = data.aliases ?? {};
+  }
+  function applyHomeStats(stats: HomeStats) {
+    rulesCount = stats.rule_count ?? 0;
+    aliasesCount = stats.alias_count ?? 0;
+    applyDocumentCounts(stats);
+    statsAvailable = true;
+    applyRecentSearches(stats);
+  }
+  interface HomeStats {
+    rule_count?: number;
+    alias_count?: number;
+    doc_count?: number;
+    file_count?: number;
+    recent_searches?: { query: string }[];
+  }
+  function applyRecentSearches(stats: HomeStats) {
+    recentSearches = [];
+    if (stats.recent_searches) {
+      const deletedSearches: string[] = JSON.parse(localStorage.getItem('deletedSearches') || '[]');
+      recentSearches = stats.recent_searches
+        .map((s: { query: string }) => s.query)
+        .filter((q: string) => !deletedSearches.includes(q));
+    }
+  }
+  function applyDocumentCounts(stats: HomeStats) {
+    historyCount = stats.doc_count ?? 0;
+    fileCount = stats.file_count ?? 0;
+  }
+  function syncHighlightedPreview() {
+    if (searchPending) return;
+    const idx = highlightIdx;
+    const result = displayResults[idx]; // reactive: covers both pinned and regular results
+    if (!preview.visibleOnDesktop(isDesktop)) return;
+    if (!result) {
+      preview.clearDocument();
+      return;
+    }
+    syncResultPreview(result);
+  }
+  function syncResultPreview(result: DisplayResult) {
+    preview.syncDocument(result.url, result.title || '', result.id || '', skipUrl);
+  }
+  function handleDeleteConfirmKey(event: KeyboardEvent) {
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      confirmDelete();
+    } else if (event.key === 'Escape') {
+      event.preventDefault();
+      cancelDelete();
+    }
+  }
+  function searchInputFocused() {
+    return (
+      document.activeElement instanceof HTMLInputElement ||
+      document.activeElement instanceof HTMLTextAreaElement
+    );
+  }
+
+  function dispatchHotkey(event: KeyboardEvent) {
+    keyHandler?.handle(event, searchInputFocused());
+  }
+  function handleEscapeKey(e: KeyboardEvent) {
+    if (e.key !== 'Escape') return;
+    closeSearchOverlay(e);
+  }
+  function closeSearchOverlay(e: KeyboardEvent) {
+    if ($showHelp) {
+      $showHelp = false;
+      e.preventDefault();
+      return;
+    }
+    if (closePopup()) {
+      e.preventDefault();
+      return;
+    }
+    if (isSearching) {
+      query = '';
+      resultsShown = false;
+      return;
+    }
+  }
+  function ignoreSearchKey(e: KeyboardEvent) {
+    return e.defaultPrevented || isIMEKeyboardEvent(e);
+  }
+  type ServerConfig = Awaited<ReturnType<typeof fetchConfig>>;
+  function appDisplayConfig(appConfig: ServerConfig) {
+    return {
+      title: appConfig.title ?? 'Hister',
+      subtitle: appConfig.subtitle ?? 'Your own search engine',
+    };
+  }
+  function appSemanticConfig(appConfig: ServerConfig) {
+    return {
+      semanticEnabled: appConfig.semanticEnabled ?? false,
+      similarityThreshold: appConfig.similarityThreshold ?? 0.1,
+      semanticWeight: appConfig.semanticWeight ?? 0.4,
+    };
+  }
+
+  function initializeSearchPreferences() {
+    if (config.semanticEnabled) {
+      // Apply server defaults only when the user has not yet customised these.
+      similarityThreshold = savedSimilarityThreshold ?? config.similarityThreshold;
+      semanticWeight = savedSemanticWeight ?? config.semanticWeight;
+      semanticSettingsReady = true;
+    }
+    refreshVisibleTip();
+  }
+  function refreshVisibleTip() {
+    if (
+      !config.canWrite &&
+      currentTip.some((part) => part.type === 'link' && part.href.endsWith('/rules'))
+    ) {
+      const choices = visibleTips();
+      currentTip = choices[Math.floor(Math.random() * choices.length)];
+    }
+  }
+  function refreshCurrentQuery() {
+    if (query && connected) sendQuery(query);
+  }
+  function shouldCloseEmptyPreview() {
+    return [lastResults, !searchPending, !hasResults, preview.fullscreen].every(Boolean);
+  }
+  function shouldIgnoreSearchResponse(request: WebSocketRequest, append: boolean) {
+    return !append && !isCurrentSearchResponse(request);
+  }
+  function requestResultDeletion(url: string) {
+    if (localStorage.getItem('hister-skip-delete-confirm') === 'true') {
+      deleteResult(url);
+      return;
+    }
+    deleteConfirmUrl = url;
+    deleteConfirmSkip = false;
+    showDeleteConfirm = true;
+  }
+  function openHighlightedResult(newWindow: boolean) {
+    const res = document.querySelectorAll<HTMLAnchorElement>('[data-result] [data-result-link]')[
+      highlightIdx
+    ];
+    if (res) {
+      const href = res.getAttribute('href')!;
+      openResultLink(res, href, newWindow);
+    }
+  }
+  function defaultFacetSize(name: string) {
+    return config.search.facets.find((definition) => definition.name === name)?.defaultSize ?? 0;
+  }
+  function suggestionFacetsFailed(error: unknown) {
+    if (!(error instanceof DOMException && error.name === 'AbortError'))
+      querySuggestionFacets = null;
+  }
+  function suggestionFacetsFinished(request: number) {
+    if (request === querySuggestionFacetRequest) querySuggestionFacetsLoading = false;
+  }
 </script>
 
 <svelte:head>
@@ -2065,7 +2169,7 @@
     {@render connectionNotice('mx-3 my-3 md:mx-6')}
 
     <div class="flex min-h-0 flex-1 overflow-hidden" bind:this={splitContainerEl}>
-      {#if !previewFullscreen || !showPreviewPanel}
+      {#if !preview.fullscreen || !showPreviewPanel}
         <ScrollArea class="results-scroll min-h-0 min-w-0 flex-1 overflow-hidden">
           <div
             class="results-list w-full max-w-[70em] space-y-3 overflow-x-hidden px-3 py-2 md:px-6"
@@ -2103,13 +2207,13 @@
                 {/if}
               </span>
               <div class="flex min-w-0 flex-wrap items-center justify-end gap-2 overflow-hidden">
-                {#if hasResults && isDesktop && !panelOpen && !disablePreviews}
+                {#if hasResults && isDesktop && !preview.panelOpen && !disablePreviews}
                   <Button
                     variant="ghost"
                     size="sm"
                     class="font-inter text-text-brand-muted hover:text-hister-indigo gap-1 text-xs"
                     onclick={() => {
-                      panelOpen = true;
+                      preview.panelOpen = true;
                       localStorage.setItem('hister-panel-open', 'true');
                     }}
                   >
@@ -2753,21 +2857,15 @@
 
       <!-- Preview panel: fullscreen (both mobile and desktop) or split-pane (desktop only) -->
       {#if showPreviewPanel}
-        {#if previewFullscreen}
-          <PreviewPanel
-            url={panelUrl}
-            documentId={panelDocumentId}
-            hintTitle={panelHintTitle}
-            fullscreen={true}
+        {#if preview.fullscreen}
+          <FullscreenPreview
+            url={preview.url}
+            documentId={preview.documentId}
+            hintTitle={preview.title}
             onclose={closePanelAndFullscreen}
             onfullscreentoggle={isDesktop ? exitFullscreen : undefined}
-            initialViewingVersionId={panelViewingVersion}
-            onviewingversionchange={(id) => {
-              panelViewingVersion = id;
-              withSkipUrl(skipUrl, () =>
-                replacePreviewHistory(panelUrl, panelHintTitle, id, panelDocumentId),
-              );
-            }}
+            bind:viewingVersion={preview.version}
+            {skipUrl}
           />
         {:else}
           <!-- Drag handle to resize the split-screen panel -->
@@ -2783,19 +2881,19 @@
             class="preview-shell bg-card-surface relative z-10 flex min-h-0 overflow-hidden"
           >
             <PreviewPanel
-              url={panelUrl}
-              documentId={panelDocumentId}
-              hintTitle={panelHintTitle}
+              url={preview.url}
+              documentId={preview.documentId}
+              hintTitle={preview.title}
               fullscreen={false}
               onclose={() => {
-                panelOpen = false;
+                preview.panelOpen = false;
                 localStorage.setItem('hister-panel-open', 'false');
               }}
               onfullscreentoggle={enterFullscreen}
               connected={true}
-              initialViewingVersionId={panelViewingVersion}
+              initialViewingVersionId={preview.version}
               onviewingversionchange={(id) => {
-                panelViewingVersion = id;
+                preview.version = id;
               }}
             />
           </div>
