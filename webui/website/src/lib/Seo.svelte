@@ -53,57 +53,68 @@
     },
   };
 
+  function softwareSchema() {
+    return {
+      '@type': 'SoftwareApplication',
+      '@id': `${canonicalUrl}#software`,
+      name: schemaTitle ?? 'Hister',
+      description,
+      url: canonicalUrl,
+      applicationCategory: 'UtilitiesApplication',
+      applicationSubCategory: 'Personal search engine',
+      operatingSystem: ['Linux', 'macOS', 'Windows'],
+      isAccessibleForFree: true,
+      image: imageUrl,
+      codeRepository: 'https://github.com/asciimoo/hister',
+      downloadUrl: 'https://github.com/asciimoo/hister/releases/latest',
+      softwareHelp: new URL('/docs', SITE_URL).href,
+      license: 'https://www.gnu.org/licenses/agpl-3.0.html',
+      author: organization,
+      offers: {
+        '@type': 'Offer',
+        price: 0,
+        priceCurrency: 'USD',
+      },
+    };
+  }
+
+  function articleAuthor() {
+    if (!author) return organization;
+    return { '@type': schemaType === 'BlogPosting' ? 'Person' : 'Organization', name: author };
+  }
+
+  function articleSchema() {
+    return {
+      '@type': schemaType,
+      '@id': `${canonicalUrl}#article`,
+      headline: schemaTitle ?? title,
+      description,
+      url: canonicalUrl,
+      mainEntityOfPage: {
+        '@type': 'WebPage',
+        '@id': canonicalUrl,
+      },
+      image: imageUrl,
+      datePublished: publishedTime,
+      dateModified: modifiedTime ?? publishedTime,
+      author: articleAuthor(),
+      publisher: organization,
+      articleSection: section,
+      inLanguage: 'en',
+    };
+  }
+
+  function schemaForPage() {
+    if (schemaType === 'SoftwareApplication') return softwareSchema();
+    if (schemaType === 'BlogPosting' || schemaType === 'TechArticle') return articleSchema();
+    return null;
+  }
+
   const structuredData = $derived.by(() => {
     const graph: Record<string, unknown>[] = [];
 
-    if (schemaType === 'SoftwareApplication') {
-      graph.push({
-        '@type': 'SoftwareApplication',
-        '@id': `${canonicalUrl}#software`,
-        name: schemaTitle ?? 'Hister',
-        description,
-        url: canonicalUrl,
-        applicationCategory: 'UtilitiesApplication',
-        applicationSubCategory: 'Personal search engine',
-        operatingSystem: ['Linux', 'macOS', 'Windows'],
-        isAccessibleForFree: true,
-        image: imageUrl,
-        codeRepository: 'https://github.com/asciimoo/hister',
-        downloadUrl: 'https://github.com/asciimoo/hister/releases/latest',
-        softwareHelp: new URL('/docs', SITE_URL).href,
-        license: 'https://www.gnu.org/licenses/agpl-3.0.html',
-        author: organization,
-        offers: {
-          '@type': 'Offer',
-          price: 0,
-          priceCurrency: 'USD',
-        },
-      });
-    } else if (schemaType === 'BlogPosting' || schemaType === 'TechArticle') {
-      graph.push({
-        '@type': schemaType,
-        '@id': `${canonicalUrl}#article`,
-        headline: schemaTitle ?? title,
-        description,
-        url: canonicalUrl,
-        mainEntityOfPage: {
-          '@type': 'WebPage',
-          '@id': canonicalUrl,
-        },
-        image: imageUrl,
-        datePublished: publishedTime,
-        dateModified: modifiedTime ?? publishedTime,
-        author: author
-          ? {
-              '@type': schemaType === 'BlogPosting' ? 'Person' : 'Organization',
-              name: author,
-            }
-          : organization,
-        publisher: organization,
-        articleSection: section,
-        inLanguage: 'en',
-      });
-    }
+    const pageSchema = schemaForPage();
+    if (pageSchema) graph.push(pageSchema);
 
     if (breadcrumbs.length > 0) {
       graph.push({

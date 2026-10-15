@@ -1,3 +1,4 @@
+import { contentSlug } from '#lib/content.js';
 import GithubSlugger from 'github-slugger';
 import type { RequestHandler } from '@sveltejs/kit';
 import type { DocsSearchEntry, DocsSearchIndex } from '#lib/docs-search.js';
@@ -14,17 +15,24 @@ interface Frontmatter {
   body: string;
 }
 
+function unquoteJSON(value: string): string {
+  try {
+    return JSON.parse(value) as string;
+  } catch {
+    return value.slice(1, -1);
+  }
+}
+function quotedWith(value: string, quote: string): boolean {
+  return value.startsWith(quote) && value.endsWith(quote);
+}
+
 function unquote(value: string): string {
   const trimmed = value.trim();
-  if (trimmed.startsWith("'") && trimmed.endsWith("'")) {
+  if (quotedWith(trimmed, "'")) {
     return trimmed.slice(1, -1).replace(/''/g, "'");
   }
-  if (trimmed.startsWith('"') && trimmed.endsWith('"')) {
-    try {
-      return JSON.parse(trimmed) as string;
-    } catch {
-      return trimmed.slice(1, -1);
-    }
+  if (quotedWith(trimmed, '"')) {
+    return unquoteJSON(trimmed);
   }
   return trimmed;
 }
@@ -56,10 +64,18 @@ function plainText(value: string): string {
     .trim();
 }
 
+function updateFence(fence: string | null, marker: string): string | null {
+  if (!fence) return marker;
+  return fence === marker ? null : fence;
+}
+function sectionHeading(line: string, fence: string | null): RegExpMatchArray | null {
+  return fence ? null : line.match(/^\s*#{2,6}\s+(.+?)\s*#*\s*$/);
+}
+
 function buildEntries(path: string, source: string): DocsSearchEntry[] {
-  const slug = path.split('/').pop()?.replace('.md', '') ?? path;
+  const slug = contentSlug(path);
   const { title, description, body } = parseFrontmatter(source);
-  const pageTitle = title || slug.replace(/-/g, ' ');
+  const pageTitle = searchPageTitle(title, slug);
   const slugger = new GithubSlugger();
   const entries: DocsSearchEntry[] = [];
   let heading: string | null = null;
@@ -69,7 +85,7 @@ function buildEntries(path: string, source: string): DocsSearchEntry[] {
 
   const addEntry = () => {
     const content = plainText(contentLines.join('\n'));
-    if (!heading && !content && !description) return;
+    if (![heading, content, description].some(Boolean)) return;
     entries.push({
       url: `/docs/${slug}${headingId ? `#${headingId}` : ''}`,
       pageTitle,
@@ -82,12 +98,11 @@ function buildEntries(path: string, source: string): DocsSearchEntry[] {
   for (const line of body.split('\n')) {
     const fenceMatch = line.match(/^\s*(```+|~~~+)/);
     if (fenceMatch) {
-      if (!fence) fence = fenceMatch[1][0];
-      else if (fence === fenceMatch[1][0]) fence = null;
+      fence = updateFence(fence, fenceMatch[1][0]);
       continue;
     }
 
-    const headingMatch = !fence ? line.match(/^\s*#{2,6}\s+(.+?)\s*#*\s*$/) : null;
+    const headingMatch = sectionHeading(line, fence);
     if (headingMatch) {
       addEntry();
       heading = plainText(headingMatch[1]);
@@ -118,3 +133,7 @@ export const GET: RequestHandler = () =>
       'Cache-Control': 'public, max-age=3600',
     },
   });
+
+function searchPageTitle(title: string, slug: string) {
+  return title || slug.replace(/-/g, ' ');
+}

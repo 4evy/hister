@@ -1,3 +1,4 @@
+import { contentMetadata } from '#lib/content.js';
 import { docsStructure } from '#lib/docs-structure.js';
 
 const modules = import.meta.glob('../../content/docs/*.md', { eager: true });
@@ -10,18 +11,20 @@ export interface DocEntry {
 
 export interface DocCategory {
   name: string;
+  color: string;
   docs: DocEntry[];
 }
 
 export async function load() {
   const docs: DocEntry[] = docsStructure.flatMap(({ slugs }) =>
     slugs.map((slug) => {
-      const mod = modules[`../../content/docs/${slug}.md`] as { metadata?: Record<string, string> };
+      const metadata = contentMetadata<Record<string, string>>(
+        modules[`../../content/docs/${slug}.md`],
+      );
       return {
         slug,
-        title:
-          mod?.metadata?.title ?? slug.replace(/-/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase()),
-        description: mod?.metadata?.description ?? '',
+        title: metadata.title ?? slug.replace(/-/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase()),
+        description: metadata.description ?? '',
       };
     }),
   );

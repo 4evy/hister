@@ -1,3 +1,4 @@
+import { contentSlug, contentMetadata } from '#lib/content.js';
 import type { RequestHandler } from '@sveltejs/kit';
 import { SITE_URL } from '#lib/config.js';
 
@@ -15,21 +16,27 @@ function escapeXml(str: string): string {
     .replace(/'/g, '&apos;');
 }
 
+function feedStatus(metadata: { date?: string; draft?: boolean }) {
+  return { date: metadata.date ?? '', draft: metadata.draft ?? false };
+}
+
 export const prerender = true;
 
 export const GET: RequestHandler = () => {
   const posts = Object.entries(modules)
     .map(([path, mod]) => {
-      const slug = path.split('/').pop()?.replace('.md', '') ?? path;
-      const { metadata } = mod as {
-        metadata?: { date?: string; title?: string; description?: string; draft?: boolean };
-      };
+      const slug = contentSlug(path);
+      const metadata = contentMetadata<{
+        date: string;
+        title: string;
+        description: string;
+        draft: boolean;
+      }>(mod);
       return {
         slug,
-        title: metadata?.title ?? slug,
-        description: metadata?.description ?? '',
-        date: metadata?.date ?? '',
-        draft: metadata?.draft ?? false,
+        title: metadata.title ?? slug,
+        description: metadata.description ?? '',
+        ...feedStatus(metadata),
       };
     })
     .filter((p) => !p.draft && p.date)

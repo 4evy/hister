@@ -1,3 +1,4 @@
+import { contentSlug } from '#lib/content.js';
 import type { RequestHandler } from '@sveltejs/kit';
 import { SITE_URL } from '#lib/config.js';
 
@@ -25,7 +26,7 @@ const staticEntries: SitemapEntry[] = [
 function contentEntries(modules: Record<string, unknown>, routePrefix: string): SitemapEntry[] {
   return Object.entries(modules)
     .map(([path, mod]) => {
-      const slug = path.split('/').pop()?.replace('.md', '') ?? path;
+      const slug = contentSlug(path);
       const metadata = (mod as { metadata?: ContentMetadata }).metadata;
       return {
         path: `${routePrefix}/${slug}`,

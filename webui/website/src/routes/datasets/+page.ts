@@ -1,3 +1,4 @@
+import { contentSlug } from '#lib/content.js';
 const modules = import.meta.glob('../../content/datasets/*.json', { eager: true });
 
 export interface Dataset {
@@ -14,9 +15,17 @@ export interface Dataset {
   latestUpdate: string | null;
 }
 
+function datasetStats(data: Partial<Dataset>) {
+  return {
+    diskSizeBytes: data.diskSizeBytes ?? null,
+    documentCount: data.documentCount ?? null,
+    latestUpdate: data.latestUpdate ?? null,
+  };
+}
+
 export async function load() {
   const datasets: Dataset[] = Object.entries(modules).map(([path, mod]) => {
-    const slug = path.split('/').pop()?.replace('.json', '') ?? path;
+    const slug = contentSlug(path, '.json');
     const data = (mod as { default: unknown }).default as {
       name: string;
       description: string;
@@ -38,9 +47,7 @@ export async function load() {
       tags: data.tags ?? [],
       license: data.license,
       author: data.author,
-      diskSizeBytes: data.diskSizeBytes ?? null,
-      documentCount: data.documentCount ?? null,
-      latestUpdate: data.latestUpdate ?? null,
+      ...datasetStats(data),
     };
   });
 
