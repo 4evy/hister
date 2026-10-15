@@ -73,20 +73,7 @@
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ url: submittedUrl, title: submittedTitle, text }),
       });
-      if (res.status === 201) {
-        message = 'Document added successfully.';
-        isError = false;
-        addedDocument = { url: submittedUrl, title: submittedTitle };
-        url = '';
-        title = '';
-        text = '';
-      } else if (res.status === 406) {
-        message = 'URL skipped (matches skip rules or is a local URL).';
-        isError = false;
-      } else {
-        message = submissionErrorMessage(res.status);
-        isError = true;
-      }
+      applyAddResponse(res, submittedUrl, submittedTitle);
     } catch (err) {
       message = String(err);
       isError = true;
@@ -106,6 +93,22 @@
   function addAnother() {
     clearForm();
     urlInput?.focus();
+  }
+  function applyAddResponse(res: Response, submittedUrl: string, submittedTitle: string) {
+    if (res.status === 201) {
+      message = 'Document added successfully.';
+      isError = false;
+      addedDocument = { url: submittedUrl, title: submittedTitle };
+      url = '';
+      title = '';
+      text = '';
+    } else if (res.status === 406) {
+      message = 'URL skipped (matches skip rules or is a local URL).';
+      isError = false;
+    } else {
+      message = submissionErrorMessage(res.status);
+      isError = true;
+    }
   }
 </script>
 

@@ -21,12 +21,7 @@ export async function showFlashMessage(): Promise<boolean> {
 
   await tick();
 
-  let flash: FlashMessage;
-  try {
-    flash = JSON.parse(rawMessage) as FlashMessage;
-  } catch {
-    flash = { message: rawMessage, variant: 'success' };
-  }
+  const flash = parseFlashMessage(rawMessage);
 
   switch (flash.variant) {
     case 'error':
@@ -40,4 +35,15 @@ export async function showFlashMessage(): Promise<boolean> {
   }
   sessionStorage.removeItem(flashMessageKey);
   return true;
+}
+
+function parseFlashMessage(rawMessage: string): FlashMessage {
+  let flash: FlashMessage;
+  try {
+    flash = JSON.parse(rawMessage) as FlashMessage;
+  } catch {
+    flash = { message: rawMessage, variant: 'success' };
+  }
+
+  return flash;
 }

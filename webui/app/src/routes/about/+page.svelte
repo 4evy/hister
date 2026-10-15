@@ -96,7 +96,7 @@
 
 {#snippet docLink(path: string, label: string)}
   <a
-    class="text-link"
+    class="page-text-link"
     href={`https://hister.org/docs/${path}`}
     target="_blank"
     rel="noopener noreferrer"
@@ -201,7 +201,7 @@
           </p>
           <div class="mt-4 flex flex-wrap gap-x-4 gap-y-2">
             {#each Object.entries(extensionStores) as [browser, store] (browser)}
-              <a class="text-link" href={store.href} target="_blank" rel="noopener noreferrer">
+              <a class="page-text-link" href={store.href} target="_blank" rel="noopener noreferrer">
                 {browser === 'firefox' ? 'Firefox' : 'Chrome / Edge'}
                 <ArrowUpRight class="size-4 shrink-0" aria-hidden="true" />
               </a>
@@ -227,7 +227,7 @@
           <div class="mt-auto flex flex-wrap gap-x-4 gap-y-2 pt-5">
             {@render docLink('crawler', 'Crawling guide')}
             {#if config?.canWrite}
-              <a class="text-link" href={resolve('/add')}
+              <a class="page-text-link" href={resolve('/add')}
                 >Add a page<ArrowRight class="size-4" aria-hidden="true" /></a
               >
             {/if}
@@ -247,7 +247,7 @@
           <div class="mt-auto flex flex-wrap gap-x-4 gap-y-2 pt-5">
             {@render docLink('rules', 'Rules reference')}
             {#if config?.canWrite}
-              <a class="text-link" href={resolve('/rules')}
+              <a class="page-text-link" href={resolve('/rules')}
                 >Manage rules<ArrowRight class="size-4" aria-hidden="true" /></a
               >
             {/if}
@@ -310,7 +310,7 @@
               When history is enabled, revisit earlier searches and the results you opened.
             </p>
             {#if config?.canWrite && config.historyEnabled}
-              <a class="text-link mt-2" href={resolve('/history')}
+              <a class="page-text-link mt-2" href={resolve('/history')}
                 >Open history<ArrowRight class="size-4" aria-hidden="true" /></a
               >
             {/if}
@@ -320,7 +320,7 @@
             <p class="text-text-brand-secondary mt-1">
               Open the search page's menu for your configured keyboard shortcuts.
             </p>
-            <a class="text-link mt-2" href={resolve('/help')}
+            <a class="page-text-link mt-2" href={resolve('/help')}
               >Search help<ArrowRight class="size-4" aria-hidden="true" /></a
             >
           </div>
@@ -373,7 +373,7 @@
       <div class="md:max-w-xs">
         <nav class="flex flex-wrap gap-x-5 gap-y-3" aria-label="Project and community">
           {#each communityLinks as link (link.href)}
-            <a class="text-link" href={link.href} target="_blank" rel="noopener noreferrer"
+            <a class="page-text-link" href={link.href} target="_blank" rel="noopener noreferrer"
               >{link.label}<ArrowUpRight class="size-3.5" aria-hidden="true" /></a
             >
           {/each}
@@ -454,22 +454,6 @@
     color: var(--text-secondary-brand);
     font-size: 0.875rem;
     line-height: 1.7;
-  }
-
-  .text-link {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.3rem;
-    font-size: 0.8rem;
-    font-weight: 600;
-    color: var(--text-primary-brand);
-    text-decoration: underline;
-    text-decoration-color: var(--border-brand);
-    text-underline-offset: 4px;
-  }
-
-  .text-link:hover {
-    text-decoration-color: var(--hister-indigo);
   }
 
   .search-example {

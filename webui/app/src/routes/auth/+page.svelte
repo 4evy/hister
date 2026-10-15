@@ -34,12 +34,9 @@
     fetchConfig()
       .then((cfg) => {
         authMode = cfg.authMode ?? 'token';
-        oauthProviders = cfg.oauthProviders ?? [];
-        oauthOnly = cfg.oauthOnly ?? false;
+        configureOAuth(cfg);
         basePath = cfg.basePath ?? '';
-        if (authMode === 'none' || cfg.authenticated) {
-          window.location.href = returnDestination();
-        }
+        redirectAuthenticated(cfg.authenticated);
       })
       .catch(() => {});
 
@@ -86,16 +83,6 @@
     }
   }
 
-  function handleKeydown(e: KeyboardEvent) {
-    if (e.key === 'Enter') {
-      if (authMode === 'user') {
-        handleLogin();
-      } else if (token && !loading) {
-        handleTokenSave();
-      }
-    }
-  }
-
   function oauthLogin(provider: string) {
     const params = new URLSearchParams({ provider, return_to: returnDestination() });
     window.location.href = `${basePath}/api/oauth?${params}`;
@@ -106,7 +93,37 @@
     google: 'Google',
     oidc: 'SSO',
   };
+  function configureOAuth(cfg: Awaited<ReturnType<typeof fetchConfig>>) {
+    oauthProviders = cfg.oauthProviders ?? [];
+    oauthOnly = cfg.oauthOnly ?? false;
+  }
+  function redirectAuthenticated(authenticated: boolean) {
+    if (authMode === 'none' || authenticated) window.location.href = returnDestination();
+  }
 </script>
+
+{#snippet oauthButtons()}
+  {#if oauthProviders.length > 0}
+    {#if !oauthOnly}
+      <div class="relative flex items-center py-2">
+        <div class="border-border-brand-muted flex-grow border-t"></div>
+        <span class="text-text-brand-muted font-inter mx-3 flex-shrink text-xs uppercase">or</span>
+        <div class="border-border-brand-muted flex-grow border-t"></div>
+      </div>
+    {/if}
+    <div class="space-y-2">
+      {#each oauthProviders as provider}
+        <Button
+          onclick={() => oauthLogin(provider)}
+          variant="outline"
+          class="border-brutal-border font-space h-11 w-full rounded-none border-[3px] font-bold tracking-wider uppercase shadow-[4px_4px_0px_var(--brutal-shadow)] transition-all hover:translate-x-0.5 hover:translate-y-0.5 hover:shadow-[2px_2px_0px_var(--brutal-shadow)] active:translate-x-1 active:translate-y-1 active:shadow-none"
+        >
+          Sign in with {providerLabels[provider] ?? provider}
+        </Button>
+      {/each}
+    </div>
+  {/if}
+{/snippet}
 
 <svelte:head>
   <title>Authentication - Hister</title>
@@ -126,11 +143,9 @@
             <Lock class="text-hister-indigo size-8" />
           </div>
         </div>
-        <Card.Title
-          class="font-outfit text-text-brand text-2xl font-extrabold tracking-wide uppercase"
-        >
+        <h1 class="font-outfit text-text-brand text-2xl font-extrabold tracking-wide uppercase">
           Authentication Required
-        </Card.Title>
+        </h1>
         <Card.Description class="font-inter text-text-brand-secondary">
           {#if authMode === 'user'}
             Please sign in.
@@ -141,101 +156,101 @@
       </Card.Header>
       <Card.Content class="space-y-6">
         {#if error}
-          <p class="text-hister-rose font-inter text-sm">{error}</p>
+          <p role="alert" class="text-hister-rose font-inter text-sm">{error}</p>
         {/if}
         {#if authMode === 'user'}
           {#if !oauthOnly}
-            <div class="space-y-2">
-              <label
-                for="username"
-                class="font-space text-text-brand text-sm font-semibold tracking-wider uppercase"
+            <form
+              method="POST"
+              class="space-y-6"
+              onsubmit={(event) => {
+                event.preventDefault();
+                if (!loading && username.trim() && password.trim()) void handleLogin();
+              }}
+            >
+              <div class="space-y-2">
+                <label
+                  for="username"
+                  class="font-space text-text-brand text-sm font-semibold tracking-wider uppercase"
+                >
+                  Username
+                </label>
+                <Input
+                  id="username"
+                  name="username"
+                  autocomplete="username"
+                  type="text"
+                  variant="brutal"
+                  bind:value={username}
+                  placeholder="Enter your username"
+                  class="focus-visible:border-hister-indigo"
+                  autofocus
+                />
+              </div>
+              <div class="space-y-2">
+                <label
+                  for="password"
+                  class="font-space text-text-brand text-sm font-semibold tracking-wider uppercase"
+                >
+                  Password
+                </label>
+                <Input
+                  id="password"
+                  name="password"
+                  autocomplete="current-password"
+                  type="password"
+                  variant="brutal"
+                  bind:value={password}
+                  placeholder="Enter your password"
+                  class="focus-visible:border-hister-indigo font-mono"
+                />
+              </div>
+              <Button
+                type="submit"
+                disabled={!username.trim() || !password.trim() || loading}
+                class="bg-hister-indigo hover:bg-hister-indigo/90 border-brutal-border font-space h-12 w-full rounded-none border-[3px] font-bold tracking-wider uppercase shadow-[4px_4px_0px_var(--brutal-shadow)] transition-all hover:translate-x-0.5 hover:translate-y-0.5 hover:shadow-[2px_2px_0px_var(--brutal-shadow)] active:translate-x-1 active:translate-y-1 active:shadow-none disabled:cursor-not-allowed disabled:opacity-50"
               >
-                Username
-              </label>
-              <Input
-                id="username"
-                type="text"
-                variant="brutal"
-                bind:value={username}
-                onkeydown={handleKeydown}
-                placeholder="Enter your username"
-                class="focus-visible:border-hister-indigo"
-                autofocus
-              />
-            </div>
+                {loading ? 'Signing in…' : 'Sign In'}
+              </Button>
+            </form>
+          {/if}
+          {@render oauthButtons()}
+        {:else}
+          <form
+            method="POST"
+            class="space-y-6"
+            onsubmit={(event) => {
+              event.preventDefault();
+              if (!loading && token) void handleTokenSave();
+            }}
+          >
             <div class="space-y-2">
               <label
-                for="password"
+                for="token"
                 class="font-space text-text-brand text-sm font-semibold tracking-wider uppercase"
               >
                 Password
               </label>
               <Input
-                id="password"
+                id="token"
+                name="token"
+                autocomplete="current-password"
                 type="password"
                 variant="brutal"
-                bind:value={password}
-                onkeydown={handleKeydown}
+                bind:value={token}
                 placeholder="Enter your password"
                 class="focus-visible:border-hister-indigo font-mono"
+                autofocus
               />
             </div>
             <Button
-              onclick={handleLogin}
-              disabled={!username.trim() || !password.trim() || loading}
+              type="submit"
+              disabled={!token || loading}
               class="bg-hister-indigo hover:bg-hister-indigo/90 border-brutal-border font-space h-12 w-full rounded-none border-[3px] font-bold tracking-wider uppercase shadow-[4px_4px_0px_var(--brutal-shadow)] transition-all hover:translate-x-0.5 hover:translate-y-0.5 hover:shadow-[2px_2px_0px_var(--brutal-shadow)] active:translate-x-1 active:translate-y-1 active:shadow-none disabled:cursor-not-allowed disabled:opacity-50"
             >
               {loading ? 'Signing in…' : 'Sign In'}
             </Button>
-          {/if}
-          {#if oauthProviders.length > 0}
-            {#if !oauthOnly}
-              <div class="relative flex items-center py-2">
-                <div class="border-border-brand-muted flex-grow border-t"></div>
-                <span class="text-text-brand-muted font-inter mx-3 flex-shrink text-xs uppercase"
-                  >or</span
-                >
-                <div class="border-border-brand-muted flex-grow border-t"></div>
-              </div>
-            {/if}
-            <div class="space-y-2">
-              {#each oauthProviders as provider}
-                <Button
-                  onclick={() => oauthLogin(provider)}
-                  variant="outline"
-                  class="border-brutal-border font-space h-11 w-full rounded-none border-[3px] font-bold tracking-wider uppercase shadow-[4px_4px_0px_var(--brutal-shadow)] transition-all hover:translate-x-0.5 hover:translate-y-0.5 hover:shadow-[2px_2px_0px_var(--brutal-shadow)] active:translate-x-1 active:translate-y-1 active:shadow-none"
-                >
-                  Sign in with {providerLabels[provider] ?? provider}
-                </Button>
-              {/each}
-            </div>
-          {/if}
-        {:else}
-          <div class="space-y-2">
-            <label
-              for="token"
-              class="font-space text-text-brand text-sm font-semibold tracking-wider uppercase"
-            >
-              Password
-            </label>
-            <Input
-              id="token"
-              type="password"
-              variant="brutal"
-              bind:value={token}
-              onkeydown={handleKeydown}
-              placeholder="Enter your password"
-              class="focus-visible:border-hister-indigo font-mono"
-              autofocus
-            />
-          </div>
-          <Button
-            onclick={handleTokenSave}
-            disabled={!token || loading}
-            class="bg-hister-indigo hover:bg-hister-indigo/90 border-brutal-border font-space h-12 w-full rounded-none border-[3px] font-bold tracking-wider uppercase shadow-[4px_4px_0px_var(--brutal-shadow)] transition-all hover:translate-x-0.5 hover:translate-y-0.5 hover:shadow-[2px_2px_0px_var(--brutal-shadow)] active:translate-x-1 active:translate-y-1 active:shadow-none disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            {loading ? 'Signing in…' : 'Sign In'}
-          </Button>
+          </form>
         {/if}
       </Card.Content>
     </Card.Root>

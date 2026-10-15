@@ -1766,7 +1766,7 @@
   <Dialog.Content
     escapeKeydownBehavior="ignore"
     showCloseButton={false}
-    class="border-border-brand bg-card-surface flex max-h-[80vh] max-w-md flex-col gap-0 overflow-hidden rounded-none border-[3px] p-0 shadow-[6px_6px_0px_var(--brutal-shadow)]"
+    class="border-border-brand bg-card-surface flex max-h-[80dvh] max-w-md flex-col gap-0 overflow-hidden rounded-none border-[3px] p-0 shadow-[6px_6px_0px_var(--brutal-shadow)]"
   >
     <Dialog.Header class="bg-hister-rose flex-row items-center justify-between gap-2 px-5 py-4">
       <Dialog.Title class="flex items-center gap-2">
@@ -1812,7 +1812,7 @@
   <Dialog.Content
     escapeKeydownBehavior="ignore"
     showCloseButton={false}
-    class="border-border-brand bg-card-surface flex max-h-[80vh] max-w-md flex-col gap-0 overflow-hidden rounded-none border-[3px] p-0 shadow-[6px_6px_0px_var(--brutal-shadow)]"
+    class="border-border-brand bg-card-surface flex max-h-[80dvh] max-w-md flex-col gap-0 overflow-hidden rounded-none border-[3px] p-0 shadow-[6px_6px_0px_var(--brutal-shadow)]"
   >
     <Dialog.Header class="bg-hister-rose flex-row items-center justify-between gap-2 px-5 py-4">
       <Dialog.Title class="flex items-center gap-2">
@@ -1922,7 +1922,7 @@
 
 {#if isSearching}
   <div class="flex min-h-0 flex-1 flex-col">
-    <div class="relative z-40 shrink-0">
+    <search aria-label="History" class="relative z-40 shrink-0">
       <div
         class="search bg-page-bg border-brutal-border flex h-10 items-center gap-3 border-b-[3px] px-4 md:h-14"
       >
@@ -1931,7 +1931,9 @@
           bind:ref={inputEl}
           bind:value={query}
           type="search"
+          role="combobox"
           placeholder="Search..."
+          aria-label="Search your history"
           aria-autocomplete="list"
           aria-controls={querySuggestionsVisible ? querySuggestionListId : undefined}
           aria-expanded={querySuggestionsVisible}
@@ -2060,7 +2062,7 @@
           </Button>
         </div>
       {/if}
-    </div>
+    </search>
     {@render connectionNotice('mx-3 my-3 md:mx-6')}
 
     <div class="flex min-h-0 flex-1 overflow-hidden" bind:this={splitContainerEl}>
@@ -2825,7 +2827,7 @@
       style="background: linear-gradient(90deg, var(--hister-indigo), var(--hister-coral), var(--hister-teal)); transform: scaleX(0); transform-origin: left;"
     ></div>
 
-    <div class="relative z-40 w-full max-w-[1100px] shrink-0">
+    <search aria-label="History" class="relative z-40 w-full max-w-[1100px] shrink-0">
       <div
         bind:this={searchBoxEl}
         class="home-search border-brutal-border bg-card-surface flex h-12 w-full items-center gap-3 border-[3px] px-4 md:h-15 md:px-5"
@@ -2835,6 +2837,7 @@
           bind:ref={inputEl}
           bind:value={query}
           type="search"
+          role="combobox"
           aria-label="Search your history"
           aria-autocomplete="list"
           aria-controls={querySuggestionsVisible ? querySuggestionListId : undefined}
@@ -2875,7 +2878,7 @@
           </Tooltip.Root>
         </Tooltip.Provider>
       </div>
-    </div>
+    </search>
     {@render connectionNotice('w-full max-w-[1100px]')}
 
     <div

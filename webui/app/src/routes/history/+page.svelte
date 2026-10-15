@@ -1185,7 +1185,6 @@
   .history-title,
   .history-url {
     overflow-wrap: anywhere;
-    word-break: break-word;
   }
 
   .history-row + .history-row {

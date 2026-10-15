@@ -131,11 +131,11 @@
       ? 'absolute top-full right-0 left-0 mt-2 border-[3px] shadow-[5px_5px_0_var(--brutal-shadow)]'
       : 'relative border-x-0 border-t-0 border-b-[3px] shadow-none'} {panelHeight === undefined
       ? floating
-        ? 'max-h-[min(24rem,55vh)]'
-        : 'max-h-[min(18rem,40vh)]'
+        ? 'max-h-[min(24rem,55dvh)]'
+        : 'max-h-[min(18rem,40dvh)]'
       : floating
-        ? 'max-h-[calc(100vh-1rem)]'
-        : 'max-h-[calc(100vh-5rem)]'}"
+        ? 'max-h-[calc(100dvh-1rem)]'
+        : 'max-h-[calc(100dvh-5rem)]'}"
   >
     <div
       bind:this={listboxEl}

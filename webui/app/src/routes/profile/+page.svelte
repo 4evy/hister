@@ -73,7 +73,7 @@
   }
 
   async function copyToken() {
-    if (!token || copying || generating) return;
+    if (!canCopyToken()) return;
     copying = true;
     try {
       await navigator.clipboard.writeText(token);
@@ -85,6 +85,10 @@
     } finally {
       copying = false;
     }
+  }
+
+  function canCopyToken() {
+    return !!token && !copying && !generating;
   }
 </script>
 

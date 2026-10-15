@@ -79,6 +79,24 @@ export function resetConfig(): void {
   _configRequest = null;
 }
 
+function cacheConfig(request: Promise<AppConfig>, config: AppConfig): void {
+  if (_configRequest === request) _config = config;
+}
+
+function requestHeaders(options: RequestInit): Record<string, string> {
+  const headers = { ...(options.headers as Record<string, string>) };
+  if (_csrf && options.method && options.method.toUpperCase() !== 'GET')
+    headers['X-CSRF-Token'] = _csrf;
+  return headers;
+}
+
+function checkAuthorization(res: Response, redirectOnForbidden: boolean): void {
+  if (res.status === 403 && redirectOnForbidden) {
+    redirectToAuth(getAuthMode() === 'token' ? 'invalid_token' : 'auth_required');
+    throw new Error('Authentication required');
+  }
+}
+
 export async function fetchConfig(): Promise<AppConfig> {
   if (_config) return _config;
   if (_configRequest) return _configRequest;
@@ -98,7 +116,7 @@ export async function fetchConfig(): Promise<AppConfig> {
 
   try {
     const config = await request;
-    if (_configRequest === request) _config = config;
+    cacheConfig(request, config);
     return config;
   } finally {
     if (_configRequest === request) _configRequest = null;
@@ -152,17 +170,10 @@ interface ApiFetchOptions extends RequestInit {
 
 export async function apiFetch(url: string, options: ApiFetchOptions = {}): Promise<Response> {
   const { redirectOnForbidden = true, ...fetchOptions } = options;
-  const headers: Record<string, string> = { ...(fetchOptions.headers as Record<string, string>) };
-
-  if (_csrf && fetchOptions.method && fetchOptions.method.toUpperCase() !== 'GET') {
-    headers['X-CSRF-Token'] = _csrf;
-  }
+  const headers = requestHeaders(fetchOptions);
   clearLegacyAccessToken();
   const res = await fetch(apiPath(url), { ...fetchOptions, headers, credentials: 'include' });
-  if (res.status === 403 && redirectOnForbidden) {
-    redirectToAuth(getAuthMode() === 'token' ? 'invalid_token' : 'auth_required');
-    throw new Error('Authentication required');
-  }
+  checkAuthorization(res, redirectOnForbidden);
   const newTok = res.headers.get('X-CSRF-Token');
   if (newTok) _csrf = newTok;
   return res;

@@ -50,9 +50,9 @@
       </p>
       <div class="flex flex-col gap-4">
         {#each extractors as ext (ext.name)}
-          <div class="border-brutal-border bg-brutal-bg rounded-brutal border-[3px] px-6 py-5">
+          <article class="border-brutal-border bg-brutal-bg rounded-brutal border-[3px] px-6 py-5">
             <div class="mb-2 flex items-center gap-3">
-              <span class="font-outfit text-text-brand text-lg font-extrabold">{ext.name}</span>
+              <h2 class="font-outfit text-text-brand text-lg font-extrabold">{ext.name}</h2>
               {#if ext.enabled}
                 <span
                   class="bg-hister-green/20 text-hister-green font-space rounded px-2 py-0.5 text-[11px] font-semibold tracking-wider uppercase"
@@ -91,10 +91,15 @@
                   Configuration
                 </p>
                 <table class="w-full text-sm">
+                  <caption class="sr-only">{ext.name} configuration</caption>
                   <tbody>
                     {#each Object.entries(ext.options) as [key, value] (key)}
                       <tr class="border-border-brand-muted border-b last:border-0">
-                        <td class="font-space text-text-brand py-1.5 pr-4 font-medium">{key}</td>
+                        <th
+                          scope="row"
+                          class="font-space text-text-brand py-1.5 pr-4 text-start font-medium"
+                          >{key}</th
+                        >
                         <td class="font-inter text-text-brand-secondary py-1.5">
                           <code class="bg-brutal-bg rounded px-1 py-0.5 text-xs"
                             >{formatOptionValue(value)}</code
@@ -106,7 +111,7 @@
                 </table>
               </div>
             {/if}
-          </div>
+          </article>
         {/each}
       </div>
     {/if}

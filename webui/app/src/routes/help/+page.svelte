@@ -15,11 +15,9 @@
   let config = $state<AppConfig | null>(null);
   let configError = $state(false);
   const shortcuts = $derived(
-    Object.entries(config?.hotkeys ?? {}).filter(
-      ([, action]) =>
-        (config?.canWrite || action !== 'delete_result') &&
-        (!config?.disablePreviews || action !== 'view_result_popup'),
-    ),
+    Object.entries(config?.hotkeys ?? {})
+      .filter(([, action]) => config?.canWrite || action !== 'delete_result')
+      .filter(([, action]) => !config?.disablePreviews || action !== 'view_result_popup'),
   );
 
   onMount(() => {
@@ -125,7 +123,7 @@
 
 {#snippet docLink(path: string, label: string)}
   <a
-    class="text-link"
+    class="page-text-link"
     href={`https://hister.org/docs/${path}`}
     target="_blank"
     rel="noopener noreferrer"
@@ -185,8 +183,9 @@
           {@render docLink('query-language', 'Query language guide')}
         </div>
         <p class="text-text-brand-secondary mt-5 text-sm">
-          For setup and indexing instructions, see <a class="text-link" href={resolve('/about')}
-            >About Hister</a
+          For setup and indexing instructions, see <a
+            class="page-text-link"
+            href={resolve('/about')}>About Hister</a
           >.
         </p>
       </div>
@@ -377,7 +376,7 @@
         </p>
         <div class="mt-5 flex flex-wrap gap-x-5 gap-y-3">
           {#if config?.canWrite}
-            <a class="text-link" href={resolve('/rules')}
+            <a class="page-text-link" href={resolve('/rules')}
               >Manage aliases<ArrowRight class="size-4" aria-hidden="true" /></a
             >
           {/if}
@@ -492,22 +491,6 @@
     color: var(--text-secondary-brand);
     font-size: 0.875rem;
     line-height: 1.7;
-  }
-
-  .text-link {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.3rem;
-    font-size: 0.8rem;
-    font-weight: 600;
-    color: var(--text-primary-brand);
-    text-decoration: underline;
-    text-decoration-color: var(--border-brand);
-    text-underline-offset: 4px;
-  }
-
-  .text-link:hover {
-    text-decoration-color: var(--hister-indigo);
   }
 
   .section-link {
