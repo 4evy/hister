@@ -94,3 +94,7 @@ export {
   CalloutDanger,
   CalloutTip,
 } from './components/callout';
+
+export { default as PreviewHeader } from './components/preview/preview-header.svelte';
+export { default as PreviewContent } from './components/preview/preview-content.svelte';
+export { default as PreviewControls } from './components/preview/preview-controls.svelte';

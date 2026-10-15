@@ -1,5 +1,6 @@
 <!-- SPDX-License-Identifier: AGPL-3.0-or-later -->
 <script lang="ts">
+  import { PreviewHeader, PreviewContent, PreviewControls } from '@hister/components';
   import VideoPreview from './VideoPreview.svelte';
   import IssuePreview from './IssuePreview.svelte';
   import { parseIssuePreview, type IssuePreviewData } from '#lib/issue-preview.js';
@@ -21,17 +22,7 @@
   import { ScrollArea } from '@hister/components/ui/scroll-area';
   import { Button } from '@hister/components/ui/button';
   import * as DropdownMenu from '@hister/components/ui/dropdown-menu';
-  import {
-    Eye,
-    X,
-    Maximize2,
-    Minimize2,
-    History,
-    MoreVertical,
-    ExternalLink,
-    Info,
-    Video,
-  } from '@lucide/svelte';
+  import { Eye, History, MoreVertical, ExternalLink, Info, Video } from '@lucide/svelte';
   import { onMount, untrack } from 'svelte';
 
   interface Props {
@@ -115,8 +106,7 @@
   function formatTechnicalValue(value: unknown): string {
     if (typeof value === 'string') return value === '' ? '""' : value;
     if (value === undefined) return 'Not set';
-    const encoded = JSON.stringify(value, null, 2);
-    return encoded ?? String(value);
+    return encodeTechnicalValue(value);
   }
 
   function formatDocumentDetailValue(entry: DetailEntry): string {
@@ -155,6 +145,7 @@
   let _mountedWithDocument = '';
   let contentRequestId = 0;
   let versionsRequestId = 0;
+  let extractorsRequestId = 0;
   let retryPreview: () => void = () => {};
 
   function documentRequestUrl(
@@ -181,6 +172,8 @@
       extractorName = '';
       availableExtractors = [];
       extractorsLoaded = false;
+      extractorsLoading = false;
+      extractorsRequestId++;
       // untrack so that reading the prop here does not make the effect re-run on prop change.
       const versionId = isFirstLoad ? untrack(() => initialViewingVersionId) : null;
       loadContent(u, hint, '', versionId, selectedDocumentId);
@@ -196,15 +189,7 @@
     }
   });
 
-  async function loadContent(
-    u: string,
-    hint: string,
-    extractor: string = '',
-    versionId: number | null = null,
-    selectedDocumentId: string = documentId,
-  ) {
-    const requestId = ++contentRequestId;
-    retryPreview = () => loadContent(u, hint, extractor, versionId, selectedDocumentId);
+  function resetPreview(hint: string, versionId: number | null) {
     loading = true;
     previewError = '';
     content = '';
@@ -228,60 +213,117 @@
       title = hint;
       versionCount = 0;
     }
-    try {
-      const extra: Record<string, string> = {};
-      if (extractor) extra.extractor = extractor;
-      if (versionId != null) extra.version = String(versionId);
-      const resp = await apiFetch(documentRequestUrl('/preview', u, selectedDocumentId, extra));
-      if (!resp.ok) throw new Error('Preview request failed');
-      const data = (await resp.json()) as DocumentPreviewResponse;
-      if (requestId !== contentRequestId) return;
-      template = data.template || '';
-      templateData = template === 'video' ? parseTemplateData(data.content) : null;
-      issueData = template === 'issue' ? parseIssuePreview(data.content) : null;
-      content =
-        template === 'video' || template === 'issue'
-          ? ''
-          : data.content || '<p>No content available</p>';
-      // Always update metadata (server always returns current doc's metadata regardless of version).
-      title = data.title || hint;
-      added = data.added ?? null;
-      updated = data.updated ?? null;
-      meta = data.meta ?? null;
-      documentDetails = data.details;
-      versionCount = data.version_count ?? 0;
-      if (data.version_id && data.version_created_at) {
-        viewingVersion = {
-          id: data.version_id,
-          created_at: data.version_created_at,
-          html_diff: '',
-          text_diff: '',
-        };
-      }
-      onviewingversionchange?.(viewingVersion?.id ?? null);
-    } catch {
-      if (requestId !== contentRequestId) return;
+  }
+
+  async function requestPreview(
+    u: string,
+    selectedDocumentId: string,
+    extractor: string,
+    versionId: number | null,
+  ): Promise<DocumentPreviewResponse> {
+    const extra: Record<string, string> = {};
+    if (extractor) extra.extractor = extractor;
+    if (versionId != null) extra.version = String(versionId);
+    const resp = await apiFetch(documentRequestUrl('/preview', u, selectedDocumentId, extra));
+    if (!resp.ok) throw new Error('Preview request failed');
+    return resp.json();
+  }
+
+  function applyPreviewContent(data: DocumentPreviewResponse) {
+    template = data.template || '';
+    templateData = template === 'video' ? parseTemplateData(data.content) : null;
+    issueData = template === 'issue' ? parseIssuePreview(data.content) : null;
+    content = previewHTML(data.content);
+  }
+
+  function applyPreviewDates(data: DocumentPreviewResponse, hint: string) {
+    title = data.title || hint;
+    added = data.added ?? null;
+    updated = data.updated ?? null;
+  }
+
+  function applyPreviewVersion(data: DocumentPreviewResponse) {
+    if (data.version_id && data.version_created_at) {
+      viewingVersion = {
+        id: data.version_id,
+        created_at: data.version_created_at,
+        html_diff: '',
+        text_diff: '',
+      };
+    }
+  }
+
+  function notifyVersionChange() {
+    onviewingversionchange?.(viewingVersion?.id ?? null);
+  }
+  function previewFailed(requestId: number) {
+    if (requestId === contentRequestId)
       previewError = 'Could not load this preview. Please try again.';
+  }
+  function previewFinished(requestId: number) {
+    if (requestId === contentRequestId) loading = false;
+  }
+
+  function applyPreview(data: DocumentPreviewResponse, hint: string) {
+    applyPreviewContent(data);
+    // Always update metadata (server always returns current doc's metadata regardless of version).
+    applyPreviewDates(data, hint);
+    meta = data.meta ?? null;
+    documentDetails = data.details;
+    versionCount = data.version_count ?? 0;
+    applyPreviewVersion(data);
+    notifyVersionChange();
+  }
+
+  async function loadContent(
+    u: string,
+    hint: string,
+    extractor: string = '',
+    versionId: number | null = null,
+    selectedDocumentId: string = documentId,
+  ) {
+    const requestId = ++contentRequestId;
+    retryPreview = () => loadContent(u, hint, extractor, versionId, selectedDocumentId);
+    resetPreview(hint, versionId);
+    try {
+      const data = await requestPreview(u, selectedDocumentId, extractor, versionId);
+      if (requestId !== contentRequestId) return;
+      applyPreview(data, hint);
+    } catch {
+      previewFailed(requestId);
     } finally {
-      if (requestId === contentRequestId) loading = false;
+      previewFinished(requestId);
     }
   }
 
   async function loadExtractors(u: string) {
-    if (extractorsLoaded || extractorsLoading) return;
+    if (!shouldLoadExtractors()) return;
+    const requestId = ++extractorsRequestId;
     extractorsLoading = true;
     try {
       const resp = await apiFetch(documentRequestUrl('/extractors', u, documentId));
       if (resp.ok) {
         const data: { name: string; description: string }[] = await resp.json();
-        availableExtractors = data ?? [];
+        setExtractors(data, requestId);
       }
     } catch {
       // silently ignore
     } finally {
-      extractorsLoading = false;
-      extractorsLoaded = true;
+      finishExtractors(requestId);
     }
+  }
+
+  async function requestVersions(): Promise<DocumentVersion[]> {
+    const resp = await apiFetch(documentRequestUrl('/versions', url, documentId));
+    if (!resp.ok) throw new Error('Version history request failed');
+    return (await resp.json()) ?? [];
+  }
+  function versionsFailed(requestId: number) {
+    if (requestId === versionsRequestId)
+      versionsError = 'Could not load previous versions. Please try again.';
+  }
+  function versionsFinished(requestId: number) {
+    if (requestId === versionsRequestId) versionsLoading = false;
   }
 
   async function loadVersions() {
@@ -290,17 +332,14 @@
     versionsLoading = true;
     versionsError = '';
     try {
-      const resp = await apiFetch(documentRequestUrl('/versions', url, documentId));
-      if (!resp.ok) throw new Error('Version history request failed');
-      const data = (await resp.json()) ?? [];
+      const data = await requestVersions();
       if (requestId !== versionsRequestId) return;
       versions = data;
       versionsLoaded = true;
     } catch {
-      if (requestId !== versionsRequestId) return;
-      versionsError = 'Could not load previous versions. Please try again.';
+      versionsFailed(requestId);
     } finally {
-      if (requestId === versionsRequestId) versionsLoading = false;
+      versionsFinished(requestId);
     }
   }
 
@@ -308,7 +347,363 @@
     showVersions = !showVersions;
     if (showVersions && !versionsLoaded) void loadVersions();
   }
+
+  function encodeTechnicalValue(value: unknown): string {
+    return JSON.stringify(value, null, 2) ?? String(value);
+  }
+
+  function setExtractors(data: { name: string; description: string }[] | null, requestId: number) {
+    if (requestId !== extractorsRequestId) return;
+    availableExtractors = data ?? [];
+    extractorsLoaded = true;
+  }
+
+  function finishExtractors(requestId: number) {
+    if (requestId === extractorsRequestId) extractorsLoading = false;
+  }
+
+  function shouldLoadExtractors() {
+    return !extractorsLoaded && !extractorsLoading;
+  }
+  function previewHTML(value: string) {
+    return template === 'video' || template === 'issue'
+      ? ''
+      : value || '<p>No content available</p>';
+  }
 </script>
+
+{#snippet versionList()}
+  {#each versions as v}
+    <div class="py-4 first:pt-0 last:pb-0">
+      <div class="mb-2 flex items-center justify-between gap-2">
+        <p class="font-inter text-xs font-semibold tracking-wide uppercase">
+          {formatTimestamp(versionTimestamp(v.created_at))}
+        </p>
+        <button
+          onclick={() => loadContent(url, hintTitle, extractorName, v.id)}
+          class="font-inter text-hister-teal shrink-0 cursor-pointer text-xs hover:underline"
+        >
+          show this version
+        </button>
+      </div>
+      {#if v.text_diff || v.html_diff}
+        <details class="group">
+          <summary
+            class="font-inter text-text-brand-muted hover:text-text-brand flex cursor-pointer list-none items-center gap-1 text-xs select-none"
+          >
+            <span class="inline-block transition-transform group-open:rotate-90">▶</span>
+            <span>show diff</span>
+          </summary>
+          <div class="mt-2 overflow-x-auto rounded font-mono text-xs leading-relaxed">
+            {#each parseDiff(v.text_diff || v.html_diff) as line}
+              <div
+                class="px-2 py-px break-all whitespace-pre-wrap {line.type === 'add'
+                  ? 'bg-black text-green-300'
+                  : line.type === 'remove'
+                    ? 'bg-black text-red-300'
+                    : line.type === 'header'
+                      ? 'text-text-brand'
+                      : 'text-text-brand-secondary'}"
+              >
+                {line.text}
+              </div>
+            {/each}
+          </div>
+        </details>
+      {:else}
+        <p class="font-inter text-xs italic">No diff recorded.</p>
+      {/if}
+    </div>
+  {:else}
+    <p class="font-inter text-text-brand-muted text-sm">No previous versions available.</p>
+  {/each}
+{/snippet}
+
+{#snippet documentAttribution()}
+  {@const attribution = meta ?? {}}
+  {#if attribution.author || attribution.published || attribution.type}
+    <span class="font-inter text-text-brand-muted text-xs">
+      {#if attribution.author}<span>{attribution.author}</span>{/if}
+      {#if attribution.author && attribution.published}<span class="mx-1">·</span>{/if}
+      {#if attribution.published}<span>{formatMetaDate(attribution.published)}</span>{/if}
+      {#if (attribution.author || attribution.published) && attribution.type}<span class="mx-1"
+          >·</span
+        >{/if}
+      {#if attribution.type}<span class="uppercase">{attribution.type}</span>{/if}
+    </span>
+  {/if}
+{/snippet}
+
+{#snippet extractorMenu()}
+  <DropdownMenu.Root
+    onOpenChange={(open) => {
+      if (open) loadExtractors(url);
+    }}
+  >
+    <DropdownMenu.Trigger>
+      {#snippet child({ props })}
+        <Button
+          {...props}
+          variant="ghost"
+          size="icon-sm"
+          class="text-text-brand-muted hover:text-text-brand shrink-0 cursor-pointer"
+          title="Change extractor"
+        >
+          <MoreVertical class="size-4" />
+        </Button>
+      {/snippet}
+    </DropdownMenu.Trigger>
+    <DropdownMenu.Content
+      class="border-brutal-border bg-card-surface w-44 rounded-none border-[3px] p-3 shadow-[4px_4px_0_var(--brutal-shadow)]"
+    >
+      <div class="space-y-2">
+        <p
+          class="font-outfit text-text-brand-muted mb-1 text-xs font-bold tracking-widest uppercase"
+        >
+          Extractor
+        </p>
+        {#if extractorsLoading}
+          <p class="font-inter text-text-brand-muted text-xs">Loading…</p>
+        {:else if availableExtractors.length}
+          <DropdownMenu.RadioGroup
+            value={extractorName || availableExtractors[0].name}
+            onValueChange={(v) => {
+              extractorName = v;
+            }}
+          >
+            {#each availableExtractors as ext, i (ext.name)}
+              <DropdownMenu.RadioItem value={ext.name}>{ext.name}</DropdownMenu.RadioItem>
+            {/each}
+          </DropdownMenu.RadioGroup>
+        {:else}
+          <p class="font-inter text-text-brand-muted text-xs">No extractors available</p>
+        {/if}
+      </div>
+    </DropdownMenu.Content>
+  </DropdownMenu.Root>
+{/snippet}
+
+{#snippet previewContent()}
+  <PreviewContent>
+    {#if meta?.videos?.length && showEmbeddedVideos}
+      <div class="not-prose mb-6 space-y-4">
+        {#each meta.videos as video (video.url)}
+          {@const v = video as EmbeddedVideo}
+          {#if v.type === 'iframe'}
+            <div class="relative aspect-video w-full overflow-hidden">
+              <iframe
+                src={v.url}
+                class="absolute inset-0 h-full w-full"
+                title="Embedded video"
+                allowfullscreen
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                referrerpolicy="strict-origin-when-cross-origin"
+              ></iframe>
+            </div>
+          {:else if v.type === 'video'}
+            <video controls class="w-full">
+              {#if v.mime}
+                <source src={v.url} type={v.mime} />
+              {:else}
+                <source src={v.url} />
+              {/if}
+            </video>
+          {:else if v.type === 'embed'}
+            <div class="relative aspect-video w-full overflow-hidden">
+              <embed
+                src={v.url}
+                type={v.mime || 'video/mp4'}
+                class="absolute inset-0 h-full w-full"
+              />
+            </div>
+          {:else if v.type === 'object'}
+            <div class="relative aspect-video w-full overflow-hidden">
+              <object
+                data={v.url}
+                type={v.mime || 'video/mp4'}
+                class="absolute inset-0 h-full w-full"
+                title="Embedded video"
+              >
+                <p class="font-inter text-text-brand-muted p-2 text-xs">
+                  Video playback not supported.
+                </p>
+              </object>
+            </div>
+          {/if}
+        {/each}
+      </div>
+    {/if}
+    {#if template === 'video' && templateData}
+      <VideoPreview data={templateData} />
+    {:else if template === 'issue' && issueData}
+      <IssuePreview data={issueData} />
+    {:else}
+      {@html content}
+    {/if}
+    {#if meta?.jsonld}
+      <details class="not-prose border-border-brand-muted mt-6 border-t pt-3">
+        <summary
+          class="font-inter text-text-brand-muted cursor-pointer text-xs tracking-wide uppercase"
+        >
+          Extracted JSON-LD ({meta.jsonld.length})
+        </summary>
+        <pre
+          class="bg-card-surface-muted text-text-brand-secondary mt-2 overflow-x-auto rounded p-2 text-[11px] leading-snug">{JSON.stringify(
+            meta.jsonld,
+            null,
+            2,
+          )}</pre>
+      </details>
+    {/if}
+  </PreviewContent>
+{/snippet}
+
+{#snippet documentDates()}
+  {#if added}
+    <span
+      class="font-inter inline-flex flex-wrap items-center gap-1.5 text-xs"
+      title={formatTimestamp(added)}
+    >
+      <span>added {formatTimestamp(added)}</span>
+      {#if updated && updated !== added}
+        <span class="text-text-brand-muted">·</span>
+        <span title={formatTimestamp(updated)}>updated {formatTimestamp(updated)}</span>
+      {/if}
+      {#if versionCount > 0}
+        <span class="text-text-brand-muted">·</span>
+        <button
+          onclick={toggleVersions}
+          class="font-inter text-hister-teal inline-flex cursor-pointer items-center gap-1 text-xs hover:underline"
+        >
+          <History class="size-3" />
+          {versionCount}
+          {versionCount === 1 ? 'previous version' : 'previous versions'}
+        </button>
+      {/if}
+    </span>
+  {/if}
+{/snippet}
+
+{#snippet documentDetailsSection()}
+  {#if showDocumentDetails && documentDetails}
+    <div
+      id="preview-document-details"
+      class="border-border-brand-muted mt-2 max-h-[min(20rem,40dvh)] overflow-y-auto overscroll-contain border-t pt-2"
+    >
+      <p class="font-outfit text-text-brand-muted mb-1 text-xs font-bold tracking-widest uppercase">
+        Current document properties
+      </p>
+      <dl class="font-inter text-xs">
+        {#each documentDetailEntries as entry (entry.field)}
+          <div
+            class="border-border-brand-muted grid gap-1 border-b py-1.5 last:border-b-0 sm:grid-cols-[minmax(8rem,12rem)_minmax(0,1fr)] sm:gap-3"
+          >
+            <dt><code class="text-hister-teal break-all">{entry.field}</code></dt>
+            <dd class="text-text-brand-secondary min-w-0 break-all whitespace-pre-wrap">
+              {formatDocumentDetailValue(entry)}
+            </dd>
+          </div>
+        {/each}
+      </dl>
+      <p
+        class="font-outfit text-text-brand-muted mt-3 mb-1 text-xs font-bold tracking-widest uppercase"
+      >
+        Metadata
+      </p>
+      {#if documentMetadataEntries.length}
+        <dl class="font-inter text-xs">
+          {#each documentMetadataEntries as entry (entry.field)}
+            <div
+              class="border-border-brand-muted grid gap-1 border-b py-1.5 last:border-b-0 sm:grid-cols-[minmax(8rem,12rem)_minmax(0,1fr)] sm:gap-3"
+            >
+              <dt><code class="text-hister-teal break-all">{entry.field}</code></dt>
+              <dd class="text-text-brand-secondary min-w-0 break-all whitespace-pre-wrap">
+                {formatTechnicalValue(entry.value)}
+              </dd>
+            </div>
+          {/each}
+        </dl>
+      {:else}
+        <p class="font-inter text-text-brand-muted text-xs">No metadata stored.</p>
+      {/if}
+    </div>
+  {/if}
+{/snippet}
+
+{#snippet previewBody()}
+  <ScrollArea class="min-h-0 flex-1">
+    {#if showVersions && versionsLoading}
+      <p role="status" class="font-inter text-text-brand-muted p-4 text-sm">
+        Loading previous versions…
+      </p>
+    {:else if showVersions && versionsError}
+      <PreviewLoadError message={versionsError} onretry={loadVersions} />
+    {:else if showVersions}
+      <div class="flex flex-col divide-y divide-[var(--border-brand-muted)] p-4">
+        {@render versionList()}
+      </div>
+    {:else}
+      {@render previewContent()}
+    {/if}
+  </ScrollArea>
+{/snippet}
+
+{#snippet previewHeading()}
+  <PreviewHeader {title} {url}>
+    {#snippet actions()}
+      {@render extractorMenu()}
+      <Button
+        variant="ghost"
+        size="icon-sm"
+        class="text-text-brand-muted hover:text-text-brand"
+        href={buildPreviewUrl(url, title || hintTitle, viewingVersion?.id, documentId)}
+        target="_blank"
+        rel="noopener noreferrer"
+        title="Open direct preview"
+        aria-label="Open direct preview"
+      >
+        <ExternalLink class="size-4" />
+      </Button>
+      {#if documentDetails}
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          class={showDocumentDetails
+            ? 'text-hister-teal hover:text-hister-teal'
+            : 'text-text-brand-muted hover:text-text-brand'}
+          onclick={toggleDocumentDetails}
+          title={showDocumentDetails ? 'Hide document details' : 'Show document details'}
+          aria-label={showDocumentDetails ? 'Hide document details' : 'Show document details'}
+          aria-expanded={showDocumentDetails}
+          aria-controls="preview-document-details"
+        >
+          <Info class="size-4" />
+        </Button>
+      {/if}
+      <PreviewControls {onclose} {fullscreen} {onfullscreentoggle} />
+    {/snippet}
+    {@render documentAttribution()}
+    {@render documentDates()}
+    {#if meta?.description}
+      <p class="font-inter text-text-brand-secondary mt-1 line-clamp-3 max-w-[60em] text-sm">
+        {meta.description}
+      </p>
+    {/if}
+    {#if meta?.videos?.length}
+      <button
+        onclick={() => (showEmbeddedVideos = !showEmbeddedVideos)}
+        class="font-inter mt-1 inline-flex cursor-pointer items-center gap-1.5 text-xs {showEmbeddedVideos
+          ? 'text-hister-teal'
+          : 'text-text-brand-muted hover:text-text-brand'}"
+      >
+        <Video class="size-3.5 shrink-0" />
+        {showEmbeddedVideos ? 'Hide' : 'Show'} embedded
+        {meta.videos.length === 1 ? 'video' : 'videos'}
+      </button>
+    {/if}
+    {@render documentDetailsSection()}
+  </PreviewHeader>
+{/snippet}
 
 <div
   class="preview-panel border-border-brand bg-card-surface flex flex-1 flex-col overflow-hidden {fullscreen
@@ -321,30 +716,7 @@
     <div
       class="border-border-brand-muted flex shrink-0 items-center justify-end gap-1 border-b-[2px] px-2 py-1"
     >
-      {#if onfullscreentoggle}
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          class="text-text-brand-muted hover:text-text-brand"
-          onclick={onfullscreentoggle}
-          title={fullscreen ? 'Exit fullscreen' : 'Enter fullscreen'}
-        >
-          {#if fullscreen}
-            <Minimize2 class="size-4" />
-          {:else}
-            <Maximize2 class="size-4" />
-          {/if}
-        </Button>
-      {/if}
-      <Button
-        variant="ghost"
-        size="icon-sm"
-        class="text-text-brand-muted hover:text-text-brand"
-        onclick={onclose}
-        aria-label="Close preview"
-      >
-        <X class="size-4" />
-      </Button>
+      <PreviewControls {onclose} {fullscreen} {onfullscreentoggle} />
     </div>
     <div class="flex flex-1 items-center justify-center">
       {#if previewError}
@@ -354,215 +726,7 @@
       {/if}
     </div>
   {:else if content || templateData || issueData}
-    <div
-      class="preview-header border-border-brand-muted flex shrink-0 flex-col gap-0.5 border-b-[2px] px-4 py-2.5"
-    >
-      <div class="flow-root max-h-[6.875em] overflow-hidden text-lg leading-snug md:text-3xl">
-        <div class="float-right mt-1 ml-2 flex items-center gap-1 text-sm leading-normal">
-          <DropdownMenu.Root
-            onOpenChange={(open) => {
-              if (open) loadExtractors(url);
-            }}
-          >
-            <DropdownMenu.Trigger>
-              {#snippet child({ props })}
-                <Button
-                  {...props}
-                  variant="ghost"
-                  size="icon-sm"
-                  class="text-text-brand-muted hover:text-text-brand shrink-0 cursor-pointer"
-                  title="Change extractor"
-                >
-                  <MoreVertical class="size-4" />
-                </Button>
-              {/snippet}
-            </DropdownMenu.Trigger>
-            <DropdownMenu.Content
-              class="border-brutal-border bg-card-surface w-44 rounded-none border-[3px] p-3 shadow-[4px_4px_0_var(--brutal-shadow)]"
-            >
-              <div class="space-y-2">
-                <p
-                  class="font-outfit text-text-brand-muted mb-1 text-xs font-bold tracking-widest uppercase"
-                >
-                  Extractor
-                </p>
-                {#if extractorsLoading}
-                  <p class="font-inter text-text-brand-muted text-xs">Loading…</p>
-                {:else if availableExtractors.length}
-                  <DropdownMenu.RadioGroup
-                    value={extractorName || availableExtractors[0].name}
-                    onValueChange={(v) => {
-                      extractorName = v;
-                    }}
-                  >
-                    {#each availableExtractors as ext, i (ext.name)}
-                      <DropdownMenu.RadioItem value={ext.name}>{ext.name}</DropdownMenu.RadioItem>
-                    {/each}
-                  </DropdownMenu.RadioGroup>
-                {:else}
-                  <p class="font-inter text-text-brand-muted text-xs">No extractors available</p>
-                {/if}
-              </div>
-            </DropdownMenu.Content>
-          </DropdownMenu.Root>
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            class="text-text-brand-muted hover:text-text-brand"
-            href={buildPreviewUrl(url, title || hintTitle, viewingVersion?.id, documentId)}
-            target="_blank"
-            rel="noopener noreferrer"
-            title="Open direct preview"
-            aria-label="Open direct preview"
-          >
-            <ExternalLink class="size-4" />
-          </Button>
-          {#if documentDetails}
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              class={showDocumentDetails
-                ? 'text-hister-teal hover:text-hister-teal'
-                : 'text-text-brand-muted hover:text-text-brand'}
-              onclick={toggleDocumentDetails}
-              title={showDocumentDetails ? 'Hide document details' : 'Show document details'}
-              aria-label={showDocumentDetails ? 'Hide document details' : 'Show document details'}
-              aria-expanded={showDocumentDetails}
-              aria-controls="preview-document-details"
-            >
-              <Info class="size-4" />
-            </Button>
-          {/if}
-          {#if onfullscreentoggle}
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              class="hover:text-text-brand"
-              onclick={onfullscreentoggle}
-              title={fullscreen ? 'Exit fullscreen' : 'Enter fullscreen'}
-            >
-              {#if fullscreen}
-                <Minimize2 class="size-4" />
-              {:else}
-                <Maximize2 class="size-4" />
-              {/if}
-            </Button>
-          {/if}
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            class="hover:text-text-brand"
-            onclick={onclose}
-            aria-label="Close preview"
-          >
-            <X class="size-4" />
-          </Button>
-        </div>
-        <h2 class="font-outfit text-text-brand font-bold">
-          {#if url.startsWith('remote-file://')}
-            {title}
-          {:else}
-            <a href={url} target="_blank" rel="noopener noreferrer" class="hover:underline"
-              >{title}</a
-            >
-          {/if}
-        </h2>
-      </div>
-      {#if meta?.author || meta?.published || meta?.type}
-        <span class="font-inter text-text-brand-muted text-xs">
-          {#if meta?.author}<span>{meta.author}</span>{/if}
-          {#if meta?.author && meta?.published}<span class="mx-1">·</span>{/if}
-          {#if meta?.published}<span>{formatMetaDate(meta.published)}</span>{/if}
-          {#if (meta?.author || meta?.published) && meta?.type}<span class="mx-1">·</span>{/if}
-          {#if meta?.type}<span class="uppercase">{meta.type}</span>{/if}
-        </span>
-      {/if}
-      {#if added}
-        <span
-          class="font-inter inline-flex flex-wrap items-center gap-1.5 text-xs"
-          title={formatTimestamp(added)}
-        >
-          <span>added {formatTimestamp(added)}</span>
-          {#if updated && updated !== added}
-            <span class="text-text-brand-muted">·</span>
-            <span title={formatTimestamp(updated)}>updated {formatTimestamp(updated)}</span>
-          {/if}
-          {#if versionCount > 0}
-            <span class="text-text-brand-muted">·</span>
-            <button
-              onclick={toggleVersions}
-              class="font-inter text-hister-teal inline-flex cursor-pointer items-center gap-1 text-xs hover:underline"
-            >
-              <History class="size-3" />
-              {versionCount}
-              {versionCount === 1 ? 'previous version' : 'previous versions'}
-            </button>
-          {/if}
-        </span>
-      {/if}
-      {#if meta?.description}
-        <p class="font-inter text-text-brand-secondary mt-1 line-clamp-3 max-w-[60em] text-sm">
-          {meta.description}
-        </p>
-      {/if}
-      {#if meta?.videos?.length}
-        <button
-          onclick={() => (showEmbeddedVideos = !showEmbeddedVideos)}
-          class="font-inter mt-1 inline-flex cursor-pointer items-center gap-1.5 text-xs {showEmbeddedVideos
-            ? 'text-hister-teal'
-            : 'text-text-brand-muted hover:text-text-brand'}"
-        >
-          <Video class="size-3.5 shrink-0" />
-          {showEmbeddedVideos ? 'Hide' : 'Show'} embedded
-          {meta.videos.length === 1 ? 'video' : 'videos'}
-        </button>
-      {/if}
-      {#if showDocumentDetails && documentDetails}
-        <div
-          id="preview-document-details"
-          class="border-border-brand-muted mt-2 max-h-[min(20rem,40vh)] overflow-y-auto overscroll-contain border-t pt-2"
-        >
-          <p
-            class="font-outfit text-text-brand-muted mb-1 text-xs font-bold tracking-widest uppercase"
-          >
-            Current document properties
-          </p>
-          <dl class="font-inter text-xs">
-            {#each documentDetailEntries as entry (entry.field)}
-              <div
-                class="border-border-brand-muted grid gap-1 border-b py-1.5 last:border-b-0 sm:grid-cols-[minmax(8rem,12rem)_minmax(0,1fr)] sm:gap-3"
-              >
-                <dt><code class="text-hister-teal break-all">{entry.field}</code></dt>
-                <dd class="text-text-brand-secondary min-w-0 break-all whitespace-pre-wrap">
-                  {formatDocumentDetailValue(entry)}
-                </dd>
-              </div>
-            {/each}
-          </dl>
-          <p
-            class="font-outfit text-text-brand-muted mt-3 mb-1 text-xs font-bold tracking-widest uppercase"
-          >
-            Metadata
-          </p>
-          {#if documentMetadataEntries.length}
-            <dl class="font-inter text-xs">
-              {#each documentMetadataEntries as entry (entry.field)}
-                <div
-                  class="border-border-brand-muted grid gap-1 border-b py-1.5 last:border-b-0 sm:grid-cols-[minmax(8rem,12rem)_minmax(0,1fr)] sm:gap-3"
-                >
-                  <dt><code class="text-hister-teal break-all">{entry.field}</code></dt>
-                  <dd class="text-text-brand-secondary min-w-0 break-all whitespace-pre-wrap">
-                    {formatTechnicalValue(entry.value)}
-                  </dd>
-                </div>
-              {/each}
-            </dl>
-          {:else}
-            <p class="font-inter text-text-brand-muted text-xs">No metadata stored.</p>
-          {/if}
-        </div>
-      {/if}
-    </div>
+    {@render previewHeading()}
     {#if viewingVersion}
       <div
         class="border-border-brand-muted bg-card-surface-muted flex shrink-0 items-center gap-1.5 border-b-[2px] px-4 py-2"
@@ -582,165 +746,12 @@
         </button>
       </div>
     {/if}
-    <ScrollArea class="min-h-0 flex-1">
-      {#if showVersions && versionsLoading}
-        <p role="status" class="font-inter text-text-brand-muted p-4 text-sm">
-          Loading previous versions…
-        </p>
-      {:else if showVersions && versionsError}
-        <PreviewLoadError message={versionsError} onretry={loadVersions} />
-      {:else if showVersions}
-        <div class="flex flex-col divide-y divide-[var(--border-brand-muted)] p-4">
-          {#each versions as v}
-            <div class="py-4 first:pt-0 last:pb-0">
-              <div class="mb-2 flex items-center justify-between gap-2">
-                <p class="font-inter text-xs font-semibold tracking-wide uppercase">
-                  {formatTimestamp(versionTimestamp(v.created_at))}
-                </p>
-                <button
-                  onclick={() => loadContent(url, hintTitle, extractorName, v.id)}
-                  class="font-inter text-hister-teal shrink-0 cursor-pointer text-xs hover:underline"
-                >
-                  show this version
-                </button>
-              </div>
-              {#if v.text_diff || v.html_diff}
-                <details class="group">
-                  <summary
-                    class="font-inter text-text-brand-muted hover:text-text-brand flex cursor-pointer list-none items-center gap-1 text-xs select-none"
-                  >
-                    <span class="inline-block transition-transform group-open:rotate-90">▶</span>
-                    <span>show diff</span>
-                  </summary>
-                  <div class="mt-2 overflow-x-auto rounded font-mono text-xs leading-relaxed">
-                    {#each parseDiff(v.text_diff || v.html_diff) as line}
-                      <div
-                        class="px-2 py-px break-all whitespace-pre-wrap {line.type === 'add'
-                          ? 'bg-black text-green-300'
-                          : line.type === 'remove'
-                            ? 'bg-black text-red-300'
-                            : line.type === 'header'
-                              ? 'text-text-brand'
-                              : 'text-text-brand-secondary'}"
-                      >
-                        {line.text}
-                      </div>
-                    {/each}
-                  </div>
-                </details>
-              {:else}
-                <p class="font-inter text-xs italic">No diff recorded.</p>
-              {/if}
-            </div>
-          {:else}
-            <p class="font-inter text-text-brand-muted text-sm">No previous versions available.</p>
-          {/each}
-        </div>
-      {:else}
-        <div
-          class="preview-content font-inter text-text-brand-secondary prose dark:prose-invert prose-a:text-hister-teal w-full max-w-[60em] p-4 text-sm"
-        >
-          {#if meta?.videos?.length && showEmbeddedVideos}
-            <div class="not-prose mb-6 space-y-4">
-              {#each meta.videos as video (video.url)}
-                {@const v = video as EmbeddedVideo}
-                {#if v.type === 'iframe'}
-                  <div class="relative aspect-video w-full overflow-hidden">
-                    <iframe
-                      src={v.url}
-                      class="absolute inset-0 h-full w-full"
-                      title="Embedded video"
-                      allowfullscreen
-                      allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-                      referrerpolicy="strict-origin-when-cross-origin"
-                    ></iframe>
-                  </div>
-                {:else if v.type === 'video'}
-                  <video controls class="w-full">
-                    {#if v.mime}
-                      <source src={v.url} type={v.mime} />
-                    {:else}
-                      <source src={v.url} />
-                    {/if}
-                  </video>
-                {:else if v.type === 'embed'}
-                  <div class="relative aspect-video w-full overflow-hidden">
-                    <embed
-                      src={v.url}
-                      type={v.mime || 'video/mp4'}
-                      class="absolute inset-0 h-full w-full"
-                    />
-                  </div>
-                {:else if v.type === 'object'}
-                  <div class="relative aspect-video w-full overflow-hidden">
-                    <object
-                      data={v.url}
-                      type={v.mime || 'video/mp4'}
-                      class="absolute inset-0 h-full w-full"
-                      title="Embedded video"
-                    >
-                      <p class="font-inter text-text-brand-muted p-2 text-xs">
-                        Video playback not supported.
-                      </p>
-                    </object>
-                  </div>
-                {/if}
-              {/each}
-            </div>
-          {/if}
-          {#if template === 'video' && templateData}
-            <VideoPreview data={templateData} />
-          {:else if template === 'issue' && issueData}
-            <IssuePreview data={issueData} />
-          {:else}
-            {@html content}
-          {/if}
-          {#if meta?.jsonld}
-            <details class="not-prose border-border-brand-muted mt-6 border-t pt-3">
-              <summary
-                class="font-inter text-text-brand-muted cursor-pointer text-xs tracking-wide uppercase"
-              >
-                Extracted JSON-LD ({meta.jsonld.length})
-              </summary>
-              <pre
-                class="bg-card-surface-muted text-text-brand-secondary mt-2 overflow-x-auto rounded p-2 text-[11px] leading-snug">{JSON.stringify(
-                  meta.jsonld,
-                  null,
-                  2,
-                )}</pre>
-            </details>
-          {/if}
-        </div>
-      {/if}
-    </ScrollArea>
+    {@render previewBody()}
   {:else}
     <div
       class="border-border-brand-muted flex shrink-0 items-center justify-end gap-1 border-b-[2px] px-2 py-1"
     >
-      {#if onfullscreentoggle}
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          class="text-text-brand-muted hover:text-text-brand"
-          onclick={onfullscreentoggle}
-          title={fullscreen ? 'Exit fullscreen' : 'Enter fullscreen'}
-        >
-          {#if fullscreen}
-            <Minimize2 class="size-4" />
-          {:else}
-            <Maximize2 class="size-4" />
-          {/if}
-        </Button>
-      {/if}
-      <Button
-        variant="ghost"
-        size="icon-sm"
-        class="text-text-brand-muted hover:text-text-brand"
-        onclick={onclose}
-        aria-label="Close preview"
-      >
-        <X class="size-4" />
-      </Button>
+      <PreviewControls {onclose} {fullscreen} {onfullscreentoggle} />
     </div>
     <div class="flex flex-1 flex-col items-center justify-center gap-2 opacity-40">
       <Eye class="size-6" />
@@ -750,7 +761,7 @@
 </div>
 
 <style>
-  .preview-panel-connected .preview-header {
+  .preview-panel-connected :global(.preview-header) {
     background: var(--card-surface);
   }
 </style>
