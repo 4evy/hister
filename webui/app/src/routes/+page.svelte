@@ -19,7 +19,6 @@
     formatTimestamp,
     formatRelativeTime,
     scrollTo,
-    escapeHTML,
     buildSearchQuery,
     parseSearchResults,
     openURL,

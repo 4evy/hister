@@ -2,6 +2,8 @@
 //
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
+import { isInsideQuotes } from './query-tokens.js';
+
 import type { FacetsResult, TermCount } from '#lib/search.js';
 import { valuesForField } from '#lib/search-schema.js';
 import type { SearchCapabilities, SearchFieldDefinition } from '#lib/search-schema.js';
@@ -47,38 +49,24 @@ function isWhitespace(value: string): boolean {
   return /\s/.test(value);
 }
 
-function isInsideQuotes(query: string, cursor: number): boolean {
-  let quoted = false;
-  let escaped = false;
-  for (const char of query.slice(0, cursor)) {
-    if (escaped) {
-      escaped = false;
-      continue;
-    }
-    if (char === '\\') {
-      escaped = true;
-      continue;
-    }
-    if (char === '"') quoted = !quoted;
-  }
-  return quoted;
-}
-
 export function queryTokenAt(query: string, cursor: number): QueryToken {
   const safeCursor = Math.max(0, Math.min(cursor, query.length));
-  if (
-    safeCursor > 0 &&
-    isWhitespace(query[safeCursor - 1]) &&
-    (safeCursor === query.length || isWhitespace(query[safeCursor]))
-  ) {
+  if (isWhitespaceGap(query, safeCursor)) {
     return { start: safeCursor, end: safeCursor, value: '' };
   }
-
-  let start = safeCursor;
-  let end = safeCursor;
-  while (start > 0 && !isWhitespace(query[start - 1])) start -= 1;
-  while (end < query.length && !isWhitespace(query[end])) end += 1;
+  const left = query.slice(0, safeCursor).search(/\S+$/);
+  const right = query.slice(safeCursor).search(/\s/);
+  const start = left < 0 ? safeCursor : left;
+  const end = right < 0 ? query.length : safeCursor + right;
   return { start, end, value: query.slice(start, end) };
+}
+
+function isWhitespaceGap(query: string, cursor: number): boolean {
+  return cursor > 0 && isWhitespace(query[cursor - 1]) && atWhitespaceEnd(query, cursor);
+}
+
+function atWhitespaceEnd(query: string, cursor: number): boolean {
+  return cursor === query.length || isWhitespace(query[cursor]);
 }
 
 export function facetSuggestionContext(
@@ -92,18 +80,26 @@ export function facetSuggestionContext(
   if (!match) return null;
 
   const field = match[1].toLowerCase();
-  const facetName = capabilities.fields.find((definition) => definition.name === field)?.facet;
-  const facet = capabilities.facets.find((definition) => definition.name === facetName);
-  if (!facetName || !facet || facet.kind === 'date_ranges') return null;
+  const facetName = suggestibleFacet(field, capabilities);
+  if (!facetName) return null;
   const baseQuery = `${query.slice(0, token.start)} ${query.slice(token.end)}`
     .replace(/\s+/g, ' ')
     .trim();
-  const normalizedBase = baseQuery || '*';
+  const normalizedBase = defaultFacetQuery(baseQuery);
   return {
     baseQuery: normalizedBase,
     facetName,
     key: `${field}:${normalizedBase}`,
   };
+}
+
+function suggestibleFacet(field: string, capabilities: SearchCapabilities): string | null {
+  const facetName = capabilities.fields.find((definition) => definition.name === field)?.facet;
+  const facet = capabilities.facets.find(
+    (definition) => !!facetName && definition.name === facetName,
+  );
+  if (!facet) return null;
+  return facet.kind === 'date_ranges' ? null : facet.name;
 }
 
 function fieldValueSuggestions(
@@ -158,32 +154,45 @@ function contextualValueSuggestions(
   const tokenPrefix = match[1];
   const field = match[2].toLowerCase();
   const valueFragment = match[3];
-  if (field === capabilities.sort.field) {
-    const normalizedFragment = valueFragment.toLowerCase();
-    return capabilities.sort.options
-      .filter((option) => option.visible)
-      .filter(
-        ({ value, label }) =>
-          value.toLowerCase().includes(normalizedFragment) ||
-          label.toLowerCase().includes(normalizedFragment),
-      )
-      .map(({ value, label }) => ({
-        id: `sort:${value}`,
-        group: `${capabilities.sort.label} values`,
-        kind: 'sort' as const,
-        label,
-        detail: `${capabilities.sort.field}:${value}`,
-        insertText: `${tokenPrefix}${capabilities.sort.field}:${value}`,
-        replacement: 'token' as const,
-        appendSpace: true,
-      }));
-  }
+  if (field === capabilities.sort.field)
+    return sortValueSuggestions(valueFragment, tokenPrefix, capabilities);
 
   const definition = capabilities.fields.find((candidate) => candidate.name === field);
-  if (definition && (definition.facet || definition.valueSet)) {
+  if (hasSuggestionValues(definition)) {
     return fieldValueSuggestions(definition, valueFragment, tokenPrefix, capabilities, facets);
   }
   return [];
+}
+
+function hasSuggestionValues(
+  field: SearchFieldDefinition | undefined,
+): field is SearchFieldDefinition {
+  return Boolean(field && (field.facet || field.valueSet));
+}
+
+function sortValueSuggestions(
+  valueFragment: string,
+  tokenPrefix: string,
+  capabilities: SearchCapabilities,
+): QuerySuggestion[] {
+  const normalizedFragment = valueFragment.toLowerCase();
+  return capabilities.sort.options
+    .filter((option) => option.visible)
+    .filter(
+      ({ value, label }) =>
+        value.toLowerCase().includes(normalizedFragment) ||
+        label.toLowerCase().includes(normalizedFragment),
+    )
+    .map(({ value, label }) => ({
+      id: `sort:${value}`,
+      group: `${capabilities.sort.label} values`,
+      kind: 'sort' as const,
+      label,
+      detail: `${capabilities.sort.field}:${value}`,
+      insertText: `${tokenPrefix}${capabilities.sort.field}:${value}`,
+      replacement: 'token' as const,
+      appendSpace: true,
+    }));
 }
 
 export function buildQuerySuggestions(options: QuerySuggestionOptions): QuerySuggestion[] {
@@ -201,88 +210,25 @@ export function buildQuerySuggestions(options: QuerySuggestionOptions): QuerySug
   const normalizedQuery = query.trim().toLowerCase();
   const normalizedServerSuggestion = serverSuggestion.trim().toLowerCase();
 
-  if (normalizedServerSuggestion && normalizedServerSuggestion !== normalizedQuery) {
-    suggestions.push({
-      id: `spelling:${serverSuggestion}`,
-      group: 'Suggested query',
-      kind: 'spelling',
-      label: serverSuggestion,
-      detail: 'Server suggestion',
-      insertText: serverSuggestion,
-      replacement: 'query',
-    });
-  }
+  suggestions.push(
+    ...spellingSuggestions(serverSuggestion, normalizedServerSuggestion, normalizedQuery),
+  );
 
   if (isInsideQuotes(query, cursor)) return suggestions.slice(0, limit);
   const token = queryTokenAt(query, cursor);
   const contextual = contextualValueSuggestions(token.value, capabilities, facets);
   if (contextual !== null) return [...suggestions, ...contextual].slice(0, limit);
 
-  const recentMatches = recentSearches
-    .filter((recent, index, all) => all.indexOf(recent) === index)
-    .filter((recent) => {
-      const normalizedRecent = recent.trim().toLowerCase();
-      return (
-        normalizedRecent !== normalizedQuery && normalizedRecent !== normalizedServerSuggestion
-      );
-    })
-    .filter((recent) => !normalizedQuery || recent.toLowerCase().includes(normalizedQuery))
-    .slice(0, normalizedQuery ? 3 : 5)
-    .map((recent): QuerySuggestion => ({
-      id: `recent:${recent}`,
-      group: 'Recent searches',
-      kind: 'recent',
-      label: recent,
-      detail: 'Run this query again',
-      insertText: recent,
-      replacement: 'query',
-    }));
-  suggestions.push(...recentMatches);
+  suggestions.push(
+    ...recentSuggestions(recentSearches, normalizedQuery, normalizedServerSuggestion),
+  );
 
   const negated = token.value.startsWith('-');
   const tokenFragment = (negated ? token.value.slice(1) : token.value).toLowerCase();
-  const aliasMatches = Object.entries(aliases)
-    .filter(([keyword]) => !tokenFragment || keyword.toLowerCase().includes(tokenFragment))
-    .slice(0, 4)
-    .map(([keyword, expansion]): QuerySuggestion => ({
-      id: `alias:${keyword}`,
-      group: 'Aliases',
-      kind: 'alias',
-      label: keyword,
-      detail: expansion,
-      insertText: `${negated ? '-' : ''}${keyword}`,
-      replacement: 'token',
-      appendSpace: true,
-    }));
-  suggestions.push(...aliasMatches);
+  suggestions.push(...aliasSuggestions(aliases, tokenFragment, negated));
 
-  const searchFields = [
-    ...capabilities.fields,
-    {
-      name: capabilities.sort.field,
-      label: capabilities.sort.label,
-      description: capabilities.sort.description,
-    },
-  ].filter((field) => field.name);
-  const fieldMatches = searchFields
-    .filter(
-      ({ name, label }) =>
-        !tokenFragment ||
-        name.startsWith(tokenFragment) ||
-        label.toLowerCase().startsWith(tokenFragment),
-    )
-    .slice(0, tokenFragment ? 8 : 6)
-    .map(({ name, label, description }): QuerySuggestion => ({
-      id: `field:${name}`,
-      group: 'Search fields',
-      kind: 'field',
-      label,
-      detail: description,
-      insertText: `${negated ? '-' : ''}${name}:`,
-      replacement: 'token',
-      keepOpen: true,
-    }));
-  suggestions.push(...fieldMatches);
+  suggestions.push(...fieldSuggestions(capabilities, tokenFragment, negated));
+
   return suggestions.slice(0, limit);
 }
 
@@ -307,4 +253,107 @@ export function applyQuerySuggestion(
     query: `${before}${insertion}${after}`,
     cursor: before.length + insertion.length,
   };
+}
+
+function recentSuggestions(
+  recentSearches: string[],
+  normalizedQuery: string,
+  normalizedServerSuggestion: string,
+): QuerySuggestion[] {
+  return recentSearches
+    .filter((recent, index, all) => all.indexOf(recent) === index)
+    .filter((recent) => {
+      const normalizedRecent = recent.trim().toLowerCase();
+      return (
+        normalizedRecent !== normalizedQuery && normalizedRecent !== normalizedServerSuggestion
+      );
+    })
+    .filter((recent) => !normalizedQuery || recent.toLowerCase().includes(normalizedQuery))
+    .slice(0, normalizedQuery ? 3 : 5)
+    .map((recent): QuerySuggestion => ({
+      id: `recent:${recent}`,
+      group: 'Recent searches',
+      kind: 'recent',
+      label: recent,
+      detail: 'Run this query again',
+      insertText: recent,
+      replacement: 'query',
+    }));
+}
+function aliasSuggestions(
+  aliases: Record<string, string>,
+  tokenFragment: string,
+  negated: boolean,
+): QuerySuggestion[] {
+  return Object.entries(aliases)
+    .filter(([keyword]) => !tokenFragment || keyword.toLowerCase().includes(tokenFragment))
+    .slice(0, 4)
+    .map(([keyword, expansion]): QuerySuggestion => ({
+      id: `alias:${keyword}`,
+      group: 'Aliases',
+      kind: 'alias',
+      label: keyword,
+      detail: expansion,
+      insertText: `${negated ? '-' : ''}${keyword}`,
+      replacement: 'token',
+      appendSpace: true,
+    }));
+}
+function fieldSuggestions(
+  capabilities: SearchCapabilities,
+  tokenFragment: string,
+  negated: boolean,
+): QuerySuggestion[] {
+  const searchFields = [
+    ...capabilities.fields,
+    {
+      name: capabilities.sort.field,
+      label: capabilities.sort.label,
+      description: capabilities.sort.description,
+    },
+  ].filter((field) => field.name);
+  return searchFields
+    .filter(
+      ({ name, label }) =>
+        !tokenFragment ||
+        name.startsWith(tokenFragment) ||
+        label.toLowerCase().startsWith(tokenFragment),
+    )
+    .slice(0, tokenFragment ? 8 : 6)
+    .map(({ name, label, description }): QuerySuggestion => ({
+      id: `field:${name}`,
+      group: 'Search fields',
+      kind: 'field',
+      label,
+      detail: description,
+      insertText: `${negated ? '-' : ''}${name}:`,
+      replacement: 'token',
+      keepOpen: true,
+    }));
+}
+
+function spellingSuggestions(
+  serverSuggestion: string,
+  normalizedServerSuggestion: string,
+  normalizedQuery: string,
+): QuerySuggestion[] {
+  if (normalizedServerSuggestion && normalizedServerSuggestion !== normalizedQuery) {
+    return [
+      {
+        id: `spelling:${serverSuggestion}`,
+        group: 'Suggested query',
+        kind: 'spelling',
+        label: serverSuggestion,
+        detail: 'Server suggestion',
+        insertText: serverSuggestion,
+        replacement: 'query',
+      },
+    ];
+  }
+
+  return [];
+}
+
+function defaultFacetQuery(query: string): string {
+  return query || '*';
 }

@@ -35,6 +35,17 @@ export function replaceSortDirective(text: string, value: string, syntax: QueryS
   const definition = sort.options.find((option) => option.value === value);
   if (value && !definition) return text;
   const remaining = removeSortDirectives(text, syntax);
-  if (!value || definition?.default) return remaining;
-  return `${remaining ? `${remaining} ` : ''}${sort.field}:${value}`;
+  if (isDefaultSort(value, definition)) return remaining;
+  return appendSortDirective(remaining, sort.field, value);
+}
+
+function appendSortDirective(text: string, field: string, value: string): string {
+  return `${text ? `${text} ` : ''}${field}:${value}`;
+}
+
+function isDefaultSort(
+  value: string,
+  definition: QuerySyntax['sort']['options'][number] | undefined,
+): boolean {
+  return !value || !!definition?.default;
 }

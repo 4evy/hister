@@ -77,12 +77,6 @@ export interface SearchResults {
   facets?: FacetsResult;
 }
 
-export function escapeHTML(s: string): string {
-  const pre = document.createElement('pre');
-  pre.appendChild(document.createTextNode(s));
-  return pre.innerHTML;
-}
-
 function escapeXML(s: string): string {
   return s
     .replace(/&/g, '&amp;')
@@ -102,33 +96,25 @@ export function formatTimestamp(unixTimestamp: number): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
 }
 
+const relativeTimeUnits = [
+  { seconds: 60, name: 'minute', singular: '1 minute ago' },
+  { seconds: 3600, name: 'hour', singular: '1 hour ago' },
+  { seconds: 86400, name: 'day', singular: 'yesterday' },
+  { seconds: 604800, name: 'week', singular: '1 week ago' },
+  { seconds: 2592000, name: 'month', singular: '1 month ago' },
+  { seconds: 31536000, name: 'year', singular: '1 year ago' },
+];
+
+function relativeTimeLabel(count: number, unit: (typeof relativeTimeUnits)[number]): string {
+  return count === 1 ? unit.singular : `${count} ${unit.name}s ago`;
+}
+
 export function formatRelativeTime(unixTimestamp: number): string {
   if (!unixTimestamp) return '';
-
-  const now = Date.now();
-  const timestamp = unixTimestamp * 1000;
-  const secondsAgo = Math.floor((now - timestamp) / 1000);
-
-  if (secondsAgo < 0) return 'just now';
+  const secondsAgo = Math.floor((Date.now() - unixTimestamp * 1000) / 1000);
   if (secondsAgo < 60) return 'just now';
-
-  const minutesAgo = Math.floor(secondsAgo / 60);
-  if (minutesAgo < 60) return minutesAgo === 1 ? '1 minute ago' : `${minutesAgo} minutes ago`;
-
-  const hoursAgo = Math.floor(minutesAgo / 60);
-  if (hoursAgo < 24) return hoursAgo === 1 ? '1 hour ago' : `${hoursAgo} hours ago`;
-
-  const daysAgo = Math.floor(hoursAgo / 24);
-  if (daysAgo < 7) return daysAgo === 1 ? 'yesterday' : `${daysAgo} days ago`;
-
-  const weeksAgo = Math.floor(daysAgo / 7);
-  if (weeksAgo < 4) return weeksAgo === 1 ? '1 week ago' : `${weeksAgo} weeks ago`;
-
-  const monthsAgo = Math.floor(daysAgo / 30);
-  if (monthsAgo < 12) return monthsAgo === 1 ? '1 month ago' : `${monthsAgo} months ago`;
-
-  const yearsAgo = Math.floor(daysAgo / 365);
-  return yearsAgo === 1 ? '1 year ago' : `${yearsAgo} years ago`;
+  const unit = relativeTimeUnits.findLast((unit) => secondsAgo >= unit.seconds)!;
+  return relativeTimeLabel(Math.floor(secondsAgo / unit.seconds), unit);
 }
 
 export function formatMetaDate(iso: string | undefined): string {
@@ -220,12 +206,16 @@ export class WebSocketManager {
     this.debounceMs = debounceMs;
   }
 
+  private isConnected(): boolean {
+    return this.ws?.readyState === WebSocket.CONNECTING || this.ws?.readyState === WebSocket.OPEN;
+  }
+
   connect(): void {
     if (this.reconnectTimer !== null) {
       clearTimeout(this.reconnectTimer);
       this.reconnectTimer = null;
     }
-    if (this.ws?.readyState === WebSocket.CONNECTING || this.ws?.readyState === WebSocket.OPEN) {
+    if (this.isConnected()) {
       return;
     }
 
@@ -363,25 +353,51 @@ interface APIRequestOptions {
   csrfCallback?: (token: string) => void;
 }
 
+function updateRequestToken(response: Response, options: APIRequestOptions): void {
+  const token = response.headers.get('X-CSRF-Token');
+  if (token && options.csrfToken !== undefined) options.csrfCallback?.(token);
+}
+
 function apiRequest(options: APIRequestOptions): void {
-  const headers = options.params?.headers || {};
-  if (options.csrfToken) {
-    (headers as Record<string, string>)['X-CSRF-Token'] = options.csrfToken;
-  }
+  const requestParams = options.params ?? {};
+  const headers = legacyRequestHeaders(requestParams, options.csrfToken);
 
   const params: RequestInit = {
-    method: options.params?.method || 'GET',
+    method: requestParams.method || 'GET',
     headers,
-    body: options.params?.body as BodyInit,
+    body: requestParams.body as BodyInit,
   };
 
   fetch('api' + options.url, params).then((r) => {
-    const newToken = r.headers.get('X-CSRF-Token');
-    if (newToken && options.csrfToken !== undefined) {
-      options.csrfCallback?.(newToken);
-    }
+    updateRequestToken(r, options);
     options.callback?.(r);
   });
+}
+
+function ignoreHotkey(e: KeyboardEvent): boolean {
+  return isIMEKeyboardEvent(e) || !e.key;
+}
+
+function keyModifier(e: KeyboardEvent): string | undefined {
+  if (e.altKey) return 'alt';
+  if (e.ctrlKey) return 'ctrl';
+  if (e.metaKey) return 'meta';
+  return undefined;
+}
+
+function hotkeyName(e: KeyboardEvent): string {
+  const modifier = keyModifier(e);
+  if (!modifier) return e.key.toLowerCase();
+  const key = e.code?.startsWith('Key') ? e.code.replace('Key', '') : e.key;
+  return `${modifier}+${key.toLowerCase()}`;
+}
+
+function navigationHotkey(key: string, shift: boolean): string | undefined {
+  if (key === 'tab') return shift ? 'select_previous_result' : 'select_next_result';
+  return new Map([
+    ['arrowdown', 'select_next_result'],
+    ['arrowup', 'select_previous_result'],
+  ]).get(key);
 }
 
 export class KeyHandler {
@@ -398,39 +414,25 @@ export class KeyHandler {
     );
   }
 
-  handle(e: KeyboardEvent, isInputFocus: boolean): boolean {
-    if (isIMEKeyboardEvent(e)) return false;
-    if (!e.key) return false;
+  private handledAction(
+    action: ((e?: KeyboardEvent, isInputFocus?: boolean) => void | boolean) | undefined,
+    e: KeyboardEvent,
+    isInputFocus: boolean,
+  ): boolean {
+    return !!action && action(e, isInputFocus) !== true;
+  }
 
-    const modifier = e.altKey ? 'alt' : e.ctrlKey ? 'ctrl' : e.metaKey ? 'meta' : undefined;
-    const key =
-      modifier && e.code?.startsWith('Key')
-        ? `${modifier}+${e.code.replace('Key', '').toLowerCase()}`
-        : modifier
-          ? `${modifier}+${e.key.toLowerCase()}`
-          : e.key.toLowerCase();
+  handle(e: KeyboardEvent, isInputFocus: boolean): boolean {
+    if (ignoreHotkey(e)) return false;
+
+    const key = hotkeyName(e);
 
     const action = this.actions[this.hotkeys[key]];
-    if (action && action(e, isInputFocus) !== true) {
+    if (this.handledAction(action, e, isInputFocus)) {
       return true;
     }
-    switch (key) {
-      case 'tab':
-        if (e.shiftKey) {
-          this.actions['select_previous_result'](e, isInputFocus);
-        } else {
-          this.actions['select_next_result'](e, isInputFocus);
-        }
-        break;
-      case 'arrowdown':
-        this.actions['select_next_result'](e, isInputFocus);
-        break;
-      case 'arrowup':
-        this.actions['select_previous_result'](e, isInputFocus);
-        break;
-      default:
-        break;
-    }
+    const navigationAction = navigationHotkey(key, e.shiftKey);
+    if (navigationAction) this.actions[navigationAction](e, isInputFocus);
     return true;
   }
 }
@@ -460,14 +462,17 @@ interface QueryParams {
   facets?: boolean;
 }
 
+function paginationParams(limit?: number, pageKey?: string) {
+  return { ...(limit && { limit }), ...(pageKey && { page_key: pageKey }) };
+}
+
 export function buildSearchQuery(text: string, opts: SearchQueryOptions = {}): QueryParams {
   const { semantic, pageKey, limit, facets } = opts;
   return {
     text,
     highlight: 'HTML',
     ...(semantic && { semantic_enabled: semantic.enabled, semantic_threshold: semantic.threshold }),
-    ...(limit && { limit }),
-    ...(pageKey && { page_key: pageKey }),
+    ...paginationParams(limit, pageKey),
     ...(facets && { facets: true }),
   };
 }
@@ -484,4 +489,10 @@ export function openURL(url: string, newWindow: boolean = false): void {
     return;
   }
   window.location.href = url;
+}
+
+function legacyRequestHeaders(params: APIRequestParams, csrfToken?: string) {
+  const headers = params.headers || {};
+  if (csrfToken) (headers as Record<string, string>)['X-CSRF-Token'] = csrfToken;
+  return headers;
 }

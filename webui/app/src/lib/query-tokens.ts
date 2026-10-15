@@ -10,8 +10,8 @@ export interface QueryToken {
   text: string;
 }
 
-// Return top level tokens for editing. Groups and quoted values stay intact;
-// only the server interprets the matching expression inside each token.
+// Return top level tokens for editing, keeping groups and quoted values intact
+// Only the server interprets the matching expression inside each token
 export function queryTokens(query: string, syntax?: QuerySyntax): QueryToken[] {
   const tokens: QueryToken[] = [];
   const fields = new Set(syntax?.fields.map((field) => field.name));
@@ -64,4 +64,39 @@ export function queryTokens(query: string, syntax?: QuerySyntax): QueryToken[] {
 
 export function hasTopLevelOr(query: string, syntax?: QuerySyntax): boolean {
   return queryTokens(query, syntax).some(({ text }) => text === 'OR' || text === '|');
+}
+
+class QueryTokenState {
+  quoted = false;
+  escaped = false;
+  depth = 0;
+
+  advance(char: string) {
+    if (this.escaped) {
+      this.escaped = false;
+      return;
+    }
+    if (char === '\\') {
+      this.escaped = true;
+      return;
+    }
+    if (char === '"') this.quoted = !this.quoted;
+    this.updateDepth(char);
+  }
+
+  private updateDepth(char: string) {
+    if (this.quoted) return;
+    if (char === '(') this.depth += 1;
+    if (char === ')') this.depth -= 1;
+  }
+
+  get complete() {
+    return !this.quoted && this.depth === 0;
+  }
+}
+
+export function isInsideQuotes(query: string, cursor: number): boolean {
+  const state = new QueryTokenState();
+  for (const char of query.slice(0, cursor)) state.advance(char);
+  return state.quoted;
 }

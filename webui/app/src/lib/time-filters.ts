@@ -60,8 +60,9 @@ export function customDatesFromQuery(
 ): { from: string; to: string } {
   let from = '';
   let to = '';
-  for (const filter of timeFilters(text, field, syntax)) {
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(filter.value)) continue;
+  for (const filter of timeFilters(text, field, syntax).filter((filter) =>
+    /^\d{4}-\d{2}-\d{2}$/.test(filter.value),
+  )) {
     if (filter.comparison === '>=') from = filter.value;
     if (filter.comparison === '<') to = shiftISODate(filter.value, -1);
   }

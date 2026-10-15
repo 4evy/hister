@@ -11,7 +11,7 @@ export interface QueryFilter {
   negated: boolean;
 }
 
-// Only mandatory top level filters are safe to display as removable chips.
+// Only mandatory top level filters are safe to display as removable chips
 export function queryFilters(query: string, fields: string[], syntax?: QuerySyntax): QueryFilter[] {
   if (hasTopLevelOr(query, syntax)) return [];
   const allowedFields = new Set(fields);
