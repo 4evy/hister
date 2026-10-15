@@ -91,7 +91,7 @@
   }
 
   function resizePanelWithKeyboard(event: KeyboardEvent) {
-    if (event.key !== 'ArrowUp' && event.key !== 'ArrowDown') return;
+    if (!['ArrowUp', 'ArrowDown'].includes(event.key)) return;
     const currentHeight = panelEl?.getBoundingClientRect().height ?? minimumPanelHeight;
     const direction = event.key === 'ArrowUp' ? -1 : 1;
     setPanelHeight(currentHeight + direction * panelResizeStep);
@@ -112,16 +112,58 @@
       const option = listboxEl?.querySelector<HTMLElement>(`[data-suggestion-index="${index}"]`);
       if (!listboxEl || !option) return;
 
-      const optionTop = option.offsetTop;
-      const optionBottom = optionTop + option.offsetHeight;
-      if (optionTop < listboxEl.scrollTop) {
-        listboxEl.scrollTop = optionTop;
-      } else if (optionBottom > listboxEl.scrollTop + listboxEl.clientHeight) {
-        listboxEl.scrollTop = optionBottom - listboxEl.clientHeight;
-      }
+      scrollOptionIntoView(listboxEl, option);
     });
   });
+  function scrollOptionIntoView(listbox: HTMLElement, option: HTMLElement) {
+    const optionTop = option.offsetTop;
+    const optionBottom = optionTop + option.offsetHeight;
+    if (optionTop < listbox.scrollTop) {
+      listbox.scrollTop = optionTop;
+    } else if (optionBottom > listbox.scrollTop + listbox.clientHeight) {
+      listbox.scrollTop = optionBottom - listbox.clientHeight;
+    }
+  }
 </script>
+
+{#snippet suggestionOptions()}
+  {#each suggestions as suggestion, index (suggestion.id)}
+    {@const Icon = suggestionIcons[suggestion.kind]}
+    {#if index === 0 || suggestions[index - 1].group !== suggestion.group}
+      <div
+        class="font-space text-text-brand-muted px-3 pt-2 pb-1 text-[10px] font-bold tracking-[1.5px] uppercase first:pt-0"
+      >
+        {suggestion.group}
+      </div>
+    {/if}
+    <button
+      id={`${id}-option-${index}`}
+      data-suggestion-index={index}
+      type="button"
+      role="option"
+      aria-selected={index === activeIndex}
+      class="font-inter flex w-full cursor-pointer items-center gap-3 px-3 py-2 text-left transition-colors {index ===
+      activeIndex
+        ? 'bg-hister-indigo/10 text-text-brand'
+        : 'text-text-brand-secondary hover:bg-muted-surface hover:text-text-brand'}"
+      onpointerdown={(event) => event.preventDefault()}
+      onmouseenter={() => onactivechange(index)}
+      onclick={() => onselect(suggestion)}
+    >
+      <span class="text-hister-indigo flex size-5 shrink-0 items-center justify-center">
+        <Icon class="size-4" />
+      </span>
+      <span class="min-w-0 flex-1">
+        <span class="block truncate text-sm font-semibold">{suggestion.label}</span>
+        <span class="text-text-brand-muted block truncate text-xs">{suggestion.detail}</span>
+      </span>
+      <code
+        class="font-fira bg-muted-surface text-text-brand-muted hidden max-w-52 shrink-0 truncate px-1.5 py-0.5 text-[10px] md:block"
+        >{suggestion.insertText}</code
+      >
+    </button>
+  {/each}
+{/snippet}
 
 {#if open && (suggestions.length > 0 || loading)}
   <div
@@ -144,42 +186,7 @@
       aria-label="Search suggestions"
       class="min-h-0 flex-1 overflow-y-auto py-2"
     >
-      {#each suggestions as suggestion, index (suggestion.id)}
-        {@const Icon = suggestionIcons[suggestion.kind]}
-        {#if index === 0 || suggestions[index - 1].group !== suggestion.group}
-          <div
-            class="font-space text-text-brand-muted px-3 pt-2 pb-1 text-[10px] font-bold tracking-[1.5px] uppercase first:pt-0"
-          >
-            {suggestion.group}
-          </div>
-        {/if}
-        <button
-          id={`${id}-option-${index}`}
-          data-suggestion-index={index}
-          type="button"
-          role="option"
-          aria-selected={index === activeIndex}
-          class="font-inter flex w-full cursor-pointer items-center gap-3 px-3 py-2 text-left transition-colors {index ===
-          activeIndex
-            ? 'bg-hister-indigo/10 text-text-brand'
-            : 'text-text-brand-secondary hover:bg-muted-surface hover:text-text-brand'}"
-          onpointerdown={(event) => event.preventDefault()}
-          onmouseenter={() => onactivechange(index)}
-          onclick={() => onselect(suggestion)}
-        >
-          <span class="text-hister-indigo flex size-5 shrink-0 items-center justify-center">
-            <Icon class="size-4" />
-          </span>
-          <span class="min-w-0 flex-1">
-            <span class="block truncate text-sm font-semibold">{suggestion.label}</span>
-            <span class="text-text-brand-muted block truncate text-xs">{suggestion.detail}</span>
-          </span>
-          <code
-            class="font-fira bg-muted-surface text-text-brand-muted hidden max-w-52 shrink-0 truncate px-1.5 py-0.5 text-[10px] md:block"
-            >{suggestion.insertText}</code
-          >
-        </button>
-      {/each}
+      {@render suggestionOptions()}
       {#if loading && suggestions.length === 0}
         <div class="font-inter text-text-brand-muted flex items-center gap-2 px-3 py-3 text-sm">
           <span class="bg-hister-indigo size-2 animate-pulse"></span>

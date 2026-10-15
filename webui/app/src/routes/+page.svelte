@@ -1817,53 +1817,1098 @@
   }
 </script>
 
+{#snippet keyboardHelp()}
+  <Dialog.Root bind:open={$showHelp}>
+    <Dialog.Content
+      showCloseButton={false}
+      class="border-border-brand bg-card-surface max-w-md gap-0 overflow-hidden rounded-none border-[3px] p-0 shadow-[6px_6px_0px_var(--hister-indigo)]"
+    >
+      <Dialog.Header class="bg-hister-indigo flex-row items-center justify-between gap-2 px-5 py-4">
+        <Dialog.Title class="flex items-center gap-2">
+          <Keyboard class="text-primary-foreground size-5" />
+          <span class="font-outfit text-primary-foreground text-lg font-extrabold"
+            >Keyboard Shortcuts</span
+          >
+        </Dialog.Title>
+        <Dialog.Close class="text-primary-foreground/70 hover:text-primary-foreground p-0.5">
+          <X class="size-5" />
+        </Dialog.Close>
+      </Dialog.Header>
+      <Card.Content class="space-y-0 p-4">
+        {#each Object.entries(config.hotkeys).filter(([, action]) => config.canWrite || action !== 'delete_result') as [key, action]}
+          <div
+            class="border-border-brand-muted flex items-center justify-between border-b-[1px] py-2.5"
+          >
+            <span class="font-inter text-text-brand-secondary"
+              >{hotkeyDescriptions[action] || action}</span
+            >
+            <Kbd
+              class="bg-muted-surface border-border-brand-muted font-fira text-text-brand h-auto rounded-none border-[2px] px-2.5 py-0.5 text-xs font-semibold"
+              >{key}</Kbd
+            >
+          </div>
+        {/each}
+      </Card.Content>
+      <Card.Footer class="bg-muted-surface border-border-brand-muted border-t-[2px] px-5 py-3">
+        <p class="font-inter text-text-brand-muted text-xs">
+          Press <Kbd
+            class="bg-card-surface border-border-brand-muted font-fira h-auto rounded-none border px-1.5 py-0.5 text-[10px]"
+            >?</Kbd
+          > to toggle this dialog
+        </p>
+      </Card.Footer>
+    </Dialog.Content>
+  </Dialog.Root>
+{/snippet}
+
+{#snippet resultScore(r: DisplayResult)}
+  {#if !r.isPinned && r.finalScore && config.semanticEnabled && semanticOn}
+    <Tooltip.Provider delayDuration={0}>
+      <Tooltip.Root>
+        <Tooltip.Trigger>
+          <Badge
+            variant="secondary"
+            class="bg-hister-indigo/10 text-hister-indigo shrink-0 border-0 px-1.5 py-0 align-middle font-mono text-[10px]"
+            >{r.finalScore?.toFixed(2)}</Badge
+          >
+        </Tooltip.Trigger>
+        <Tooltip.Portal>
+          <Tooltip.Content>
+            Result score: {r.finalScore?.toFixed(2)}
+          </Tooltip.Content>
+        </Tooltip.Portal>
+      </Tooltip.Root>
+    </Tooltip.Provider>
+  {/if}
+{/snippet}
+
+{#snippet resultMetadata(
+  r: DisplayResult,
+  i: number,
+  state: ReturnType<typeof getResultState>,
+  resultDate: number | undefined,
+)}
+  <div class="result-meta flex max-w-full min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
+    <div class="result-url-line flex max-w-full min-w-0 shrink items-center gap-1.5">
+      {#if r.add_count && r.add_count > 1}
+        <span
+          class="border-border-brand-muted text-text-brand-muted inline-flex h-5 min-w-5 shrink-0 items-center justify-center rounded-none border-[2px] px-1.5 text-[11px] leading-none font-semibold"
+          title="index count"
+        >
+          {r.add_count}
+        </span>
+      {/if}
+      <span
+        class="result-url-text min-w-0 overflow-hidden text-xs text-ellipsis whitespace-nowrap md:text-sm"
+        title={r.url}
+      >
+        {#if r.domain}<span class="result-domain font-inter font-semibold">{r.domain}</span
+          >{/if}<span class="result-path font-fira text-text-brand-muted"
+          >{displayResultPath(r.url, r.domain)}</span
+        >
+      </span>
+    </div>
+    <div class="result-secondary-meta flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
+      <button
+        class="text-text-brand-muted hover:text-text-brand shrink-0 cursor-pointer"
+        title="Copy URL"
+        onclick={async () => {
+          await navigator.clipboard.writeText(r.url);
+          copiedUrl = r.url;
+          setTimeout(() => {
+            copiedUrl = null;
+          }, 1500);
+        }}
+      >
+        {#if copiedUrl === r.url}
+          <Check class="text-hister-teal size-3" />
+        {:else}
+          <Copy class="size-3" />
+        {/if}
+      </button>
+      {#if resultDate}
+        <time
+          class="font-inter text-text-brand-muted text-xs whitespace-nowrap md:text-sm"
+          datetime={new Date(resultDate * 1000).toISOString()}
+          title={formatTimestamp(resultDate)}
+        >
+          {r.updated ? 'Updated' : 'Added'}
+          {formatRelativeTime(resultDate)}
+        </time>
+      {/if}
+      {#if r.isPinned}
+        <Badge
+          variant="secondary"
+          class="bg-hister-teal/10 text-hister-teal h-4 border-0 px-1.5 py-0">pinned</Badge
+        >
+      {:else if r.isHistoryResult}
+        <Badge
+          variant="secondary"
+          class="bg-hister-amber/10 text-hister-amber h-4 border-0 px-1.5 py-0"
+          title="Prioritized because you opened it for this query. Use the result menu to forget it for this query."
+          >prioritized</Badge
+        >
+      {/if}
+      {#if state.displayLabel}
+        <Badge
+          variant="secondary"
+          class="result-label bg-hister-teal/20 min-h-4 max-w-full border-0 px-1.5 py-0"
+          title={state.displayLabel}
+        >
+          <Tag class="mr-0.5 size-2.5 shrink-0" />{state.displayLabel}
+        </Badge>
+      {/if}
+      {#if !disablePreviews}
+        <Button
+          data-readable
+          variant="link"
+          size="sm"
+          href={buildPreviewUrl(r.url, r.title || '*title*', undefined, r.id)}
+          data-document-id={r.id || ''}
+          class="text-text-brand-muted hover:text-hister-indigo h-auto shrink-0 cursor-pointer gap-0.5 p-0 text-xs font-medium md:text-sm"
+          onclick={(e) => {
+            highlightIdx = i;
+            openReadable(e, r.url, r.title || '*title*', r.id || '');
+          }}
+        >
+          <Eye class="size-3" /><span>Preview</span>
+        </Button>
+      {/if}
+      {@render resultScore(r)}
+    </div>
+  </div>
+{/snippet}
+
+{#snippet homeStats()}
+  {#if !statsLoaded}
+    {#each Array(!config.public || config.canWrite ? 3 : 1) as _}
+      <div class="home-stat-pill" aria-hidden="true">
+        <span class="bg-muted-surface size-4"></span>
+        <span class="bg-muted-surface h-5 w-10"></span>
+        <span class="bg-muted-surface h-3 w-12"></span>
+      </div>
+    {/each}
+  {:else if statsAvailable}
+    {@render homeStatChip(
+      `${resolve('/')}?q=*`,
+      'text-hister-indigo',
+      'Browse all indexed pages',
+      History,
+      displayHistoryCount,
+      'pages',
+      '*',
+    )}
+    {#if fileCount > 0}
+      {@render homeStatChip(
+        `${resolve('/')}?q=type:file`,
+        'text-hister-amber',
+        'Browse all indexed files',
+        FileText,
+        displayFileCount,
+        'files',
+        'type:file',
+      )}
+    {/if}
+    {#if !config.public || config.canWrite}
+      {@render homeStatChip(
+        `${resolve('/rules')}#indexing-rules`,
+        'text-hister-teal',
+        'Open indexing rules',
+        Shield,
+        displayRulesCount,
+        'rules',
+        null,
+      )}
+      {@render homeStatChip(
+        `${resolve('/rules')}#search-aliases`,
+        'text-hister-coral',
+        'Open search aliases',
+        Link2,
+        displayAliasesCount,
+        'aliases',
+        null,
+      )}
+    {/if}
+  {:else}
+    <p class="font-inter text-text-brand-muted text-sm" role="status">Statistics unavailable</p>
+  {/if}
+{/snippet}
+
+{#snippet resultCards()}
+  {#each displayResults as r, i}
+    {@const color = r.isPinned ? 'hister-teal' : r.isHistoryResult ? 'hister-amber' : 'hister-cyan'}
+    {@const state = getResultState(r.url, r.label)}
+    {@const resultDate = r.updated || r.added}
+    <SearchResultCard
+      url={r.url}
+      href={fileResultUrl(r.url, r.id, r.title || '*title*')}
+      title={r.title || '*title*'}
+      htmlSnippet={r.text}
+      active={i === highlightIdx}
+      color={`var(--${color})`}
+      class={`[&_.result-snippet]:line-clamp-none ${i !== 0 ? 'mt-2.5' : ''}`}
+      target={config.openResultsOnNewTab ? '_blank' : undefined}
+      onclick={() => {
+        debouncedURLUpdate.flush();
+        sendHistoryBeacon(r.url, r.title || '*title*', query);
+      }}
+      onauxclick={(event) => {
+        if (event.button === 1) {
+          debouncedURLUpdate.flush();
+          sendHistoryBeacon(r.url, r.title || '*title*', query);
+        }
+      }}
+    >
+      {#snippet leading()}
+        <ResultFavicon
+          favicon={r.favicon}
+          faviconKey={r.favicon_key}
+          pinned={r.isPinned}
+          class="mt-0.5"
+        />
+      {/snippet}
+      {#snippet actions()}
+        <ResultActionsMenu
+          url={r.url}
+          title={r.title || '*title*'}
+          domain={r.domain}
+          resultState={state}
+          {query}
+          pinned={r.isPinned}
+          historyResult={r.isHistoryResult}
+          canWrite={config.canWrite}
+          onForget={() => sendQuery(query)}
+          onDelete={r.isPinned || !config.canWrite ? undefined : () => deleteResult(r.url)}
+          {removeResult}
+          {removeResultsByDomain}
+        />
+      {/snippet}
+      {#snippet metadata()}
+        {@render resultMetadata(r, i, state, resultDate)}
+      {/snippet}
+    </SearchResultCard>
+  {/each}
+{/snippet}
+
+{#snippet dateFilters()}
+  {#if dateFacetDefinition && currentFacets?.date_histogram?.some((b) => b.count > 0)}
+    {@const DateIcon = facetIcons[dateFacetDefinition.icon ?? ''] ?? Filter}
+    {#if visibleTermFacets.length > 0}
+      <Separator class="bg-border-brand-muted" />
+    {/if}
+    <div class="space-y-1.5">
+      <p class="font-inter text-text-brand-muted flex items-center gap-1.5 text-xs font-semibold">
+        <DateIcon class="size-3" />
+        {dateFacetDefinition.label}
+      </p>
+      <div class="flex flex-col gap-1">
+        {#each currentFacets.date_histogram as { name, count } (name)}
+          {#if count > 0}
+            <button
+              class="font-inter flex cursor-pointer items-center justify-between rounded-none border-[2px] px-2 py-1 text-xs transition-colors {activeDateBucket ===
+              name
+                ? 'border-hister-indigo bg-hister-indigo text-background'
+                : 'border-border-brand-muted text-text-brand-secondary hover:border-hister-indigo hover:text-hister-indigo'}"
+              onclick={() => toggleDateBucket(name)}
+            >
+              <span
+                >{dateFacetValues.find((value) => value.facetBucket === name)?.label ?? name}</span
+              >
+              <span class="opacity-60">{count}</span>
+            </button>
+          {/if}
+        {/each}
+      </div>
+      {@render customDateInputs()}
+    </div>
+  {:else if dateFacetDefinition}
+    {@const DateIcon = facetIcons[dateFacetDefinition.icon ?? ''] ?? Filter}
+    <div class="space-y-1.5">
+      <p class="font-inter text-text-brand-muted flex items-center gap-1.5 text-xs font-semibold">
+        <DateIcon class="size-3" />
+        {dateFacetDefinition.label}
+      </p>
+      {@render customDateInputs()}
+    </div>
+  {/if}
+{/snippet}
+
+{#snippet customDateInputs()}
+  <details class="group/custom w-full">
+    <summary
+      class="font-inter text-text-brand-muted hover:text-hister-indigo cursor-pointer list-none text-xs underline-offset-2 hover:underline"
+      >Custom</summary
+    >
+    <div class="mt-1.5 grid grid-cols-[auto_1fr] items-center gap-x-1.5 gap-y-2">
+      <span class="font-inter text-text-brand-secondary text-xs">From:</span>
+      <Input
+        type="date"
+        value={dateFrom}
+        oninput={(event) => updateCustomDateFilter('from', event.currentTarget.value)}
+        class="border-border-brand-muted bg-card-surface text-text-brand font-fira focus-visible:border-hister-indigo h-7 w-auto min-w-0 border-[2px] px-2 text-xs shadow-none focus-visible:ring-0"
+      />
+      <span class="font-inter text-text-brand-secondary text-xs">To:</span>
+      <Input
+        type="date"
+        value={dateTo}
+        oninput={(event) => updateCustomDateFilter('to', event.currentTarget.value)}
+        class="border-border-brand-muted bg-card-surface text-text-brand font-fira focus-visible:border-hister-indigo h-7 w-auto min-w-0 border-[2px] px-2 text-xs shadow-none focus-visible:ring-0"
+      />
+    </div>
+  </details>
+{/snippet}
+
+{#snippet facetSection(
+  facet: SearchFacetDefinition,
+  activeFilters: Set<string>,
+  showSeparator: boolean,
+)}
+  {@const Icon = facetIcons[facet.icon ?? ''] ?? Filter}
+  {#if showSeparator}
+    <Separator class="bg-border-brand-muted" />
+  {/if}
+  <div class="space-y-1.5">
+    <p class="font-inter text-text-brand-muted flex items-center gap-1.5 text-xs font-semibold">
+      <Icon class="size-3" />
+      {facet.label}
+    </p>
+    <div class="flex flex-wrap gap-1">
+      {#each facetTerms(facet) as { term, count, label } (term)}
+        <button
+          class="font-inter cursor-pointer rounded-none border-[2px] px-2 py-0.5 text-xs transition-colors {activeFilters.has(
+            term,
+          )
+            ? 'border-hister-indigo bg-hister-indigo text-background'
+            : 'border-border-brand-muted text-text-brand-secondary hover:border-hister-indigo hover:text-hister-indigo'}"
+          onclick={() => toggleQueryToken(facet.queryField, term)}
+          aria-pressed={activeFilters.has(term)}
+        >
+          {label ?? term}
+          <span class="opacity-60">({count})</span>
+        </button>
+      {/each}
+    </div>
+    {#if currentFacets?.terms?.[facet.name]?.other}
+      <button
+        class="font-inter text-text-brand-muted hover:text-hister-indigo mt-1 cursor-pointer text-xs underline-offset-2 hover:underline"
+        onclick={() => loadMoreFacet(facet.name)}>Load more</button
+      >
+    {/if}
+  </div>
+{/snippet}
+
+{#snippet searchSort()}
+  <DropdownMenu.Root bind:open={sortDropdownOpen}>
+    <DropdownMenu.Trigger>
+      {#snippet child({ props })}
+        <Button
+          {...props}
+          variant="ghost"
+          size="sm"
+          class="font-inter gap-1 text-xs {sortDropdownOpen || currentSort
+            ? 'text-hister-indigo'
+            : 'text-text-brand-muted hover:text-hister-indigo'}"
+        >
+          <ArrowUpDown class="size-3" />
+          Sort: {currentSortLabel}
+          <ChevronDown
+            class="size-3 transition-transform duration-200 {sortDropdownOpen ? 'rotate-180' : ''}"
+          />
+        </Button>
+      {/snippet}
+    </DropdownMenu.Trigger>
+    <DropdownMenu.Content
+      class="border-brutal-border bg-card-surface w-52 rounded-none border-[3px] p-3 shadow-[4px_4px_0_var(--brutal-shadow)]"
+    >
+      <div class="space-y-1.5">
+        <p class="font-inter text-text-brand-muted flex items-center gap-1.5 text-xs font-semibold">
+          <ArrowUpDown class="size-3" />
+          Sort by
+        </p>
+        <div class="flex flex-col gap-1">
+          {#each sortOptions as { value, label } (value)}
+            <button
+              class="font-inter flex cursor-pointer items-center gap-2 rounded-none border-[2px] px-2 py-1 text-xs transition-colors {currentSort ===
+              value
+                ? 'border-hister-indigo bg-hister-indigo text-background'
+                : 'border-border-brand-muted text-text-brand-secondary hover:border-hister-indigo hover:text-hister-indigo'}"
+              onclick={() => {
+                setSort(value);
+                sortDropdownOpen = false;
+              }}
+            >
+              {label}
+              {#if currentSort === value}
+                <Check class="ml-auto size-3" />
+              {/if}
+            </button>
+          {/each}
+        </div>
+      </div>
+    </DropdownMenu.Content>
+  </DropdownMenu.Root>
+{/snippet}
+
+{#snippet searchActions()}
+  {#if hasResults || config.semanticEnabled}
+    <DropdownMenu.Root bind:open={actionsDropdownOpen}>
+      <DropdownMenu.Trigger>
+        {#snippet child({ props })}
+          <Button
+            {...props}
+            variant="ghost"
+            size="sm"
+            class="font-inter gap-1 text-xs {actionsDropdownOpen
+              ? 'text-hister-indigo'
+              : 'text-text-brand-muted hover:text-hister-indigo'}"
+          >
+            <SlidersHorizontal class="size-3" />
+            Actions
+            <ChevronDown
+              class="size-3 transition-transform duration-200 {actionsDropdownOpen
+                ? 'rotate-180'
+                : ''}"
+            />
+          </Button>
+        {/snippet}
+      </DropdownMenu.Trigger>
+      <DropdownMenu.Content
+        class="border-brutal-border bg-card-surface w-80 rounded-none border-[3px] p-3 shadow-[4px_4px_0_var(--brutal-shadow)]"
+      >
+        <div class="space-y-3">
+          {#if config.semanticEnabled}
+            <div class="space-y-2">
+              <p
+                class="font-inter text-text-brand-muted flex items-center gap-1.5 text-xs font-semibold"
+              >
+                <Sparkles class="size-3" />
+                Semantic Search
+              </p>
+              {#if !semanticOn}
+                <Button
+                  variant="outline"
+                  size="sm"
+                  class="font-inter text-hister-indigo border-hister-indigo border-2 text-xs"
+                  onclick={() => (semanticOn = true)}
+                >
+                  Enable semantic search
+                </Button>
+              {/if}
+              <label class="font-inter text-text-brand-secondary flex flex-col gap-1 text-xs">
+                <span
+                  >Similarity threshold: <span class="font-fira text-hister-indigo"
+                    >{similarityThreshold.toFixed(2)}</span
+                  ></span
+                >
+                <input
+                  type="range"
+                  min="0"
+                  max="1"
+                  step="0.002"
+                  bind:value={similarityThreshold}
+                  disabled={!semanticOn}
+                  onkeydown={(event) => {
+                    if (event.key !== 'Escape') event.stopPropagation();
+                  }}
+                  class="accent-hister-indigo w-full cursor-pointer disabled:cursor-not-allowed disabled:opacity-50"
+                />
+              </label>
+              <label class="font-inter text-text-brand-secondary flex flex-col gap-1 text-xs">
+                <span
+                  >Semantic weight: <span class="font-fira text-hister-indigo"
+                    >{semanticWeight.toFixed(2)}</span
+                  ></span
+                >
+                <input
+                  type="range"
+                  min="0"
+                  max="1"
+                  step="0.05"
+                  bind:value={semanticWeight}
+                  disabled={!semanticOn}
+                  onkeydown={(event) => {
+                    if (event.key !== 'Escape') event.stopPropagation();
+                  }}
+                  class="accent-hister-indigo w-full cursor-pointer disabled:cursor-not-allowed disabled:opacity-50"
+                />
+              </label>
+            </div>
+            {#if hasResults}<Separator class="bg-border-brand-muted" />{/if}
+          {/if}
+          {#if hasResults}
+            <div class="space-y-2">
+              <p
+                class="font-inter text-text-brand-muted flex items-center gap-1.5 text-xs font-semibold"
+              >
+                <Download class="size-3" />
+                Export Results
+              </p>
+              <div class="flex flex-wrap gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  class="border-hister-indigo text-hister-indigo hover:bg-hister-indigo/10 h-7 border-[2px] text-xs"
+                  onclick={() => exportJSON({ ...lastResults!, documents: accumulatedDocs })}
+                >
+                  JSON
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  class="border-hister-indigo text-hister-indigo hover:bg-hister-indigo/10 h-7 border-[2px] text-xs"
+                  onclick={() => exportCSV({ ...lastResults!, documents: accumulatedDocs }, query)}
+                >
+                  CSV
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  class="border-hister-indigo text-hister-indigo hover:bg-hister-indigo/10 h-7 border-[2px] text-xs"
+                  onclick={() => exportRSS({ ...lastResults!, documents: accumulatedDocs }, query)}
+                >
+                  RSS
+                </Button>
+              </div>
+            </div>
+            {#if config.canWrite}
+              <Separator class="bg-border-brand-muted" />
+              <div class="space-y-2">
+                <p
+                  class="font-inter text-hister-rose flex items-center gap-1.5 text-xs font-semibold"
+                >
+                  <Trash2 class="size-3" />
+                  Danger Zone
+                </p>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  class="border-hister-rose text-hister-rose hover:bg-hister-rose/10 h-7 w-full border-[2px] text-xs"
+                  onclick={() => {
+                    showDeleteAllConfirm = true;
+                  }}
+                >
+                  <Trash2 class="size-3" />
+                  Delete all matching results
+                </Button>
+              </div>
+            {/if}
+          {/if}
+        </div>
+      </DropdownMenu.Content>
+    </DropdownMenu.Root>
+  {/if}
+{/snippet}
+
+{#snippet searchFilters()}
+  {#if showFiltersButton}
+    <DropdownMenu.Root bind:open={filtersDropdownOpen}>
+      <DropdownMenu.Trigger>
+        {#snippet child({ props })}
+          <Button
+            {...props}
+            variant="ghost"
+            size="sm"
+            class="font-inter gap-1 text-xs {filtersDropdownOpen
+              ? 'text-hister-indigo'
+              : 'text-text-brand-muted hover:text-hister-indigo'}"
+          >
+            <Filter class="size-3" />
+            Filters
+            {#if activeFilterCount > 0}
+              <span
+                class="bg-hister-indigo text-background flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[10px] leading-none font-bold"
+                >{activeFilterCount}</span
+              >
+            {/if}
+            <ChevronDown
+              class="size-3 transition-transform duration-200 {filtersDropdownOpen
+                ? 'rotate-180'
+                : ''}"
+            />
+          </Button>
+        {/snippet}
+      </DropdownMenu.Trigger>
+      <DropdownMenu.Content
+        class="border-brutal-border bg-card-surface w-80 rounded-none border-[3px] p-3 shadow-[4px_4px_0_var(--brutal-shadow)]"
+      >
+        <div class="space-y-3">
+          {#if facetsLoading}
+            <p class="font-inter text-text-brand-muted text-xs">Loading filters…</p>
+          {:else}
+            {#each visibleTermFacets as facet, index (facet.name)}
+              {@render facetSection(facet, activeFiltersForFacet(facet.name), index > 0)}
+            {/each}
+
+            {@render dateFilters()}
+            {#if !termFacetDefinitions.some((facet) => currentFacets?.terms?.[facet.name]?.terms?.length) && !currentFacets?.date_histogram?.some((bucket) => bucket.count > 0)}
+              <p class="font-inter text-text-brand-muted text-xs">
+                No matching filter values. Remove an active filter to broaden your search.
+              </p>
+            {/if}
+          {/if}
+        </div>
+      </DropdownMenu.Content>
+    </DropdownMenu.Root>
+  {/if}
+{/snippet}
+
+{#snippet resultsToolbar()}
+  <div class="results-toolbar flex min-w-0 flex-wrap items-center justify-between gap-2 px-1 py-2">
+    <span class="font-outfit text-text-brand text-sm font-bold md:text-base">
+      {#if isSearchLoading}
+        Searching…
+      {:else if !searchPending && lastResults?.error}
+        Invalid query
+      {:else if !searchPending && lastResults}
+        {lastResults?.total && lastResults.total > totalResults ? lastResults.total : totalResults} results{#if lastResults?.search_duration}{' '}<span
+            class="text-xs font-normal md:text-sm"
+          >
+            ({lastResults.search_duration})</span
+          >{/if}
+      {/if}
+    </span>
+    <div class="flex min-w-0 flex-wrap items-center justify-end gap-2 overflow-hidden">
+      {#if hasResults && isDesktop && !preview.panelOpen && !disablePreviews}
+        <Button
+          variant="ghost"
+          size="sm"
+          class="font-inter text-text-brand-muted hover:text-hister-indigo gap-1 text-xs"
+          onclick={() => {
+            preview.panelOpen = true;
+            localStorage.setItem('hister-panel-open', 'true');
+          }}
+        >
+          <Eye class="size-3" />
+          Preview
+        </Button>
+      {/if}
+      {@render searchFilters()}
+      {@render searchActions()}
+      {@render searchSort()}
+      <Button
+        variant="ghost"
+        size="sm"
+        class="font-inter text-text-brand-muted hover:text-hister-coral gap-1 text-xs no-underline"
+        href={getSearchUrl(config.searchUrl, query)}
+      >
+        <ExternalLink class="size-3" />
+        Web
+      </Button>
+    </div>
+  </div>
+{/snippet}
+
+{#snippet searchTip()}
+  {#each currentTip as part}
+    {#if part.type === 'text'}
+      <span>{part.value}</span>
+    {:else if part.type === 'kbd'}
+      <Kbd
+        bind:ref={kbdEl}
+        class="bg-muted-surface border-border-brand-muted font-fira text-text-brand-secondary rounded-none border-[2px] px-2 py-0.5 text-xs font-semibold"
+        >{part.value}</Kbd
+      >
+    {:else if part.type === 'hotkey'}
+      {#if hotkeyByAction[part.action]}
+        <Kbd
+          bind:ref={kbdEl}
+          class="bg-muted-surface border-border-brand-muted font-fira text-text-brand-secondary rounded-none border-[2px] px-2 py-0.5 text-xs font-semibold"
+          >{hotkeyByAction[part.action]}</Kbd
+        >
+      {/if}
+    {:else if part.type === 'code'}
+      <code
+        class="bg-muted-surface border-border-brand-muted font-fira text-text-brand-secondary rounded-none border-[2px] px-2 py-0.5 font-semibold"
+        >{part.value}</code
+      >
+    {:else if part.type === 'link'}
+      <a href={part.href} class="text-hister-indigo hover:underline">{part.value}</a>
+    {/if}
+  {/each}
+{/snippet}
+
+{#snippet recentSearchesSection()}
+  {#if recentSearches.length > 0}
+    <section
+      class="home-recents flex w-full max-w-[900px] shrink-0 flex-col gap-2"
+      aria-labelledby="recent-searches-title"
+    >
+      <div class="flex flex-wrap items-center justify-between gap-2">
+        <h2
+          id="recent-searches-title"
+          class="font-inter text-text-brand-secondary flex items-center gap-2 text-sm font-semibold"
+        >
+          <History class="text-hister-indigo size-4" />
+          Recent searches
+        </h2>
+        <Button
+          variant="ghost"
+          size="sm"
+          class="font-inter text-text-brand-muted hover:text-hister-rose h-auto cursor-pointer px-2 py-1 text-xs"
+          onclick={hideAllRecentSearches}
+          title="Hide all recent searches on this browser"
+        >
+          Hide all on this browser
+        </Button>
+      </div>
+      <p class="font-inter text-text-brand-muted text-xs">
+        Hiding searches only affects this browser. Your history remains on the server.
+      </p>
+      <div class="flex flex-wrap items-center justify-center gap-2">
+        {#each recentSearches.slice(0, 8) as search, i}
+          {@const chip = chipColors[i % chipColors.length]}
+          <div
+            class="flex max-w-full min-w-0 items-stretch border-[2px] shadow-[2px_2px_0_var(--brutal-shadow)] {chip.border} {chip.bg}"
+          >
+            <button
+              type="button"
+              class="font-inter max-w-80 min-w-0 cursor-pointer truncate px-3 py-1.5 text-left text-sm font-semibold transition-colors hover:bg-black/5 dark:hover:bg-white/5 {chip.text}"
+              title={search}
+              onclick={() => clickChip(search)}
+            >
+              {search}
+            </button>
+            <button
+              type="button"
+              class="hover:bg-hister-rose/10 hover:text-hister-rose flex w-8 shrink-0 cursor-pointer items-center justify-center border-l transition-colors {chip.border} {chip.text}"
+              aria-label="Hide recent search on this browser: {search}"
+              title="Hide on this browser"
+              onclick={() => hideRecentSearch(search)}
+            >
+              <X class="size-3.5" />
+            </button>
+          </div>
+        {/each}
+      </div>
+    </section>
+  {/if}
+{/snippet}
+
+{#snippet indexingOnboarding()}
+  {#if statsLoaded && statsAvailable && historyCount === 0 && config.canWrite}
+    <section
+      class="home-empty-index border-brutal-border bg-card-surface w-full max-w-[900px] shrink-0 border-[3px] shadow-[4px_4px_0_var(--brutal-shadow)]"
+      aria-labelledby="empty-index-title"
+    >
+      <div
+        class="border-brutal-border flex flex-col gap-2 border-b-[3px] px-4 py-3 sm:flex-row sm:items-center sm:justify-between md:px-5"
+      >
+        <div>
+          <h2 id="empty-index-title" class="font-outfit text-text-brand text-lg font-extrabold">
+            Start building your index
+          </h2>
+          <p class="font-inter text-text-brand-secondary text-sm">
+            Choose how to add your first searchable document.
+          </p>
+        </div>
+        <a
+          href="https://hister.org/docs/quickstart"
+          target="_blank"
+          rel="noopener noreferrer"
+          class="font-inter text-hister-indigo flex shrink-0 items-center gap-1 text-sm font-semibold hover:underline"
+        >
+          <HelpCircle class="size-4" />
+          Quickstart
+          <ExternalLink class="size-3" />
+        </a>
+      </div>
+
+      <div class="grid gap-3 p-4 md:grid-cols-3 md:p-5">
+        <a
+          href="https://hister.org/docs/browser-extension"
+          target="_blank"
+          rel="noopener noreferrer"
+          class="empty-index-action border-hister-indigo bg-hister-indigo/5 hover:bg-hister-indigo/10"
+        >
+          <Globe class="text-hister-indigo size-5 shrink-0" />
+          <span class="min-w-0">
+            <span class="font-outfit text-text-brand block font-bold">Install the extension</span>
+            <span class="font-inter text-text-brand-muted block text-xs"
+              >Capture pages as you browse</span
+            >
+          </span>
+          <ExternalLink class="text-text-brand-muted ml-auto size-3.5 shrink-0" />
+        </a>
+
+        <a
+          href={resolve('/add')}
+          class="empty-index-action border-hister-coral bg-hister-coral/5 hover:bg-hister-coral/10"
+        >
+          <Link2 class="text-hister-coral size-5 shrink-0" />
+          <span class="min-w-0">
+            <span class="font-outfit text-text-brand block font-bold">Add manually</span>
+            <span class="font-inter text-text-brand-muted block text-xs"
+              >Save a URL with optional title and content</span
+            >
+          </span>
+        </a>
+
+        <a
+          href="https://hister.org/docs/import#importing-browser-history"
+          target="_blank"
+          rel="noopener noreferrer"
+          class="empty-index-action border-hister-teal bg-hister-teal/5 hover:bg-hister-teal/10"
+        >
+          <History class="text-hister-teal size-5 shrink-0" />
+          <span class="min-w-0">
+            <span class="font-outfit text-text-brand block font-bold">Import browser history</span>
+            <span class="font-inter text-text-brand-muted block text-xs"
+              >Bring your previously visited pages</span
+            >
+          </span>
+          <ExternalLink class="text-text-brand-muted ml-auto size-3.5 shrink-0" />
+        </a>
+      </div>
+    </section>
+  {/if}
+{/snippet}
+
+{#snippet searchResults()}
+  <ScrollArea class="results-scroll min-h-0 min-w-0 flex-1 overflow-hidden">
+    <div
+      class="results-list w-full max-w-[70em] space-y-3 overflow-x-hidden px-3 py-2 md:px-6"
+      class:results-list-panel={showPreviewPanel}
+      aria-busy={isSearchLoading}
+    >
+      {#if deleteError}
+        <div
+          class="border-hister-rose bg-hister-rose/10 text-hister-rose flex items-center justify-between gap-2 border-[2px] px-3 py-2 text-sm"
+        >
+          <span class="font-inter">{deleteError}</span>
+          <button
+            class="shrink-0 cursor-pointer opacity-60 hover:opacity-100"
+            onclick={() => (deleteError = null)}
+            aria-label="Dismiss">✕</button
+          >
+        </div>
+      {/if}
+      {@render resultsToolbar()}
+
+      {#if isSearchLoading}
+        <SearchLoading />
+      {:else if !searchPending && lastResults?.error}
+        <section class="px-4 py-8 md:px-12">
+          <p role="alert" class="font-inter text-hister-rose mb-4 break-words">
+            {lastResults.error}
+          </p>
+          {#if lastResults.query && lastResults.query.text !== query}
+            <p class="font-inter text-text-brand-muted mb-4 text-sm break-words">
+              Expanded query: <code class="font-fira">{lastResults.query.text}</code>
+            </p>
+          {/if}
+          <a href="help" class="font-inter text-hister-indigo text-sm underline">
+            Query syntax help
+          </a>
+        </section>
+      {:else if hasResults}
+        {#if lastResults?.query && lastResults.query.text.length > query.length}
+          <p class="font-inter text-text-brand-muted text-sm">
+            Expanded query: <code
+              class="font-fira bg-muted-surface text-primary px-1.5 py-0.5 text-xs"
+              >{lastResults.query.text}</code
+            >
+          </p>
+        {/if}
+
+        {#if displayResults.length > 0}
+          {@render resultCards()}
+        {/if}
+      {:else if !searchPending && query && lastResults}
+        <section class="px-4 py-12 text-center md:px-12">
+          <p class="font-inter text-text-brand-secondary mb-4">
+            No results found for "<span class="font-semibold">{query}</span>"
+          </p>
+          <p class="font-inter text-text-brand-muted mb-4 text-sm">
+            {activeFilterCount > 0
+              ? 'Try removing filters or changing your search terms.'
+              : 'Try different search terms or search the web.'}
+          </p>
+          <div class="flex flex-wrap items-center justify-center gap-3">
+            {#if activeFilterCount > 0}
+              <Button
+                variant="outline"
+                class="border-hister-indigo text-hister-indigo font-inter border-2"
+                onclick={clearFilters}
+                onkeydown={(event) => {
+                  if (event.key !== 'Escape') event.stopPropagation();
+                }}
+              >
+                Clear filters
+              </Button>
+            {/if}
+            <Button
+              variant="outline"
+              class="border-hister-coral text-hister-coral hover:bg-hister-coral/10 font-inter border-[3px] font-semibold shadow-[3px_3px_0px_var(--hister-coral)]"
+              href={getSearchUrl(config.searchUrl, query)}
+            >
+              <ExternalLink class="size-4" />
+              Search the web
+            </Button>
+          </div>
+        </section>
+      {/if}
+      {#if !searchPending && (hasMore || loadingMoreForQuery)}
+        <div bind:this={sentinelEl} class="flex items-center justify-center py-4">
+          <span class="font-inter text-text-brand-muted text-sm">Loading more…</span>
+        </div>
+      {:else if hasResults}
+        <div bind:this={sentinelEl}></div>
+      {/if}
+    </div>
+  </ScrollArea>
+{/snippet}
+
+{#snippet searchHeader()}
+  <search aria-label="History" class="relative z-40 shrink-0">
+    <div
+      class="search bg-page-bg border-brutal-border flex h-10 items-center gap-3 border-b-[3px] px-4 md:h-14"
+    >
+      <Search class="text-text-brand-muted size-4 md:size-6" />
+      <Input
+        bind:ref={inputEl}
+        bind:value={query}
+        type="search"
+        role="combobox"
+        placeholder="Search..."
+        aria-label="Search your history"
+        aria-autocomplete="list"
+        aria-controls={querySuggestionsVisible ? querySuggestionListId : undefined}
+        aria-expanded={querySuggestionsVisible}
+        aria-haspopup="listbox"
+        aria-activedescendant={activeQuerySuggestionId}
+        oninput={handleQueryInput}
+        oncompositionstart={handleCompositionStart}
+        oncompositionend={handleCompositionEnd}
+        onfocus={handleQueryFocus}
+        onselect={handleQuerySelection}
+        onclick={handleQuerySelection}
+        onkeydown={handleQueryInputKeydown}
+        class="font-inter text-text-brand placeholder:text-text-brand-muted h-full flex-1 border-0 bg-transparent p-0 text-lg font-medium shadow-none focus-visible:ring-0 md:text-2xl"
+      />
+      {#if config.semanticEnabled}
+        <Tooltip.Provider delayDuration={0}>
+          <Tooltip.Root>
+            <Tooltip.Trigger>
+              <button
+                type="button"
+                onclick={() => (semanticOn = !semanticOn)}
+                class="flex shrink-0 items-center gap-1 px-1.5 py-0.5 text-xs font-semibold transition-colors {semanticOn
+                  ? 'text-hister-indigo'
+                  : 'text-text-brand-muted hover:text-hister-indigo'}"
+                aria-pressed={semanticOn}
+                aria-label="Toggle semantic search"
+              >
+                <Sparkles class="size-3.5" />
+                <span class="hidden md:inline">Semantic</span>
+              </button>
+            </Tooltip.Trigger>
+            <Tooltip.Portal>
+              <Tooltip.Content>
+                {semanticOn ? 'Semantic search on' : 'Semantic search off'} — click to toggle
+              </Tooltip.Content>
+            </Tooltip.Portal>
+          </Tooltip.Root>
+        </Tooltip.Provider>
+      {/if}
+      <div class="flex shrink-0 items-center gap-1">
+        {#if query}
+          <button
+            type="button"
+            class="text-text-brand-muted hover:bg-muted-surface hover:text-text-brand flex h-8 w-8 items-center justify-center transition-colors md:h-9 md:w-9"
+            aria-label="Clear search"
+            title="Clear search"
+            onclick={() => {
+              query = '';
+              queryCursor = 0;
+              querySuggestionOpen = true;
+              resultsShown = false;
+              inputEl?.focus();
+            }}
+          >
+            <X class="size-4" />
+          </button>
+        {/if}
+        <Tooltip.Provider delayDuration={0}>
+          <Tooltip.Root>
+            <Tooltip.Trigger>
+              <button
+                type="button"
+                class="text-text-brand-muted hover:bg-muted-surface flex h-8 items-center gap-2 px-2 text-xs font-semibold transition-colors md:h-9 md:px-3"
+                aria-label={connectionStatus.description}
+                onclick={() => {
+                  if (connectionState === 'disconnected') retryConnection();
+                }}
+              >
+                <span class="h-2 w-2 shrink-0 {connectionStatus.dotClass}"></span>
+                <span class="hidden md:inline">{connectionStatus.label}</span>
+              </button>
+            </Tooltip.Trigger>
+            <Tooltip.Portal>
+              <Tooltip.Content>
+                {connectionStatus.description}{connectionState === 'disconnected'
+                  ? '. Click to retry.'
+                  : ''}
+              </Tooltip.Content>
+            </Tooltip.Portal>
+          </Tooltip.Root>
+        </Tooltip.Provider>
+      </div>
+    </div>
+    <QuerySuggestions
+      id={querySuggestionListId}
+      floating={false}
+      open={querySuggestionOpen}
+      suggestions={querySuggestions}
+      activeIndex={querySuggestionKeyboardActive ? querySuggestionIndex : -1}
+      loading={querySuggestionFacetsLoading}
+      onactivechange={setActiveQuerySuggestion}
+      onselect={selectQuerySuggestion}
+    />
+    {#if activeFilterCount > 0}
+      <div
+        class="border-border-brand-muted flex flex-wrap items-center gap-2 border-b px-3 py-2 md:px-6"
+        role="group"
+        aria-label="Active filters"
+      >
+        {#each activeFilterChips as chip (chip.filter.start)}
+          <Button
+            variant="outline"
+            size="sm"
+            class="border-hister-indigo/40 bg-hister-indigo/5 text-hister-indigo font-inter h-auto min-h-7 max-w-full gap-1 border-2 px-2 py-1 text-xs"
+            aria-label={`Remove ${chip.label} filter`}
+            title={`Remove ${chip.label} filter`}
+            onclick={() => removeFilters([chip.filter])}
+            onkeydown={(event) => {
+              if (event.key !== 'Escape') event.stopPropagation();
+            }}
+          >
+            <span class="min-w-0 truncate">{chip.label}</span>
+            <X class="size-3 shrink-0" />
+          </Button>
+        {/each}
+        <Button
+          variant="ghost"
+          size="sm"
+          class="font-inter text-text-brand-muted hover:text-text-brand h-7 px-2 text-xs"
+          onclick={clearFilters}
+          onkeydown={(event) => {
+            if (event.key !== 'Escape') event.stopPropagation();
+          }}
+        >
+          Clear filters
+        </Button>
+      </div>
+    {/if}
+  </search>
+{/snippet}
+
 <svelte:head>
   <title>{query ? `${query} - ${config.title} search` : config.title}</title>
 </svelte:head>
 
 <svelte:window onkeydown={handleKeydown} onpopstate={handlePopState} />
 
-<Dialog.Root bind:open={$showHelp}>
-  <Dialog.Content
-    showCloseButton={false}
-    class="border-border-brand bg-card-surface max-w-md gap-0 overflow-hidden rounded-none border-[3px] p-0 shadow-[6px_6px_0px_var(--hister-indigo)]"
-  >
-    <Dialog.Header class="bg-hister-indigo flex-row items-center justify-between gap-2 px-5 py-4">
-      <Dialog.Title class="flex items-center gap-2">
-        <Keyboard class="text-primary-foreground size-5" />
-        <span class="font-outfit text-primary-foreground text-lg font-extrabold"
-          >Keyboard Shortcuts</span
-        >
-      </Dialog.Title>
-      <Dialog.Close class="text-primary-foreground/70 hover:text-primary-foreground p-0.5">
-        <X class="size-5" />
-      </Dialog.Close>
-    </Dialog.Header>
-    <Card.Content class="space-y-0 p-4">
-      {#each Object.entries(config.hotkeys).filter(([, action]) => config.canWrite || action !== 'delete_result') as [key, action]}
-        <div
-          class="border-border-brand-muted flex items-center justify-between border-b-[1px] py-2.5"
-        >
-          <span class="font-inter text-text-brand-secondary"
-            >{hotkeyDescriptions[action] || action}</span
-          >
-          <Kbd
-            class="bg-muted-surface border-border-brand-muted font-fira text-text-brand h-auto rounded-none border-[2px] px-2.5 py-0.5 text-xs font-semibold"
-            >{key}</Kbd
-          >
-        </div>
-      {/each}
-    </Card.Content>
-    <Card.Footer class="bg-muted-surface border-border-brand-muted border-t-[2px] px-5 py-3">
-      <p class="font-inter text-text-brand-muted text-xs">
-        Press <Kbd
-          class="bg-card-surface border-border-brand-muted font-fira h-auto rounded-none border px-1.5 py-0.5 text-[10px]"
-          >?</Kbd
-        > to toggle this dialog
-      </p>
-    </Card.Footer>
-  </Dialog.Content>
-</Dialog.Root>
+{@render keyboardHelp()}
 
 <Dialog.Root bind:open={showDeleteConfirm}>
   <Dialog.Content
@@ -2025,834 +3070,12 @@
 
 {#if isSearching}
   <div class="flex min-h-0 flex-1 flex-col">
-    <search aria-label="History" class="relative z-40 shrink-0">
-      <div
-        class="search bg-page-bg border-brutal-border flex h-10 items-center gap-3 border-b-[3px] px-4 md:h-14"
-      >
-        <Search class="text-text-brand-muted size-4 md:size-6" />
-        <Input
-          bind:ref={inputEl}
-          bind:value={query}
-          type="search"
-          role="combobox"
-          placeholder="Search..."
-          aria-label="Search your history"
-          aria-autocomplete="list"
-          aria-controls={querySuggestionsVisible ? querySuggestionListId : undefined}
-          aria-expanded={querySuggestionsVisible}
-          aria-haspopup="listbox"
-          aria-activedescendant={activeQuerySuggestionId}
-          oninput={handleQueryInput}
-          oncompositionstart={handleCompositionStart}
-          oncompositionend={handleCompositionEnd}
-          onfocus={handleQueryFocus}
-          onselect={handleQuerySelection}
-          onclick={handleQuerySelection}
-          onkeydown={handleQueryInputKeydown}
-          class="font-inter text-text-brand placeholder:text-text-brand-muted h-full flex-1 border-0 bg-transparent p-0 text-lg font-medium shadow-none focus-visible:ring-0 md:text-2xl"
-        />
-        {#if config.semanticEnabled}
-          <Tooltip.Provider delayDuration={0}>
-            <Tooltip.Root>
-              <Tooltip.Trigger>
-                <button
-                  type="button"
-                  onclick={() => (semanticOn = !semanticOn)}
-                  class="flex shrink-0 items-center gap-1 px-1.5 py-0.5 text-xs font-semibold transition-colors {semanticOn
-                    ? 'text-hister-indigo'
-                    : 'text-text-brand-muted hover:text-hister-indigo'}"
-                  aria-pressed={semanticOn}
-                  aria-label="Toggle semantic search"
-                >
-                  <Sparkles class="size-3.5" />
-                  <span class="hidden md:inline">Semantic</span>
-                </button>
-              </Tooltip.Trigger>
-              <Tooltip.Portal>
-                <Tooltip.Content>
-                  {semanticOn ? 'Semantic search on' : 'Semantic search off'} — click to toggle
-                </Tooltip.Content>
-              </Tooltip.Portal>
-            </Tooltip.Root>
-          </Tooltip.Provider>
-        {/if}
-        <div class="flex shrink-0 items-center gap-1">
-          {#if query}
-            <button
-              type="button"
-              class="text-text-brand-muted hover:bg-muted-surface hover:text-text-brand flex h-8 w-8 items-center justify-center transition-colors md:h-9 md:w-9"
-              aria-label="Clear search"
-              title="Clear search"
-              onclick={() => {
-                query = '';
-                queryCursor = 0;
-                querySuggestionOpen = true;
-                resultsShown = false;
-                inputEl?.focus();
-              }}
-            >
-              <X class="size-4" />
-            </button>
-          {/if}
-          <Tooltip.Provider delayDuration={0}>
-            <Tooltip.Root>
-              <Tooltip.Trigger>
-                <button
-                  type="button"
-                  class="text-text-brand-muted hover:bg-muted-surface flex h-8 items-center gap-2 px-2 text-xs font-semibold transition-colors md:h-9 md:px-3"
-                  aria-label={connectionStatus.description}
-                  onclick={() => {
-                    if (connectionState === 'disconnected') retryConnection();
-                  }}
-                >
-                  <span class="h-2 w-2 shrink-0 {connectionStatus.dotClass}"></span>
-                  <span class="hidden md:inline">{connectionStatus.label}</span>
-                </button>
-              </Tooltip.Trigger>
-              <Tooltip.Portal>
-                <Tooltip.Content>
-                  {connectionStatus.description}{connectionState === 'disconnected'
-                    ? '. Click to retry.'
-                    : ''}
-                </Tooltip.Content>
-              </Tooltip.Portal>
-            </Tooltip.Root>
-          </Tooltip.Provider>
-        </div>
-      </div>
-      <QuerySuggestions
-        id={querySuggestionListId}
-        floating={false}
-        open={querySuggestionOpen}
-        suggestions={querySuggestions}
-        activeIndex={querySuggestionKeyboardActive ? querySuggestionIndex : -1}
-        loading={querySuggestionFacetsLoading}
-        onactivechange={setActiveQuerySuggestion}
-        onselect={selectQuerySuggestion}
-      />
-      {#if activeFilterCount > 0}
-        <div
-          class="border-border-brand-muted flex flex-wrap items-center gap-2 border-b px-3 py-2 md:px-6"
-          role="group"
-          aria-label="Active filters"
-        >
-          {#each activeFilterChips as chip (chip.filter.start)}
-            <Button
-              variant="outline"
-              size="sm"
-              class="border-hister-indigo/40 bg-hister-indigo/5 text-hister-indigo font-inter h-auto min-h-7 max-w-full gap-1 border-2 px-2 py-1 text-xs"
-              aria-label={`Remove ${chip.label} filter`}
-              title={`Remove ${chip.label} filter`}
-              onclick={() => removeFilters([chip.filter])}
-              onkeydown={(event) => {
-                if (event.key !== 'Escape') event.stopPropagation();
-              }}
-            >
-              <span class="min-w-0 truncate">{chip.label}</span>
-              <X class="size-3 shrink-0" />
-            </Button>
-          {/each}
-          <Button
-            variant="ghost"
-            size="sm"
-            class="font-inter text-text-brand-muted hover:text-text-brand h-7 px-2 text-xs"
-            onclick={clearFilters}
-            onkeydown={(event) => {
-              if (event.key !== 'Escape') event.stopPropagation();
-            }}
-          >
-            Clear filters
-          </Button>
-        </div>
-      {/if}
-    </search>
+    {@render searchHeader()}
     {@render connectionNotice('mx-3 my-3 md:mx-6')}
 
     <div class="flex min-h-0 flex-1 overflow-hidden" bind:this={splitContainerEl}>
       {#if !preview.fullscreen || !showPreviewPanel}
-        <ScrollArea class="results-scroll min-h-0 min-w-0 flex-1 overflow-hidden">
-          <div
-            class="results-list w-full max-w-[70em] space-y-3 overflow-x-hidden px-3 py-2 md:px-6"
-            class:results-list-panel={showPreviewPanel}
-            aria-busy={isSearchLoading}
-          >
-            {#if deleteError}
-              <div
-                class="border-hister-rose bg-hister-rose/10 text-hister-rose flex items-center justify-between gap-2 border-[2px] px-3 py-2 text-sm"
-              >
-                <span class="font-inter">{deleteError}</span>
-                <button
-                  class="shrink-0 cursor-pointer opacity-60 hover:opacity-100"
-                  onclick={() => (deleteError = null)}
-                  aria-label="Dismiss">✕</button
-                >
-              </div>
-            {/if}
-            <div
-              class="results-toolbar flex min-w-0 flex-wrap items-center justify-between gap-2 px-1 py-2"
-            >
-              <span class="font-outfit text-text-brand text-sm font-bold md:text-base">
-                {#if isSearchLoading}
-                  Searching…
-                {:else if !searchPending && lastResults?.error}
-                  Invalid query
-                {:else if !searchPending && lastResults}
-                  {lastResults?.total && lastResults.total > totalResults
-                    ? lastResults.total
-                    : totalResults} results{#if lastResults?.search_duration}{' '}<span
-                      class="text-xs font-normal md:text-sm"
-                    >
-                      ({lastResults.search_duration})</span
-                    >{/if}
-                {/if}
-              </span>
-              <div class="flex min-w-0 flex-wrap items-center justify-end gap-2 overflow-hidden">
-                {#if hasResults && isDesktop && !preview.panelOpen && !disablePreviews}
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    class="font-inter text-text-brand-muted hover:text-hister-indigo gap-1 text-xs"
-                    onclick={() => {
-                      preview.panelOpen = true;
-                      localStorage.setItem('hister-panel-open', 'true');
-                    }}
-                  >
-                    <Eye class="size-3" />
-                    Preview
-                  </Button>
-                {/if}
-                {#if showFiltersButton}
-                  <DropdownMenu.Root bind:open={filtersDropdownOpen}>
-                    <DropdownMenu.Trigger>
-                      {#snippet child({ props })}
-                        <Button
-                          {...props}
-                          variant="ghost"
-                          size="sm"
-                          class="font-inter gap-1 text-xs {filtersDropdownOpen
-                            ? 'text-hister-indigo'
-                            : 'text-text-brand-muted hover:text-hister-indigo'}"
-                        >
-                          <Filter class="size-3" />
-                          Filters
-                          {#if activeFilterCount > 0}
-                            <span
-                              class="bg-hister-indigo text-background flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[10px] leading-none font-bold"
-                              >{activeFilterCount}</span
-                            >
-                          {/if}
-                          <ChevronDown
-                            class="size-3 transition-transform duration-200 {filtersDropdownOpen
-                              ? 'rotate-180'
-                              : ''}"
-                          />
-                        </Button>
-                      {/snippet}
-                    </DropdownMenu.Trigger>
-                    <DropdownMenu.Content
-                      class="border-brutal-border bg-card-surface w-80 rounded-none border-[3px] p-3 shadow-[4px_4px_0_var(--brutal-shadow)]"
-                    >
-                      <div class="space-y-3">
-                        {#snippet facetSection(
-                          facet: SearchFacetDefinition,
-                          activeFilters: Set<string>,
-                          showSeparator: boolean,
-                        )}
-                          {@const Icon = facetIcons[facet.icon ?? ''] ?? Filter}
-                          {#if showSeparator}
-                            <Separator class="bg-border-brand-muted" />
-                          {/if}
-                          <div class="space-y-1.5">
-                            <p
-                              class="font-inter text-text-brand-muted flex items-center gap-1.5 text-xs font-semibold"
-                            >
-                              <Icon class="size-3" />
-                              {facet.label}
-                            </p>
-                            <div class="flex flex-wrap gap-1">
-                              {#each facetTerms(facet) as { term, count, label } (term)}
-                                <button
-                                  class="font-inter cursor-pointer rounded-none border-[2px] px-2 py-0.5 text-xs transition-colors {activeFilters.has(
-                                    term,
-                                  )
-                                    ? 'border-hister-indigo bg-hister-indigo text-background'
-                                    : 'border-border-brand-muted text-text-brand-secondary hover:border-hister-indigo hover:text-hister-indigo'}"
-                                  onclick={() => toggleQueryToken(facet.queryField, term)}
-                                  aria-pressed={activeFilters.has(term)}
-                                >
-                                  {label ?? term}
-                                  <span class="opacity-60">({count})</span>
-                                </button>
-                              {/each}
-                            </div>
-                            {#if currentFacets?.terms?.[facet.name]?.other}
-                              <button
-                                class="font-inter text-text-brand-muted hover:text-hister-indigo mt-1 cursor-pointer text-xs underline-offset-2 hover:underline"
-                                onclick={() => loadMoreFacet(facet.name)}>Load more</button
-                              >
-                            {/if}
-                          </div>
-                        {/snippet}
-                        {#if facetsLoading}
-                          <p class="font-inter text-text-brand-muted text-xs">Loading filters…</p>
-                        {:else}
-                          {#each visibleTermFacets as facet, index (facet.name)}
-                            {@render facetSection(
-                              facet,
-                              activeFiltersForFacet(facet.name),
-                              index > 0,
-                            )}
-                          {/each}
-                          {#snippet customDateInputs()}
-                            <details class="group/custom w-full">
-                              <summary
-                                class="font-inter text-text-brand-muted hover:text-hister-indigo cursor-pointer list-none text-xs underline-offset-2 hover:underline"
-                                >Custom</summary
-                              >
-                              <div
-                                class="mt-1.5 grid grid-cols-[auto_1fr] items-center gap-x-1.5 gap-y-2"
-                              >
-                                <span class="font-inter text-text-brand-secondary text-xs"
-                                  >From:</span
-                                >
-                                <Input
-                                  type="date"
-                                  value={dateFrom}
-                                  oninput={(event) =>
-                                    updateCustomDateFilter('from', event.currentTarget.value)}
-                                  class="border-border-brand-muted bg-card-surface text-text-brand font-fira focus-visible:border-hister-indigo h-7 w-auto min-w-0 border-[2px] px-2 text-xs shadow-none focus-visible:ring-0"
-                                />
-                                <span class="font-inter text-text-brand-secondary text-xs">To:</span
-                                >
-                                <Input
-                                  type="date"
-                                  value={dateTo}
-                                  oninput={(event) =>
-                                    updateCustomDateFilter('to', event.currentTarget.value)}
-                                  class="border-border-brand-muted bg-card-surface text-text-brand font-fira focus-visible:border-hister-indigo h-7 w-auto min-w-0 border-[2px] px-2 text-xs shadow-none focus-visible:ring-0"
-                                />
-                              </div>
-                            </details>
-                          {/snippet}
-                          {#if dateFacetDefinition && currentFacets?.date_histogram?.some((b) => b.count > 0)}
-                            {@const DateIcon = facetIcons[dateFacetDefinition.icon ?? ''] ?? Filter}
-                            {#if visibleTermFacets.length > 0}
-                              <Separator class="bg-border-brand-muted" />
-                            {/if}
-                            <div class="space-y-1.5">
-                              <p
-                                class="font-inter text-text-brand-muted flex items-center gap-1.5 text-xs font-semibold"
-                              >
-                                <DateIcon class="size-3" />
-                                {dateFacetDefinition.label}
-                              </p>
-                              <div class="flex flex-col gap-1">
-                                {#each currentFacets.date_histogram as { name, count } (name)}
-                                  {#if count > 0}
-                                    <button
-                                      class="font-inter flex cursor-pointer items-center justify-between rounded-none border-[2px] px-2 py-1 text-xs transition-colors {activeDateBucket ===
-                                      name
-                                        ? 'border-hister-indigo bg-hister-indigo text-background'
-                                        : 'border-border-brand-muted text-text-brand-secondary hover:border-hister-indigo hover:text-hister-indigo'}"
-                                      onclick={() => toggleDateBucket(name)}
-                                    >
-                                      <span
-                                        >{dateFacetValues.find(
-                                          (value) => value.facetBucket === name,
-                                        )?.label ?? name}</span
-                                      >
-                                      <span class="opacity-60">{count}</span>
-                                    </button>
-                                  {/if}
-                                {/each}
-                              </div>
-                              {@render customDateInputs()}
-                            </div>
-                          {:else if dateFacetDefinition}
-                            {@const DateIcon = facetIcons[dateFacetDefinition.icon ?? ''] ?? Filter}
-                            <div class="space-y-1.5">
-                              <p
-                                class="font-inter text-text-brand-muted flex items-center gap-1.5 text-xs font-semibold"
-                              >
-                                <DateIcon class="size-3" />
-                                {dateFacetDefinition.label}
-                              </p>
-                              {@render customDateInputs()}
-                            </div>
-                          {/if}
-                          {#if !termFacetDefinitions.some((facet) => currentFacets?.terms?.[facet.name]?.terms?.length) && !currentFacets?.date_histogram?.some((bucket) => bucket.count > 0)}
-                            <p class="font-inter text-text-brand-muted text-xs">
-                              No matching filter values. Remove an active filter to broaden your
-                              search.
-                            </p>
-                          {/if}
-                        {/if}
-                      </div>
-                    </DropdownMenu.Content>
-                  </DropdownMenu.Root>
-                {/if}
-                {#if hasResults || config.semanticEnabled}
-                  <DropdownMenu.Root bind:open={actionsDropdownOpen}>
-                    <DropdownMenu.Trigger>
-                      {#snippet child({ props })}
-                        <Button
-                          {...props}
-                          variant="ghost"
-                          size="sm"
-                          class="font-inter gap-1 text-xs {actionsDropdownOpen
-                            ? 'text-hister-indigo'
-                            : 'text-text-brand-muted hover:text-hister-indigo'}"
-                        >
-                          <SlidersHorizontal class="size-3" />
-                          Actions
-                          <ChevronDown
-                            class="size-3 transition-transform duration-200 {actionsDropdownOpen
-                              ? 'rotate-180'
-                              : ''}"
-                          />
-                        </Button>
-                      {/snippet}
-                    </DropdownMenu.Trigger>
-                    <DropdownMenu.Content
-                      class="border-brutal-border bg-card-surface w-80 rounded-none border-[3px] p-3 shadow-[4px_4px_0_var(--brutal-shadow)]"
-                    >
-                      <div class="space-y-3">
-                        {#if config.semanticEnabled}
-                          <div class="space-y-2">
-                            <p
-                              class="font-inter text-text-brand-muted flex items-center gap-1.5 text-xs font-semibold"
-                            >
-                              <Sparkles class="size-3" />
-                              Semantic Search
-                            </p>
-                            {#if !semanticOn}
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                class="font-inter text-hister-indigo border-hister-indigo border-2 text-xs"
-                                onclick={() => (semanticOn = true)}
-                              >
-                                Enable semantic search
-                              </Button>
-                            {/if}
-                            <label
-                              class="font-inter text-text-brand-secondary flex flex-col gap-1 text-xs"
-                            >
-                              <span
-                                >Similarity threshold: <span class="font-fira text-hister-indigo"
-                                  >{similarityThreshold.toFixed(2)}</span
-                                ></span
-                              >
-                              <input
-                                type="range"
-                                min="0"
-                                max="1"
-                                step="0.002"
-                                bind:value={similarityThreshold}
-                                disabled={!semanticOn}
-                                onkeydown={(event) => {
-                                  if (event.key !== 'Escape') event.stopPropagation();
-                                }}
-                                class="accent-hister-indigo w-full cursor-pointer disabled:cursor-not-allowed disabled:opacity-50"
-                              />
-                            </label>
-                            <label
-                              class="font-inter text-text-brand-secondary flex flex-col gap-1 text-xs"
-                            >
-                              <span
-                                >Semantic weight: <span class="font-fira text-hister-indigo"
-                                  >{semanticWeight.toFixed(2)}</span
-                                ></span
-                              >
-                              <input
-                                type="range"
-                                min="0"
-                                max="1"
-                                step="0.05"
-                                bind:value={semanticWeight}
-                                disabled={!semanticOn}
-                                onkeydown={(event) => {
-                                  if (event.key !== 'Escape') event.stopPropagation();
-                                }}
-                                class="accent-hister-indigo w-full cursor-pointer disabled:cursor-not-allowed disabled:opacity-50"
-                              />
-                            </label>
-                          </div>
-                          {#if hasResults}<Separator class="bg-border-brand-muted" />{/if}
-                        {/if}
-                        {#if hasResults}
-                          <div class="space-y-2">
-                            <p
-                              class="font-inter text-text-brand-muted flex items-center gap-1.5 text-xs font-semibold"
-                            >
-                              <Download class="size-3" />
-                              Export Results
-                            </p>
-                            <div class="flex flex-wrap gap-2">
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                class="border-hister-indigo text-hister-indigo hover:bg-hister-indigo/10 h-7 border-[2px] text-xs"
-                                onclick={() =>
-                                  exportJSON({ ...lastResults!, documents: accumulatedDocs })}
-                              >
-                                JSON
-                              </Button>
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                class="border-hister-indigo text-hister-indigo hover:bg-hister-indigo/10 h-7 border-[2px] text-xs"
-                                onclick={() =>
-                                  exportCSV({ ...lastResults!, documents: accumulatedDocs }, query)}
-                              >
-                                CSV
-                              </Button>
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                class="border-hister-indigo text-hister-indigo hover:bg-hister-indigo/10 h-7 border-[2px] text-xs"
-                                onclick={() =>
-                                  exportRSS({ ...lastResults!, documents: accumulatedDocs }, query)}
-                              >
-                                RSS
-                              </Button>
-                            </div>
-                          </div>
-                          {#if config.canWrite}
-                            <Separator class="bg-border-brand-muted" />
-                            <div class="space-y-2">
-                              <p
-                                class="font-inter text-hister-rose flex items-center gap-1.5 text-xs font-semibold"
-                              >
-                                <Trash2 class="size-3" />
-                                Danger Zone
-                              </p>
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                class="border-hister-rose text-hister-rose hover:bg-hister-rose/10 h-7 w-full border-[2px] text-xs"
-                                onclick={() => {
-                                  showDeleteAllConfirm = true;
-                                }}
-                              >
-                                <Trash2 class="size-3" />
-                                Delete all matching results
-                              </Button>
-                            </div>
-                          {/if}
-                        {/if}
-                      </div>
-                    </DropdownMenu.Content>
-                  </DropdownMenu.Root>
-                {/if}
-                <DropdownMenu.Root bind:open={sortDropdownOpen}>
-                  <DropdownMenu.Trigger>
-                    {#snippet child({ props })}
-                      <Button
-                        {...props}
-                        variant="ghost"
-                        size="sm"
-                        class="font-inter gap-1 text-xs {sortDropdownOpen || currentSort
-                          ? 'text-hister-indigo'
-                          : 'text-text-brand-muted hover:text-hister-indigo'}"
-                      >
-                        <ArrowUpDown class="size-3" />
-                        Sort: {currentSortLabel}
-                        <ChevronDown
-                          class="size-3 transition-transform duration-200 {sortDropdownOpen
-                            ? 'rotate-180'
-                            : ''}"
-                        />
-                      </Button>
-                    {/snippet}
-                  </DropdownMenu.Trigger>
-                  <DropdownMenu.Content
-                    class="border-brutal-border bg-card-surface w-52 rounded-none border-[3px] p-3 shadow-[4px_4px_0_var(--brutal-shadow)]"
-                  >
-                    <div class="space-y-1.5">
-                      <p
-                        class="font-inter text-text-brand-muted flex items-center gap-1.5 text-xs font-semibold"
-                      >
-                        <ArrowUpDown class="size-3" />
-                        Sort by
-                      </p>
-                      <div class="flex flex-col gap-1">
-                        {#each sortOptions as { value, label } (value)}
-                          <button
-                            class="font-inter flex cursor-pointer items-center gap-2 rounded-none border-[2px] px-2 py-1 text-xs transition-colors {currentSort ===
-                            value
-                              ? 'border-hister-indigo bg-hister-indigo text-background'
-                              : 'border-border-brand-muted text-text-brand-secondary hover:border-hister-indigo hover:text-hister-indigo'}"
-                            onclick={() => {
-                              setSort(value);
-                              sortDropdownOpen = false;
-                            }}
-                          >
-                            {label}
-                            {#if currentSort === value}
-                              <Check class="ml-auto size-3" />
-                            {/if}
-                          </button>
-                        {/each}
-                      </div>
-                    </div>
-                  </DropdownMenu.Content>
-                </DropdownMenu.Root>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  class="font-inter text-text-brand-muted hover:text-hister-coral gap-1 text-xs no-underline"
-                  href={getSearchUrl(config.searchUrl, query)}
-                >
-                  <ExternalLink class="size-3" />
-                  Web
-                </Button>
-              </div>
-            </div>
-
-            {#if isSearchLoading}
-              <SearchLoading />
-            {:else if !searchPending && lastResults?.error}
-              <section class="px-4 py-8 md:px-12">
-                <p role="alert" class="font-inter text-hister-rose mb-4 break-words">
-                  {lastResults.error}
-                </p>
-                {#if lastResults.query && lastResults.query.text !== query}
-                  <p class="font-inter text-text-brand-muted mb-4 text-sm break-words">
-                    Expanded query: <code class="font-fira">{lastResults.query.text}</code>
-                  </p>
-                {/if}
-                <a href="help" class="font-inter text-hister-indigo text-sm underline">
-                  Query syntax help
-                </a>
-              </section>
-            {:else if hasResults}
-              {#if lastResults?.query && lastResults.query.text.length > query.length}
-                <p class="font-inter text-text-brand-muted text-sm">
-                  Expanded query: <code
-                    class="font-fira bg-muted-surface text-primary px-1.5 py-0.5 text-xs"
-                    >{lastResults.query.text}</code
-                  >
-                </p>
-              {/if}
-
-              {#if displayResults.length > 0}
-                {#each displayResults as r, i}
-                  {@const color = r.isPinned
-                    ? 'hister-teal'
-                    : r.isHistoryResult
-                      ? 'hister-amber'
-                      : 'hister-cyan'}
-                  {@const state = getResultState(r.url, r.label)}
-                  {@const resultDate = r.updated || r.added}
-                  <SearchResultCard
-                    url={r.url}
-                    href={fileResultUrl(r.url, r.id, r.title || '*title*')}
-                    title={r.title || '*title*'}
-                    htmlSnippet={r.text}
-                    active={i === highlightIdx}
-                    color={`var(--${color})`}
-                    class={i !== 0 ? 'mt-2.5' : ''}
-                    target={config.openResultsOnNewTab ? '_blank' : undefined}
-                    onclick={() => {
-                      debouncedURLUpdate.flush();
-                      sendHistoryBeacon(r.url, r.title || '*title*', query);
-                    }}
-                    onauxclick={(event) => {
-                      if (event.button === 1) {
-                        debouncedURLUpdate.flush();
-                        sendHistoryBeacon(r.url, r.title || '*title*', query);
-                      }
-                    }}
-                  >
-                    {#snippet leading()}
-                      <ResultFavicon
-                        favicon={r.favicon}
-                        faviconKey={r.favicon_key}
-                        pinned={r.isPinned}
-                        class="mt-0.5"
-                      />
-                    {/snippet}
-                    {#snippet actions()}
-                      <ResultActionsMenu
-                        url={r.url}
-                        title={r.title || '*title*'}
-                        domain={r.domain}
-                        resultState={state}
-                        {query}
-                        pinned={r.isPinned}
-                        historyResult={r.isHistoryResult}
-                        canWrite={config.canWrite}
-                        onForget={() => sendQuery(query)}
-                        onDelete={r.isPinned || !config.canWrite
-                          ? undefined
-                          : () => deleteResult(r.url)}
-                        {removeResult}
-                        {removeResultsByDomain}
-                      />
-                    {/snippet}
-                    {#snippet metadata()}
-                      <div
-                        class="result-meta flex max-w-full min-w-0 flex-wrap items-center gap-x-3 gap-y-1"
-                      >
-                        <div
-                          class="result-url-line flex max-w-full min-w-0 shrink items-center gap-1.5"
-                        >
-                          {#if r.add_count && r.add_count > 1}
-                            <span
-                              class="border-border-brand-muted text-text-brand-muted inline-flex h-5 min-w-5 shrink-0 items-center justify-center rounded-none border-[2px] px-1.5 text-[11px] leading-none font-semibold"
-                              title="index count"
-                            >
-                              {r.add_count}
-                            </span>
-                          {/if}
-                          <span
-                            class="result-url-text min-w-0 overflow-hidden text-xs text-ellipsis whitespace-nowrap md:text-sm"
-                            title={r.url}
-                          >
-                            {#if r.domain}<span class="result-domain font-inter font-semibold"
-                                >{r.domain}</span
-                              >{/if}<span class="result-path font-fira text-text-brand-muted"
-                              >{displayResultPath(r.url, r.domain)}</span
-                            >
-                          </span>
-                        </div>
-                        <div
-                          class="result-secondary-meta flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1"
-                        >
-                          <button
-                            class="text-text-brand-muted hover:text-text-brand shrink-0 cursor-pointer"
-                            title="Copy URL"
-                            onclick={async () => {
-                              await navigator.clipboard.writeText(r.url);
-                              copiedUrl = r.url;
-                              setTimeout(() => {
-                                copiedUrl = null;
-                              }, 1500);
-                            }}
-                          >
-                            {#if copiedUrl === r.url}
-                              <Check class="text-hister-teal size-3" />
-                            {:else}
-                              <Copy class="size-3" />
-                            {/if}
-                          </button>
-                          {#if resultDate}
-                            <time
-                              class="font-inter text-text-brand-muted text-xs whitespace-nowrap md:text-sm"
-                              datetime={new Date(resultDate * 1000).toISOString()}
-                              title={formatTimestamp(resultDate)}
-                            >
-                              {r.updated ? 'Updated' : 'Added'}
-                              {formatRelativeTime(resultDate)}
-                            </time>
-                          {/if}
-                          {#if r.isPinned}
-                            <Badge
-                              variant="secondary"
-                              class="bg-hister-teal/10 text-hister-teal h-4 border-0 px-1.5 py-0"
-                              >pinned</Badge
-                            >
-                          {:else if r.isHistoryResult}
-                            <Badge
-                              variant="secondary"
-                              class="bg-hister-amber/10 text-hister-amber h-4 border-0 px-1.5 py-0"
-                              title="Prioritized because you opened it for this query. Use the result menu to forget it for this query."
-                              >prioritized</Badge
-                            >
-                          {/if}
-                          {#if state.displayLabel}
-                            <Badge
-                              variant="secondary"
-                              class="result-label bg-hister-teal/20 min-h-4 max-w-full border-0 px-1.5 py-0"
-                              title={state.displayLabel}
-                            >
-                              <Tag class="mr-0.5 size-2.5 shrink-0" />{state.displayLabel}
-                            </Badge>
-                          {/if}
-                          {#if !disablePreviews}
-                            <Button
-                              data-readable
-                              variant="link"
-                              size="sm"
-                              href={buildPreviewUrl(r.url, r.title || '*title*', undefined, r.id)}
-                              data-document-id={r.id || ''}
-                              class="text-text-brand-muted hover:text-hister-indigo h-auto shrink-0 cursor-pointer gap-0.5 p-0 text-xs font-medium md:text-sm"
-                              onclick={(e) => {
-                                highlightIdx = i;
-                                openReadable(e, r.url, r.title || '*title*', r.id || '');
-                              }}
-                            >
-                              <Eye class="size-3" /><span>Preview</span>
-                            </Button>
-                          {/if}
-                          {#if !r.isPinned && r.finalScore && config.semanticEnabled && semanticOn}
-                            <Tooltip.Provider delayDuration={0}>
-                              <Tooltip.Root>
-                                <Tooltip.Trigger>
-                                  <Badge
-                                    variant="secondary"
-                                    class="bg-hister-indigo/10 text-hister-indigo shrink-0 border-0 px-1.5 py-0 align-middle font-mono text-[10px]"
-                                    >{r.finalScore?.toFixed(2)}</Badge
-                                  >
-                                </Tooltip.Trigger>
-                                <Tooltip.Portal>
-                                  <Tooltip.Content>
-                                    Result score: {r.finalScore?.toFixed(2)}
-                                  </Tooltip.Content>
-                                </Tooltip.Portal>
-                              </Tooltip.Root>
-                            </Tooltip.Provider>
-                          {/if}
-                        </div>
-                      </div>
-                    {/snippet}
-                  </SearchResultCard>
-                {/each}
-              {/if}
-            {:else if !searchPending && query && lastResults}
-              <section class="px-4 py-12 text-center md:px-12">
-                <p class="font-inter text-text-brand-secondary mb-4">
-                  No results found for "<span class="font-semibold">{query}</span>"
-                </p>
-                <p class="font-inter text-text-brand-muted mb-4 text-sm">
-                  {activeFilterCount > 0
-                    ? 'Try removing filters or changing your search terms.'
-                    : 'Try different search terms or search the web.'}
-                </p>
-                <div class="flex flex-wrap items-center justify-center gap-3">
-                  {#if activeFilterCount > 0}
-                    <Button
-                      variant="outline"
-                      class="border-hister-indigo text-hister-indigo font-inter border-2"
-                      onclick={clearFilters}
-                      onkeydown={(event) => {
-                        if (event.key !== 'Escape') event.stopPropagation();
-                      }}
-                    >
-                      Clear filters
-                    </Button>
-                  {/if}
-                  <Button
-                    variant="outline"
-                    class="border-hister-coral text-hister-coral hover:bg-hister-coral/10 font-inter border-[3px] font-semibold shadow-[3px_3px_0px_var(--hister-coral)]"
-                    href={getSearchUrl(config.searchUrl, query)}
-                  >
-                    <ExternalLink class="size-4" />
-                    Search the web
-                  </Button>
-                </div>
-              </section>
-            {/if}
-            {#if !searchPending && (hasMore || loadingMoreForQuery)}
-              <div bind:this={sentinelEl} class="flex items-center justify-center py-4">
-                <span class="font-inter text-text-brand-muted text-sm">Loading more…</span>
-              </div>
-            {:else if hasResults}
-              <div bind:this={sentinelEl}></div>
-            {/if}
-          </div>
-        </ScrollArea>
+        {@render searchResults()}
       {/if}
 
       <!-- Preview panel: fullscreen (both mobile and desktop) or split-pane (desktop only) -->
@@ -2886,8 +3109,7 @@
               hintTitle={preview.title}
               fullscreen={false}
               onclose={() => {
-                preview.panelOpen = false;
-                localStorage.setItem('hister-panel-open', 'false');
+                preview.closePanel();
               }}
               onfullscreentoggle={enterFullscreen}
               connected={true}
@@ -2982,166 +3204,12 @@
       class="home-tip font-inter text-text-brand-muted hidden shrink-0 items-center gap-1 text-xs md:flex md:gap-2"
     >
       <span>Tip:</span>
-      {#each currentTip as part}
-        {#if part.type === 'text'}
-          <span>{part.value}</span>
-        {:else if part.type === 'kbd'}
-          <Kbd
-            bind:ref={kbdEl}
-            class="bg-muted-surface border-border-brand-muted font-fira text-text-brand-secondary rounded-none border-[2px] px-2 py-0.5 text-xs font-semibold"
-            >{part.value}</Kbd
-          >
-        {:else if part.type === 'hotkey'}
-          {#if hotkeyByAction[part.action]}
-            <Kbd
-              bind:ref={kbdEl}
-              class="bg-muted-surface border-border-brand-muted font-fira text-text-brand-secondary rounded-none border-[2px] px-2 py-0.5 text-xs font-semibold"
-              >{hotkeyByAction[part.action]}</Kbd
-            >
-          {/if}
-        {:else if part.type === 'code'}
-          <code
-            class="bg-muted-surface border-border-brand-muted font-fira text-text-brand-secondary rounded-none border-[2px] px-2 py-0.5 font-semibold"
-            >{part.value}</code
-          >
-        {:else if part.type === 'link'}
-          <a href={part.href} class="text-hister-indigo hover:underline">{part.value}</a>
-        {/if}
-      {/each}
+      {@render searchTip()}
     </div>
 
-    {#if recentSearches.length > 0}
-      <section
-        class="home-recents flex w-full max-w-[900px] shrink-0 flex-col gap-2"
-        aria-labelledby="recent-searches-title"
-      >
-        <div class="flex flex-wrap items-center justify-between gap-2">
-          <h2
-            id="recent-searches-title"
-            class="font-inter text-text-brand-secondary flex items-center gap-2 text-sm font-semibold"
-          >
-            <History class="text-hister-indigo size-4" />
-            Recent searches
-          </h2>
-          <Button
-            variant="ghost"
-            size="sm"
-            class="font-inter text-text-brand-muted hover:text-hister-rose h-auto cursor-pointer px-2 py-1 text-xs"
-            onclick={hideAllRecentSearches}
-            title="Hide all recent searches on this browser"
-          >
-            Hide all on this browser
-          </Button>
-        </div>
-        <p class="font-inter text-text-brand-muted text-xs">
-          Hiding searches only affects this browser. Your history remains on the server.
-        </p>
-        <div class="flex flex-wrap items-center justify-center gap-2">
-          {#each recentSearches.slice(0, 8) as search, i}
-            {@const chip = chipColors[i % chipColors.length]}
-            <div
-              class="flex max-w-full min-w-0 items-stretch border-[2px] shadow-[2px_2px_0_var(--brutal-shadow)] {chip.border} {chip.bg}"
-            >
-              <button
-                type="button"
-                class="font-inter max-w-80 min-w-0 cursor-pointer truncate px-3 py-1.5 text-left text-sm font-semibold transition-colors hover:bg-black/5 dark:hover:bg-white/5 {chip.text}"
-                title={search}
-                onclick={() => clickChip(search)}
-              >
-                {search}
-              </button>
-              <button
-                type="button"
-                class="hover:bg-hister-rose/10 hover:text-hister-rose flex w-8 shrink-0 cursor-pointer items-center justify-center border-l transition-colors {chip.border} {chip.text}"
-                aria-label="Hide recent search on this browser: {search}"
-                title="Hide on this browser"
-                onclick={() => hideRecentSearch(search)}
-              >
-                <X class="size-3.5" />
-              </button>
-            </div>
-          {/each}
-        </div>
-      </section>
-    {/if}
+    {@render recentSearchesSection()}
 
-    {#if statsLoaded && statsAvailable && historyCount === 0 && config.canWrite}
-      <section
-        class="home-empty-index border-brutal-border bg-card-surface w-full max-w-[900px] shrink-0 border-[3px] shadow-[4px_4px_0_var(--brutal-shadow)]"
-        aria-labelledby="empty-index-title"
-      >
-        <div
-          class="border-brutal-border flex flex-col gap-2 border-b-[3px] px-4 py-3 sm:flex-row sm:items-center sm:justify-between md:px-5"
-        >
-          <div>
-            <h2 id="empty-index-title" class="font-outfit text-text-brand text-lg font-extrabold">
-              Start building your index
-            </h2>
-            <p class="font-inter text-text-brand-secondary text-sm">
-              Choose how to add your first searchable document.
-            </p>
-          </div>
-          <a
-            href="https://hister.org/docs/quickstart"
-            target="_blank"
-            rel="noopener noreferrer"
-            class="font-inter text-hister-indigo flex shrink-0 items-center gap-1 text-sm font-semibold hover:underline"
-          >
-            <HelpCircle class="size-4" />
-            Quickstart
-            <ExternalLink class="size-3" />
-          </a>
-        </div>
-
-        <div class="grid gap-3 p-4 md:grid-cols-3 md:p-5">
-          <a
-            href="https://hister.org/docs/browser-extension"
-            target="_blank"
-            rel="noopener noreferrer"
-            class="empty-index-action border-hister-indigo bg-hister-indigo/5 hover:bg-hister-indigo/10"
-          >
-            <Globe class="text-hister-indigo size-5 shrink-0" />
-            <span class="min-w-0">
-              <span class="font-outfit text-text-brand block font-bold">Install the extension</span>
-              <span class="font-inter text-text-brand-muted block text-xs"
-                >Capture pages as you browse</span
-              >
-            </span>
-            <ExternalLink class="text-text-brand-muted ml-auto size-3.5 shrink-0" />
-          </a>
-
-          <a
-            href={resolve('/add')}
-            class="empty-index-action border-hister-coral bg-hister-coral/5 hover:bg-hister-coral/10"
-          >
-            <Link2 class="text-hister-coral size-5 shrink-0" />
-            <span class="min-w-0">
-              <span class="font-outfit text-text-brand block font-bold">Add manually</span>
-              <span class="font-inter text-text-brand-muted block text-xs"
-                >Save a URL with optional title and content</span
-              >
-            </span>
-          </a>
-
-          <a
-            href="https://hister.org/docs/import#importing-browser-history"
-            target="_blank"
-            rel="noopener noreferrer"
-            class="empty-index-action border-hister-teal bg-hister-teal/5 hover:bg-hister-teal/10"
-          >
-            <History class="text-hister-teal size-5 shrink-0" />
-            <span class="min-w-0">
-              <span class="font-outfit text-text-brand block font-bold">Import browser history</span
-              >
-              <span class="font-inter text-text-brand-muted block text-xs"
-                >Bring your previously visited pages</span
-              >
-            </span>
-            <ExternalLink class="text-text-brand-muted ml-auto size-3.5 shrink-0" />
-          </a>
-        </div>
-      </section>
-    {/if}
+    {@render indexingOnboarding()}
     <div
       bind:this={statsRowEl}
       class="home-stats flex shrink-0 flex-col items-center gap-3 md:flex-row md:gap-4"
@@ -3149,58 +3217,7 @@
       aria-live="polite"
       aria-busy={!statsLoaded}
     >
-      {#if !statsLoaded}
-        {#each Array(!config.public || config.canWrite ? 3 : 1) as _}
-          <div class="home-stat-pill" aria-hidden="true">
-            <span class="bg-muted-surface size-4"></span>
-            <span class="bg-muted-surface h-5 w-10"></span>
-            <span class="bg-muted-surface h-3 w-12"></span>
-          </div>
-        {/each}
-      {:else if statsAvailable}
-        {@render homeStatChip(
-          `${resolve('/')}?q=*`,
-          'text-hister-indigo',
-          'Browse all indexed pages',
-          History,
-          displayHistoryCount,
-          'pages',
-          '*',
-        )}
-        {#if fileCount > 0}
-          {@render homeStatChip(
-            `${resolve('/')}?q=type:file`,
-            'text-hister-amber',
-            'Browse all indexed files',
-            FileText,
-            displayFileCount,
-            'files',
-            'type:file',
-          )}
-        {/if}
-        {#if !config.public || config.canWrite}
-          {@render homeStatChip(
-            `${resolve('/rules')}#indexing-rules`,
-            'text-hister-teal',
-            'Open indexing rules',
-            Shield,
-            displayRulesCount,
-            'rules',
-            null,
-          )}
-          {@render homeStatChip(
-            `${resolve('/rules')}#search-aliases`,
-            'text-hister-coral',
-            'Open search aliases',
-            Link2,
-            displayAliasesCount,
-            'aliases',
-            null,
-          )}
-        {/if}
-      {:else}
-        <p class="font-inter text-text-brand-muted text-sm" role="status">Statistics unavailable</p>
-      {/if}
+      {@render homeStats()}
     </div>
   </div>
 {/if}
