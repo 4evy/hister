@@ -2254,6 +2254,8 @@ test('settings tab selection is restored after a reload', async ({ page }) => {
     'true',
   );
   await expect(page.getByRole('tabpanel')).toHaveAccessibleName('Server');
+  await page.getByRole('tab', { name: 'App', exact: true }).click();
+  await expect(page).toHaveURL('/settings?source=bookmark#preferences');
 });
 
 test('settings tab URLs open directly and unknown tabs fall back to App', async ({ page }) => {
@@ -3669,6 +3671,16 @@ test('category navigation fits beside desktop settings and above mobile settings
   await expect(page.getByRole('textbox', { name: 'Title', exact: true })).toHaveValue(
     'Draft across all categories',
   );
+});
+
+test('the header logo loads without the backend static file proxy', async ({ page }) => {
+  await settingsAPI(page);
+  await page.route('**/static/**', (route) => route.abort());
+  await page.goto('/settings');
+  const logo = page.getByRole('img', { name: 'Hister logo', exact: true });
+  await expect
+    .poll(() => logo.evaluate((img: HTMLImageElement) => img.naturalWidth))
+    .toBeGreaterThan(0);
 });
 
 test('leaving an unsaved draft through the home link warns only once', async ({ page }) => {

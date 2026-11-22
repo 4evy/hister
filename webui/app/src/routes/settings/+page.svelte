@@ -508,11 +508,11 @@
     ].filter((error) => error.path.split('.')[0] === tab);
   }
 
-  function categoryUrl(next: string, hash = '') {
+  function categoryUrl(next: string, hash?: string) {
     const url = new URL(settingsUrl.href);
     if (next === 'app') url.searchParams.delete('tab');
     else url.searchParams.set('tab', next);
-    url.hash = hash;
+    if (hash !== undefined) url.hash = hash;
     return url.href;
   }
 
