@@ -341,7 +341,7 @@ func validateManagedNode(node *yaml.Node, typ reflect.Type, path string) error {
 		return nil
 	}
 	switch path {
-	case "app.directory", "app.log_file", "server.database", "server.proxy_auth_header", "indexer.pdf_parser.command", "indexer.pdf_parser.args":
+	case "app.directory", "app.log_file", "server.database", "server.proxy_auth_header", "indexer.pdf_parser.command", "indexer.pdf_parser.args", "indexer.pdf_parser.profiles":
 		return fmt.Errorf("%s is file managed", path)
 	}
 	if path == "crawler.backend_options" {

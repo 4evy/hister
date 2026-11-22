@@ -214,6 +214,15 @@
         {value === true && field.enabled_description
           ? field.enabled_description
           : field.description}
+        {#if field.path === 'indexer.pdf_parser.selected' && !preview}
+          <a
+            href="https://nogon.eu/docs/file-types#external-pdf-parser"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="text-nogon-indigo underline underline-offset-2"
+            >PDF parser profile setup example</a
+          >
+        {/if}
         {#if field.effect === 'reembed'}
           <span class="mt-1 block">Reindex existing documents after changing this setting.</span>
         {/if}

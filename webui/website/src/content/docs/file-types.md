@@ -40,25 +40,30 @@ The same handlers process snapshots created with `nogon import file`. These impo
 
 ## External PDF Parser
 
-Nogon uses its built in PDF reader by default. To replace it with a local command, install Poppler so `pdftotext` is available, then add this to your configuration:
+Nogon uses its built in PDF reader by default. To make Poppler available in Settings, install `pdftotext` and add a named parser to your main configuration.
 
 ```yaml
 indexer:
   pdf_parser:
-    command: pdftotext
-    args: ['-enc', 'UTF-8', '-', '-']
-    timeout: 30
+    profiles:
+      poppler:
+        command: pdftotext
+        args: ['-enc', 'UTF-8', '-', '-']
 ```
 
-In this example, `-enc UTF-8` selects the text encoding. The first `-` reads the PDF from standard input, and the second writes the extracted text to standard output.
+After editing the active file, select **Refresh settings**, then **Reload configuration**, or run `nogon reload`. If this is a new configuration file, restart Nogon with `--config FILENAME`.
+
+Open **Settings → Indexer → PDF extraction**. Choose **poppler**, set the timeout if needed, and select **Save and apply**. Choose **Built in** to switch back. You can add more named parsers under `profiles`. Switch away from a selected profile before removing it.
+
+An existing `pdf_parser.command` and its `args` appear as **Configured command** and stay selected until you choose another reader. To set the selection in the main file, use `pdf_parser.selected` with a profile name, `builtin`, or `configured` for the existing command. Setting the selection or timeout in the main file locks that field in Settings.
 
 The command must read PDF bytes from standard input and write plain UTF 8 text to standard output. It runs directly, with each `args` entry passed literally. Use an executable wrapper script for parsers that need a filename or produce a different output format.
 
-Install the command where parsing runs: on the server for browser uploads and watched directories, and on the client for `nogon import file`, including `--watch`. For a container deployment, the command must be installed inside that container. Run `nogon reload` or restart the server after changing its configuration. Restart a running `nogon import file --watch` command to apply client configuration changes.
+Install the command on the server for browser uploads and watched directories. For a container deployment, install it inside the container. A remote `nogon import file` uses the parser installed and selected on the client. Restart a running `nogon import file --watch` command to apply client configuration changes.
 
 `timeout` is a positive number of seconds and defaults to 30. Failed commands, empty text, invalid UTF 8, and output larger than 32 MiB reject the PDF. Nogon does not retry with its built in reader. Standard error is discarded because it can contain document text.
 
-Leave `command` empty and `args` empty to restore the built in reader. Previously stored PDFs need to be imported or submitted again; use `nogon reindex` for watched local PDFs.
+To extract text from previously stored PDFs with a different parser, import or submit them again. For watched local PDFs, use `nogon reindex`.
 
 ## Directory Filters
 

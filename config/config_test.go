@@ -541,6 +541,7 @@ func TestManagedConfigurationRejectsInvalidFiles(t *testing.T) {
 		"server:\n  database: private-credential\n", "server:\n  proxy_auth_header: private-credential\n",
 		"indexer:\n  pdf_parser:\n    command: private-credential\n",
 		"indexer:\n  pdf_parser:\n    args: [private-credential]\n",
+		"indexer:\n  pdf_parser:\n    profiles:\n      custom:\n        command: private-credential\n",
 		"server:\n  oauth:\n    oidc:\n      admin_groups: [private-credential]\n",
 		"server:\n  oauth:\n    oidc:\n      identity_claim: private-credential\n",
 		"server:\n  oauth:\n    oidc:\n      groups_claim: private-credential\n",
@@ -1223,6 +1224,12 @@ func TestPDFParserConfigurationRejectsInvalidValues(t *testing.T) {
 		"timeout: -1",
 		"timeout: 0",
 		"timeout: 9223372036854775807",
+		"selected: missing",
+		"selected: configured",
+		"profiles: {builtin: {command: unused}}",
+		"profiles: {configured: {command: unused}}",
+		"profiles: {empty: {args: [unused]}}",
+		"profiles: {invalid: {command: '   '}}",
 	} {
 		t.Run(raw, func(t *testing.T) {
 			_, err := parseConfig([]byte("indexer:\n  pdf_parser:\n    " + raw + "\n"))

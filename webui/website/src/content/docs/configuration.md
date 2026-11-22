@@ -268,6 +268,18 @@ description: 'Explore every configuration section, option, default value, enviro
       description: 'Maximum file size in megabytes to index. Larger files are skipped.',
     },
     {
+      name: 'pdf_parser.selected',
+      type: 'string',
+      defaultValue: '(configured command if present, otherwise builtin)',
+      description: 'Reader for future PDFs. Choose builtin, configured for the existing command, or a profile name. Editable in Settings.',
+    },
+    {
+      name: 'pdf_parser.profiles',
+      type: 'map',
+      defaultValue: '(none)',
+      description: 'Named external PDF parsers offered in Settings. Start each name with a lowercase letter or digit. Names can also contain underscores and hyphens. The names builtin and configured are reserved.',
+    },
+    {
       name: 'pdf_parser.command',
       type: 'string',
       defaultValue: '(empty, built in reader)',
@@ -870,7 +882,11 @@ Delete those documents separately if their previous visibility is no longer appr
 
 **Delete from index when removed** removes indexed documents when watched files are deleted
 or renamed. It never deletes files from disk. An authoritative directory or language list locks the
-whole collection. PDF parser controls remain managed in the main configuration.
+whole collection.
+
+Under **Indexer → PDF extraction**, choose the built in reader or an external parser and its
+timeout. The operator defines the available commands in the main configuration.
+See [File Types](file-types#external-pdf-parser) for a Poppler example.
 
 Executable paths, arbitrary arguments, and options without supported controls remain file managed.
 Changes apply to future extraction; fetch documents again to update previously extracted content.

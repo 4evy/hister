@@ -201,7 +201,7 @@ func (c *Config) ValidateFields() []FieldError {
 			fields = append(fields, field)
 		}
 	}
-	check("indexer.pdf_parser", "Check the parser command, arguments, and positive timeout.", candidate.Indexer.PDFParser.Validate())
+	check("indexer.pdf_parser", "Check the PDF parser definitions and positive timeout.", candidate.Indexer.PDFParser.Validate())
 	check("server.max_batch_body_size", "Use a positive batch size within the supported integer range.", candidate.Server.validateMaxBatchBodySize())
 	_, _, listenErr := candidate.Server.ListenEndpoint()
 	check("server.address", "Use a TCP address or unix: followed by an absolute socket path.", listenErr)
@@ -236,7 +236,7 @@ func (c *Config) Redacted() (map[string]any, error) {
 	if err := yaml.Unmarshal(b, &result); err != nil {
 		return nil, err
 	}
-	redactMap(result)
+	redactMap(result, true)
 	// Owner metadata also covers credentials whose keys do not look secret,
 	// including cookie sources and explicitly sensitive URLs.
 	for _, field := range append(FieldCatalog(), slices.Collect(maps.Values(extractorSettings))...) {
@@ -265,10 +265,10 @@ func (c *Config) Redacted() (map[string]any, error) {
 	return result, nil
 }
 
-func redactMap(values map[string]any) {
+func redactMap(values map[string]any, root bool) {
 	for key, value := range values {
 		k := strings.ToLower(key)
-		if k == "sensitive_content_patterns" {
+		if root && k == "sensitive_content_patterns" {
 			continue
 		}
 		if strings.Contains(k, "secret") || strings.Contains(k, "password") || k == "token" || strings.HasSuffix(k, "_token") || k == "api_key" || k == "authorization" || k == "extra_args" || k == "args" {
@@ -284,7 +284,7 @@ func redactMap(values map[string]any) {
 					v[header] = redactedValue
 				}
 			} else {
-				redactMap(v)
+				redactMap(v, false)
 			}
 		case []any:
 			for _, item := range v {
@@ -292,7 +292,7 @@ func redactMap(values map[string]any) {
 					if k == "cookies" {
 						fields["value"] = redactedValue
 					}
-					redactMap(fields)
+					redactMap(fields, false)
 				}
 			}
 		case string:

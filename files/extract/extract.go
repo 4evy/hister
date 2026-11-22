@@ -76,9 +76,13 @@ type Extractor struct {
 }
 
 func New(pdfParser config.PDFParser) *Extractor {
-	pdfParser.Args = slices.Clone(pdfParser.Args)
+	if pdfParser.Timeout == 0 {
+		pdfParser.Timeout = 30
+	}
+	command, err := pdfParser.ResolveCommand()
+	command.Args = slices.Clone(command.Args)
 	return &Extractor{handlers: []fileTypeHandler{
-		pdfFileType{parser: pdfParser},
+		pdfFileType{command: command, timeout: pdfParser.Timeout, configErr: err},
 		docxFileType{},
 		markdownFileType{},
 		orgFileType{},

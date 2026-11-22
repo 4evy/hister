@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -2131,6 +2132,83 @@ func TestConfigurationWithoutMainFilePreservesStartupFlags(t *testing.T) {
 	}
 }
 
+func TestSettingsPDFParserChoices(t *testing.T) {
+	_, handler := newConfigurationTestServer(t, "token", `indexer:
+  pdf_parser:
+    command: /private/legacy
+    profiles:
+      poppler:
+        command: /private/pdftotext
+        args: [private-argument]
+`)
+	headers := map[string]string{"Authorization": "Bearer private-token"}
+	response := testutil.ServeHTTP(t, handler, http.MethodGet, "/nogon/api/settings", nil, headers)
+	var state struct {
+		Fields []config.FieldMetadata
+		Values []config.FieldState
+	}
+	if response.Code != http.StatusOK || strings.Contains(response.Body.String(), "/private/") || strings.Contains(response.Body.String(), "private-argument") {
+		t.Fatal("could not read settings without exposing executable definitions")
+	}
+	if err := json.Unmarshal(response.Body.Bytes(), &state); err != nil {
+		t.Fatal(err)
+	}
+	fields := make(map[string]config.FieldMetadata)
+	for _, field := range state.Fields {
+		fields[field.Path] = field
+	}
+	const selected = "indexer.pdf_parser.selected"
+	parser := fields[selected]
+	if parser.Schema.Control != "select" || !reflect.DeepEqual(parser.Schema.Choices, []string{"builtin", "configured", "poppler"}) || parser.Default != "configured" {
+		t.Fatalf("unexpected parser choices or default: %+v", parser)
+	}
+	timeout := fields["indexer.pdf_parser.timeout"]
+	if timeout.Schema.Control != "number" || timeout.Schema.Unit != "seconds" || timeout.AvailableWhen == nil || !reflect.DeepEqual(timeout.AvailableWhen.Values, []string{"configured", "poppler"}) {
+		t.Fatalf("unexpected external parser timeout: %+v", timeout)
+	}
+	values := make(map[string]config.FieldState)
+	for _, value := range state.Values {
+		values[value.Path] = value
+	}
+	if value := values[selected]; !value.Editable || value.Value != "configured" {
+		t.Fatalf("existing command should be selected: %+v", value)
+	}
+	if value := values[timeout.Path]; !value.Editable || value.Value != float64(30) {
+		t.Fatalf("expected editable timeout with default of 30 seconds: %+v", value)
+	}
+}
+
+func TestSettingsSwitchPDFParserForUploads(t *testing.T) {
+	executable, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	profiles := fmt.Sprintf("  pdf_parser:\n    profiles:\n      example:\n        command: %q\n        args: ['-test.run=^TestReloadPDFParserProcess$', '--', '--pdf-reload-parser-test', 'Selected parser text']\n", executable)
+	cfg, handler, _ := newReloadTestServer(t, false, profiles)
+	headers := map[string]string{"Origin": "nogon://", "X-Access-Token": "secret", "Content-Type": "application/json"}
+	for _, tc := range []struct {
+		name string
+		want int
+	}{{"example", http.StatusCreated}, {"builtin", http.StatusInternalServerError}} {
+		revision, _ := readConfigurationState(t, handler, headers)
+		draft := fmt.Sprintf(`{"revision":%q,"edits":[{"path":"indexer.pdf_parser.selected","action":"set","value":%q},{"path":"indexer.pdf_parser.timeout","action":"set","value":15}]}`, revision, tc.name)
+		applied := testutil.ServeHTTP(t, handler, http.MethodPost, "/nogon/api/settings/apply", strings.NewReader(draft), headers)
+		if applied.Code != http.StatusOK {
+			t.Fatalf("apply %s: %d %s", tc.name, applied.Code, applied.Body)
+		}
+		loaded, _, err := config.LoadForInspection(cfg.Filename(), true)
+		if err != nil || loaded.Indexer.PDFParser.Selected != tc.name || loaded.Indexer.PDFParser.Timeout != 15 {
+			t.Fatalf("selection and timeout did not survive reload: %v", err)
+		}
+		pdf := base64.StdEncoding.EncodeToString([]byte("%PDF-1.4 reload fixture"))
+		payload := fmt.Sprintf(`{"document":{"url":"https://example.com/%s.pdf"},"pdf":%q}`, tc.name, pdf)
+		upload := testutil.ServeHTTP(t, handler, http.MethodPost, "/nogon/api/add_pdf", strings.NewReader(payload), headers)
+		if upload.Code != tc.want {
+			t.Fatalf("upload using %s: %d %s, want %d", tc.name, upload.Code, upload.Body, tc.want)
+		}
+	}
+}
+
 func TestSettingsExposeNumericUnits(t *testing.T) {
 	_, handler := newConfigurationTestServer(t, "token", "")
 	response := testutil.ServeHTTP(t, handler, http.MethodGet, "/nogon/api/settings", nil, map[string]string{"Authorization": "Bearer private-token"})
@@ -2191,7 +2269,7 @@ func TestConfigurationCatalogKeepsUnsupportedCategoriesReadOnly(t *testing.T) {
 	}
 }
 
-func newReloadTestServer(t *testing.T, multiUser bool) (*config.Config, http.Handler, func(string)) {
+func newReloadTestServer(t *testing.T, multiUser bool, indexerSettings ...string) (*config.Config, http.Handler, func(string)) {
 	t.Helper()
 	dir := t.TempDir()
 	filename := filepath.Join(dir, "config.yml")
@@ -2199,6 +2277,7 @@ func newReloadTestServer(t *testing.T, multiUser bool) (*config.Config, http.Han
 		t.Helper()
 		content := fmt.Sprintf("app:\n  directory: %q\n  access_token: secret\n  user_handling: %t\n  public: true\n  title: Original\nserver:\n  address: 127.0.0.1:0\n  base_url: http://127.0.0.1:4433/nogon\nindexer:\n  detect_languages: false\n", dir, multiUser)
 		content = strings.Replace(content, "  title: Original\n", extra, 1)
+		content += strings.Join(indexerSettings, "")
 		if err := os.WriteFile(filename, []byte(content), 0o600); err != nil {
 			t.Fatal(err)
 		}

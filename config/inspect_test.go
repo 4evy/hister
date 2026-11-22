@@ -79,6 +79,7 @@ func TestFieldCatalogPreservesEditorContract(t *testing.T) {
 			t.Fatalf("incomplete description for %s", field.Path)
 		}
 		ordinaryIndexer := field.Category == "indexer" && !strings.HasPrefix(field.Path, "indexer.pdf_parser.")
+		ordinaryIndexer = ordinaryIndexer || field.Path == "indexer.pdf_parser.selected" || field.Path == "indexer.pdf_parser.timeout"
 		ordinaryServer := slices.Contains([]string{"server.address", "server.base_url", "server.oauth_only", "server.max_batch_body_size", "server.metrics", "server.expose_version"}, field.Path)
 		ordinaryServer = ordinaryServer || (strings.HasPrefix(field.Path, "server.oauth.") && slices.Contains([]string{"client_id", "client_secret", "scopes", "disable_pkce"}, field.Path[strings.LastIndex(field.Path, ".")+1:]))
 		if field.Category != "app" && !ordinaryServer && !ordinaryIndexer && field.Category != "crawler" && field.Category != "semantic_search" && field.Path != "hotkeys.web" && field.Path != "sensitive_content_patterns" {
@@ -1491,6 +1492,11 @@ func TestIndexerDraftSettings(t *testing.T) {
 		{"indexer.languages", `["en", "unknown-language"]`},
 		{"indexer.language_detection_accuracy", `"invalid"`},
 		{"indexer.pdf_parser.command", `"executable"`},
+		{"indexer.pdf_parser.args", `["argument"]`},
+		{"indexer.pdf_parser.profiles", `{"custom":{"command":"executable"}}`},
+		{"indexer.pdf_parser.profiles.custom.command", `"executable"`},
+		{"indexer.pdf_parser.selected", `"/unlisted/executable"`},
+		{"indexer.pdf_parser.timeout", "0"},
 		{"indexer", `{"pdf_parser":{"command":"executable"}}`},
 	} {
 		candidate, errors := c.PrepareDraft([]SettingEdit{{Path: tc.path, Action: "set", Value: json.RawMessage(tc.value)}})
@@ -1501,6 +1507,59 @@ func TestIndexerDraftSettings(t *testing.T) {
 	cleared, errors := next.PrepareDraft([]SettingEdit{{Path: "indexer.languages", Action: "set", Value: json.RawMessage(`[]`)}})
 	if cleared == nil || len(errors) != 0 || len(cleared.Indexer.Languages) != 0 || !cleared.Source("indexer.languages").WebSelected {
 		t.Fatalf("cannot explicitly clear language restriction: %v", errors)
+	}
+}
+
+func TestPDFParserSettingsExplainProfileSetup(t *testing.T) {
+	cfg := CreateDefaultConfig()
+	for _, command := range []string{"", "reader"} {
+		cfg.Indexer.PDFParser.Command = command
+		fields := make(map[string]FieldMetadata)
+		for _, field := range cfg.FieldCatalog() {
+			fields[field.Path] = field
+		}
+		selector := fields["indexer.pdf_parser.selected"].Description
+		if !strings.Contains(selector, "main YAML file") || strings.Contains(selector, "Only the built in reader is available") != (command == "") {
+			t.Errorf("unexpected parser guidance with command %q: %s", command, selector)
+		}
+		profiles := fields["indexer.pdf_parser.profiles"]
+		if !strings.Contains(profiles.Label, "file only") || !strings.Contains(profiles.Description, "indexer.pdf_parser.profiles") || !strings.Contains(profiles.Description, "Reload configuration") {
+			t.Errorf("missing file setup instructions: %s: %s", profiles.Label, profiles.Description)
+		}
+	}
+}
+
+func TestPDFParserDraftResetAndLocks(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("NOGON_DATA_DIR", dir)
+	t.Setenv("NOGON__INDEXER__PDF_PARSER__TIMEOUT", "12")
+	filename := filepath.Join(dir, "config.yml")
+	if err := os.WriteFile(filename, []byte("indexer:\n  pdf_parser:\n    command: existing-reader\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	current, _, err := LoadForInspection(filename, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	const selected = "indexer.pdf_parser.selected"
+	builtin, fields := current.PrepareDraft([]SettingEdit{{Path: selected, Action: "set", Value: json.RawMessage(`"builtin"`)}})
+	if len(fields) != 0 {
+		t.Fatal(fields)
+	}
+	command, err := builtin.Indexer.PDFParser.ResolveCommand()
+	if err != nil || command.Command != "" {
+		t.Fatalf("built in selection with an existing command: %+v, %v", command, err)
+	}
+	reset, fields := builtin.PrepareDraft([]SettingEdit{{Path: selected, Action: "reset"}})
+	if len(fields) != 0 {
+		t.Fatal(fields)
+	}
+	command, err = reset.Indexer.PDFParser.ResolveCommand()
+	if err != nil || command.Command != "existing-reader" || reset.Source(selected).WebSelected {
+		t.Fatalf("reset did not restore the configured command: %+v, %v", command, err)
+	}
+	if _, fields := reset.PrepareDraft([]SettingEdit{{Path: "indexer.pdf_parser.timeout", Action: "set", Value: json.RawMessage("42")}}); len(fields) != 1 || fields[0].Code != "locked" {
+		t.Fatalf("expected the environment to lock the timeout: %+v", fields)
 	}
 }
 
@@ -2108,6 +2167,9 @@ func TestRedactedConfigHidesCredentialsWithoutMutation(t *testing.T) {
 	c.Crawler.Proxy = "http://proxy-user:proxy-credential@localhost:8080?key=query-credential#fragment-credential"
 	c.SemanticSearch.APIKey = "embedding-credential"
 	c.Indexer.PDFParser.Args = []string{"--password", "pdf-credential"}
+	c.Indexer.PDFParser.Profiles = map[string]PDFParserCommand{
+		"sensitive_content_patterns": {Command: "reader", Args: []string{"profile-credential"}},
+	}
 	c.Extractors = map[string]*Extractor{"ytdlp": {Options: map[string]any{"extra_args": []string{"--password", "argument-credential"}, "nested": map[string]any{"api_key": "nested-credential"}}}}
 	values, err := c.Redacted()
 	if err != nil {

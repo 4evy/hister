@@ -205,28 +205,86 @@ type Indexer struct {
 	PDFParser                 PDFParser    `yaml:"pdf_parser" mapstructure:"pdf_parser"`
 }
 
-// PDFParser selects an optional command that reads PDF bytes from stdin and
-// writes plain UTF-8 text to stdout. An empty Command uses the built-in reader.
+// PDFParser selects a reader for PDF text extraction. Without a selection,
+// existing installations keep using Command and Args.
 type PDFParser struct {
+	Command  string                      `yaml:"command" mapstructure:"command"`
+	Args     []string                    `yaml:"args" mapstructure:"args"`
+	Timeout  int                         `yaml:"timeout" mapstructure:"timeout"`
+	Selected string                      `yaml:"selected" mapstructure:"selected"`
+	Profiles map[string]PDFParserCommand `yaml:"profiles" mapstructure:"profiles"`
+}
+
+// PDFParserCommand is an operator supplied executable and its literal arguments.
+type PDFParserCommand struct {
 	Command string   `yaml:"command" mapstructure:"command"`
 	Args    []string `yaml:"args" mapstructure:"args"`
-	Timeout int      `yaml:"timeout" mapstructure:"timeout"`
+}
+
+func (p PDFParser) defaultSelection() string {
+	if p.Command != "" {
+		return "configured"
+	}
+	return "builtin"
+}
+
+func (p PDFParser) selectedName() string {
+	if p.Selected != "" {
+		return p.Selected
+	}
+	return p.defaultSelection()
 }
 
 func (p PDFParser) Validate() error {
-	if (p.Command != "" && strings.TrimSpace(p.Command) == "") || strings.ContainsRune(p.Command, '\x00') {
-		return errors.New("indexer.pdf_parser.command must name an executable")
+	_, err := p.ResolveCommand()
+	return err
+}
+
+var pdfParserProfileName = regexp.MustCompile(`^[a-z0-9][a-z0-9_-]*$`)
+
+// ResolveCommand validates the settings and returns the selected command.
+// An empty command selects the built in reader.
+func (p PDFParser) ResolveCommand() (PDFParserCommand, error) {
+	if p.Timeout < 1 || int64(p.Timeout) > int64(math.MaxInt64/time.Second) {
+		return PDFParserCommand{}, errors.New("indexer.pdf_parser.timeout must be a positive number of seconds within the supported duration range")
 	}
-	if p.Command == "" && len(p.Args) != 0 {
-		return errors.New("indexer.pdf_parser.args requires a command")
+	configured := PDFParserCommand{Command: p.Command, Args: p.Args}
+	if p.Command != "" || len(p.Args) != 0 {
+		if err := configured.validate(); err != nil {
+			return PDFParserCommand{}, fmt.Errorf("indexer.pdf_parser: %w", err)
+		}
+	}
+	for name, profile := range p.Profiles {
+		if name == "builtin" || name == "configured" || !pdfParserProfileName.MatchString(name) {
+			return PDFParserCommand{}, errors.New("indexer.pdf_parser.profiles: use a lowercase letter or digit first, followed by letters, digits, underscores or hyphens. The names builtin and configured are reserved")
+		}
+		if err := profile.validate(); err != nil {
+			return PDFParserCommand{}, fmt.Errorf("indexer.pdf_parser.profiles: %w", err)
+		}
+	}
+	switch p.selectedName() {
+	case "builtin":
+		return PDFParserCommand{}, nil
+	case "configured":
+		if p.Command != "" {
+			return configured, nil
+		}
+	default:
+		if profile, ok := p.Profiles[p.Selected]; ok {
+			return profile, nil
+		}
+	}
+	return PDFParserCommand{}, FieldError{Path: "indexer.pdf_parser.selected", Code: "invalid_value", Message: "Choose the built in reader or a configured PDF parser."}
+}
+
+func (p PDFParserCommand) validate() error {
+	if strings.TrimSpace(p.Command) == "" || strings.ContainsRune(p.Command, '\x00') {
+		return errors.New("command must name an executable")
 	}
 	for _, arg := range p.Args {
 		if strings.ContainsRune(arg, '\x00') {
-			return errors.New("indexer.pdf_parser.args cannot contain NUL bytes")
+			return errors.New("arguments cannot contain NUL bytes")
 		}
-	}
-	if p.Timeout < 1 || int64(p.Timeout) > int64(math.MaxInt64/time.Second) {
-		return errors.New("indexer.pdf_parser.timeout must be a positive number of seconds within the supported duration range")
 	}
 	return nil
 }

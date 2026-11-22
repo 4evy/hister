@@ -23,7 +23,9 @@ import (
 )
 
 type pdfFileType struct {
-	parser config.PDFParser
+	command   config.PDFParserCommand
+	timeout   int
+	configErr error
 }
 
 func (pdfFileType) Match(path string) bool {
@@ -34,12 +36,15 @@ func (p pdfFileType) Prepare(ctx context.Context, d *Result, pdfData []byte) err
 	if err := ctx.Err(); err != nil {
 		return err
 	}
+	if p.configErr != nil {
+		return p.configErr
+	}
 	var text string
 	var err error
-	if p.parser.Command == "" {
+	if p.command.Command == "" {
 		text, err = extractPDFText(pdfData)
 	} else {
-		text, err = extractExternalPDFText(ctx, pdfData, p.parser)
+		text, err = p.extractExternalPDFText(ctx, pdfData)
 	}
 	if err != nil {
 		return fmt.Errorf("pdf text extraction: %w", err)
@@ -123,19 +128,13 @@ func (b *pdfTextOutput) Write(p []byte) (int, error) {
 	return b.buffer.Write(p)
 }
 
-func extractExternalPDFText(ctx context.Context, pdfData []byte, parser config.PDFParser) (string, error) {
-	if parser.Timeout == 0 {
-		parser.Timeout = 30
-	}
-	if err := parser.Validate(); err != nil {
-		return "", err
-	}
-	ctx, cancel := context.WithTimeout(ctx, time.Duration(parser.Timeout)*time.Second)
+func (p pdfFileType) extractExternalPDFText(ctx context.Context, pdfData []byte) (string, error) {
+	ctx, cancel := context.WithTimeout(ctx, time.Duration(p.timeout)*time.Second)
 	defer cancel()
 	output := &pdfTextOutput{cancel: cancel}
 	// The executable and arguments come only from local configuration. PDF data
 	// goes through stdin and is never interpreted as arguments or shell code.
-	cmd := exec.CommandContext(ctx, parser.Command, parser.Args...)
+	cmd := exec.CommandContext(ctx, p.command.Command, p.command.Args...)
 	cmd.Stdin = bytes.NewReader(pdfData)
 	cmd.Stdout = output
 	// Stderr may contain document text; leave it connected to the null device.

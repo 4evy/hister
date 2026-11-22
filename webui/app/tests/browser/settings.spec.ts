@@ -3728,6 +3728,17 @@ async function indexerSettingsAPI(page: Page, userHandling = true) {
       default: [],
     },
     {
+      path: 'indexer.pdf_parser.selected',
+      label: 'PDF parser',
+      schema: {
+        ...text,
+        control: 'select',
+        choices: ['builtin'],
+        choice_labels: { builtin: 'Built in' },
+      },
+      default: 'builtin',
+    },
+    {
       path: 'indexer.max_file_size_mb',
       label: 'Maximum file size',
       schema: {
@@ -3794,6 +3805,19 @@ async function indexerSettingsAPI(page: Page, userHandling = true) {
   }
   return state;
 }
+
+test('PDF parser settings link to profile setup beside the reader choice', async ({ page }) => {
+  await indexerSettingsAPI(page);
+  await page.goto('/settings?tab=indexer');
+  const row = page.getByRole('region', { name: 'PDF parser', exact: true });
+  await expect(row.getByRole('combobox')).toHaveValue('builtin');
+  const guide = row.getByRole('link', { name: 'PDF parser profile setup example' });
+  await expect(guide).toBeVisible();
+  await expect(guide).toHaveAttribute(
+    'href',
+    'https://nogon.eu/docs/file-types#external-pdf-parser',
+  );
+});
 
 test('a directory owner follows the User handling draft without losing ownership', async ({
   page,

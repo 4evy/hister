@@ -147,7 +147,7 @@ func (c *Config) FieldStates(fields ...FieldMetadata) []FieldState {
 // FieldStatesForRevision supplies opaque secret references for one active revision.
 func (c *Config) FieldStatesForRevision(revision string, fields ...FieldMetadata) []FieldState {
 	if len(fields) == 0 {
-		fields = FieldCatalog()
+		fields = c.FieldCatalog()
 	}
 	var states []FieldState
 	for _, field := range fields {
@@ -250,7 +250,7 @@ func (c *Config) PrepareDraftForRevision(revision string, edits []SettingEdit, v
 		return nil, []FieldError{{Code: "unavailable", Message: "Load the configuration before preparing a draft."}}
 	}
 	fields := make(map[string]FieldMetadata)
-	for _, field := range FieldCatalog() {
+	for _, field := range c.FieldCatalog() {
 		fields[field.Path] = field
 	}
 	maps.Copy(fields, extractorSettings)
@@ -428,6 +428,15 @@ func decodeSettingValue(decoder *json.Decoder) (any, error) {
 // Categories without editing support have explicit, redacted file managed entries.
 // Declaration order defines the display order of groups and their fields.
 func FieldCatalog() []FieldMetadata {
+	return fieldCatalog(PDFParser{})
+}
+
+// FieldCatalog includes the parser choices supplied by this deployment.
+func (c *Config) FieldCatalog() []FieldMetadata {
+	return fieldCatalog(c.Indexer.PDFParser)
+}
+
+func fieldCatalog(parser PDFParser) []FieldMetadata {
 	const (
 		groupAppearance            = "Appearance"
 		groupSearchBehavior        = "Search behavior"
@@ -450,6 +459,23 @@ func FieldCatalog() []FieldMetadata {
 	)
 	minSnippet, maxSnippet := 1, 10000
 	minSeconds, maxSeconds := 0, int(min(math.MaxInt, math.MaxInt64/time.Second))
+	minParserTimeout := 1
+	profiles := slices.Sorted(maps.Keys(parser.Profiles))
+	externalParsers := append([]string{"configured"}, profiles...)
+	parserChoices := []string{"builtin"}
+	parserLabels := map[string]string{"builtin": "Built in"}
+	if parser.Command != "" {
+		parserChoices = append(parserChoices, "configured")
+		parserLabels["configured"] = "Configured command"
+	}
+	parserChoices = append(parserChoices, profiles...)
+	parserDescription := "Choose the reader for new PDFs."
+	if len(parserChoices) == 1 {
+		parserDescription = "Only the built in reader is available."
+	}
+	for _, name := range profiles {
+		parserLabels[name] = name
+	}
 	minFileSize, maxFileSize := 1, min(math.MaxInt, math.MaxInt64/bytesPerMiB)
 	semanticSearchEnabled := &SettingAvailability{
 		AnyOf: []string{"semantic_search.enable"},
@@ -896,6 +922,33 @@ func FieldCatalog() []FieldMetadata {
 			},
 			Effect: "runtime",
 		},
+		{
+			Path:        "indexer.pdf_parser.selected",
+			Group:       groupPDFExtraction,
+			Label:       "PDF parser",
+			Description: parserDescription + " Create or edit external parser profiles in the server's main YAML file.",
+			Schema: SettingSchema{
+				Sensitivity:  "none",
+				Choices:      parserChoices,
+				ChoiceLabels: parserLabels,
+			},
+		},
+		{
+			Path:        "indexer.pdf_parser.timeout",
+			Group:       groupPDFExtraction,
+			Label:       "PDF parser timeout",
+			Description: "Maximum time to wait for the selected external PDF parser.",
+			AvailableWhen: &SettingAvailability{
+				AnyOf:  []string{"indexer.pdf_parser.selected"},
+				Values: externalParsers,
+			},
+			Schema: SettingSchema{
+				Sensitivity: "none",
+				Unit:        "seconds",
+				Min:         &minParserTimeout,
+				Max:         &maxSeconds,
+			},
+		},
 		fileManagedField(
 			"indexer.pdf_parser.command",
 			groupPDFExtraction,
@@ -909,10 +962,10 @@ func FieldCatalog() []FieldMetadata {
 			"Arguments passed to the PDF parser command.",
 		),
 		fileManagedField(
-			"indexer.pdf_parser.timeout",
+			"indexer.pdf_parser.profiles",
 			groupPDFExtraction,
-			"PDF parser timeout",
-			"Maximum time in seconds for parsing a PDF.",
+			"PDF parser profiles (file only)",
+			"Define each command and its arguments under indexer.pdf_parser.profiles. After editing the active file, select Refresh settings, then Reload configuration. To use a new config file, restart Nogon with --config FILENAME.",
 		),
 		{
 			Path:        "crawler.timeout",
@@ -1310,6 +1363,7 @@ func FieldCatalog() []FieldMetadata {
 		),
 	}
 	defaults := CreateDefaultConfig()
+	defaults.Indexer.PDFParser.Selected = parser.defaultSelection()
 	// Provider endpoints and identity or role mappings remain file managed.
 	defaults.Server.OAuth = make(map[string]*OAuthEntry)
 	for _, provider := range oauth.ProviderNames() {
@@ -1977,6 +2031,9 @@ func settingHasValue(value any) bool {
 }
 
 func settingValue(c *Config, path string) any {
+	if path == "indexer.pdf_parser.selected" {
+		return c.Indexer.PDFParser.selectedName()
+	}
 	value := reflect.ValueOf(c).Elem()
 	for key := range strings.SplitSeq(path, ".") {
 		for value.IsValid() && (value.Kind() == reflect.Pointer || value.Kind() == reflect.Interface) {

@@ -25,7 +25,7 @@ import (
 )
 
 func configurationCatalog(current *config.Config) []config.FieldMetadata {
-	fields := slices.DeleteFunc(config.FieldCatalog(), func(field config.FieldMetadata) bool { return field.Path == "extractors" })
+	fields := slices.DeleteFunc(current.FieldCatalog(), func(field config.FieldMetadata) bool { return field.Path == "extractors" })
 	return append(fields, extractor.NewDefaultRegistry().ConfigurationFields(current.Extractors)...)
 }
 
