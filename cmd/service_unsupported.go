@@ -1,4 +1,4 @@
-//go:build !linux && !darwin
+//go:build !linux && !darwin && !windows
 
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
@@ -10,6 +10,8 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func manageUserService(_ *cobra.Command, _ string, _ serviceRunner) error {
-	return errors.New("user services require systemd on Linux or launchd on macOS")
+func addPlatformServiceCommands(_ *cobra.Command) {}
+
+func manageService(_ *cobra.Command, _ string, _ serviceRunner) error {
+	return errors.New("service management requires Windows, systemd on Linux or launchd on macOS")
 }

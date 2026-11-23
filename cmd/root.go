@@ -5,6 +5,7 @@
 package cmd
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"maps"
@@ -178,15 +179,22 @@ var listenCmd = &cobra.Command{
 	Short: "Start the Nogon HTTP server",
 	Long:  `Start the Nogon HTTP server and watch configured directories for file changes.`,
 	RunE: func(cmd *cobra.Command, _ []string) error {
-		idx := initIndex(model.ReadWrite)
-		if (cfg.App.AccessToken != "" || cfg.App.UserHandling) && strings.HasPrefix(cfg.BaseURL(""), "http://") {
-			log.Warn().Msg("Using authentication without https. Credentials and sessions are sent in plain text network requests.")
-		}
 		ctx, stop := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
 		defer stop()
-		server.Version = Version
-		return server.Listen(ctx, cfg, idx, listenConfigOverrides(cmd)...)
+		return serve(ctx, nil, listenConfigOverrides(cmd)...)
 	},
+}
+
+func serve(ctx context.Context, ready func(), overrides ...config.Override) error {
+	idx, err := initIndex(model.ReadWrite)
+	if err != nil {
+		return err
+	}
+	if (cfg.App.AccessToken != "" || cfg.App.UserHandling) && strings.HasPrefix(cfg.BaseURL(""), "http://") {
+		log.Warn().Msg("Using authentication without https. Credentials and sessions are sent in plain text network requests.")
+	}
+	server.Version = Version
+	return server.ListenWithReady(ctx, cfg, idx, ready, overrides...)
 }
 
 func exit(errno int, msg string) {
@@ -403,6 +411,10 @@ func initialize(cmd *cobra.Command) {
 		zerolog.SetGlobalLevel(zerolog.DebugLevel)
 	}
 	initConfig(cmd)
+	configureRuntime()
+}
+
+func configureRuntime() {
 	if cfg.Crawler.UserAgent != "" {
 		UserAgent = cfg.Crawler.UserAgent
 	}
@@ -462,15 +474,21 @@ func initLog() {
 }
 
 func initDB(accessMode model.AccessMode) {
+	if err := openDB(accessMode); err != nil {
+		exit(1, err.Error())
+	}
+}
+
+func openDB(accessMode model.AccessMode) error {
 	initialize := model.Init
 	if accessMode == model.ReadOnly {
 		initialize = model.InitReadOnly
 	}
-	err := initialize(cfg)
-	if err != nil {
-		exit(1, err.Error())
+	if err := initialize(cfg); err != nil {
+		return err
 	}
 	log.Debug().Msg("Database initialization complete")
+	return nil
 }
 
 func initExtractor() {
@@ -495,9 +513,13 @@ func embeddingConfigWarning(storedFingerprint, activeFingerprint string) string 
 	return "The semantic search embedding configuration differs from the indexed configuration. Run `nogon reindex` to update your embeddings."
 }
 
-func initIndex(accessMode model.AccessMode) *indexer.Indexer {
-	initDB(accessMode)
-	initExtractor()
+func initIndex(accessMode model.AccessMode) (*indexer.Indexer, error) {
+	if err := openDB(accessMode); err != nil {
+		return nil, err
+	}
+	if err := extractor.Init(cfg.Extractors); err != nil {
+		return nil, fmt.Errorf("initialize extractors: %w", err)
+	}
 	indexCfg := cfg
 	if accessMode == model.ReadOnly {
 		// Offline URL listing does not need a vector store or embedding workers
@@ -508,21 +530,21 @@ func initIndex(accessMode model.AccessMode) *indexer.Indexer {
 	}
 	idx, err := indexer.New(indexCfg)
 	if err != nil {
-		exit(1, "Indexer initialization error: "+err.Error())
+		return nil, fmt.Errorf("indexer initialization error: %w", err)
 	}
 	v, storedFingerprint, err := idx.GetMetadata()
 	if err != nil {
-		exit(1, "Failed to retrieve index metadata: "+err.Error())
+		return nil, fmt.Errorf("failed to retrieve index metadata: %w", err)
 	}
 	storedEmbeddingFingerprint, err := idx.GetEmbeddingFingerprint()
 	if err != nil {
-		exit(1, "Failed to retrieve embedding configuration metadata: "+err.Error())
+		return nil, fmt.Errorf("failed to retrieve embedding configuration metadata: %w", err)
 	}
 	metadataMissing := v == -1 || storedFingerprint == ""
 	if metadataMissing {
 		legacyMetadata, err := model.GetLegacyIndexerMetadata()
 		if err != nil {
-			exit(1, "Failed to retrieve legacy index metadata: "+err.Error())
+			return nil, fmt.Errorf("failed to retrieve legacy index metadata: %w", err)
 		}
 		if legacyMetadata != nil {
 			if v == -1 {
@@ -542,7 +564,7 @@ func initIndex(accessMode model.AccessMode) *indexer.Indexer {
 	}
 	if metadataMissing {
 		if err := idx.SetMetadata(v, storedFingerprint); err != nil {
-			exit(1, "Failed to store index metadata: "+err.Error())
+			return nil, fmt.Errorf("failed to store index metadata: %w", err)
 		}
 	}
 	if indexer.Version > v {
@@ -556,7 +578,7 @@ func initIndex(accessMode model.AccessMode) *indexer.Indexer {
 		log.Warn().Msg(warning)
 	}
 	log.Debug().Msg("Indexer initialization complete")
-	return idx
+	return idx, nil
 }
 
 func newClient(extraOpts ...client.Option) *client.Client {

@@ -29,7 +29,9 @@ type serviceJob struct {
 	state, path string // Empty state means the manager does not know this job.
 }
 
-func manageUserService(cmd *cobra.Command, platform string, run serviceRunner) error {
+func addPlatformServiceCommands(_ *cobra.Command) {}
+
+func manageService(cmd *cobra.Command, platform string, run serviceRunner) error {
 	s, err := newUserService(platform, run)
 	if err != nil {
 		return err
@@ -164,7 +166,7 @@ func newUserService(platform string, run serviceRunner) (userService, error) {
 }
 
 func (s userService) definition() (string, error) {
-	def, err := serviceSettings()
+	def, err := serviceSettings("")
 	if err != nil {
 		return "", err
 	}

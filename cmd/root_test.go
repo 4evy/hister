@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -1395,5 +1396,59 @@ func TestCommandBranding(t *testing.T) {
 	}
 	if !strings.Contains(UserAgent, "Nogon/"+Version) || !strings.Contains(UserAgent, "+https://nogon.eu/") {
 		t.Fatalf("crawler user agent = %q", UserAgent)
+	}
+}
+
+func TestWindowsServiceInstallHelp(t *testing.T) {
+	group := newServiceCommand("windows", nil)
+	install, _, err := group.Find([]string{"install"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(install.Short, "Windows service") || !strings.Contains(install.Short, `NT SERVICE\Nogon`) {
+		t.Fatalf("install help doesn't identify the Windows service and its account: %s", install.Short)
+	}
+}
+
+func TestMachineServiceDataSelection(t *testing.T) {
+	dir := t.TempDir()
+	t.Chdir(dir)
+	for _, key := range []string{"HOME", "USERPROFILE", "LOCALAPPDATA", "APPDATA", "XDG_STATE_HOME", "XDG_DATA_HOME", "XDG_CONFIG_HOME"} {
+		t.Setenv(key, dir)
+	}
+	machine := filepath.Join(dir, "machine", "Nogon")
+	check := func(want string) {
+		t.Helper()
+		def, err := serviceSettings(machine)
+		if err != nil || def.Data != want || def.WorkingDir != dir {
+			t.Fatalf("got %+v, %v; want data %q and working directory %q", def, err, want, dir)
+		}
+	}
+	check(machine)
+	legacy := filepath.Join(dir, "hister")
+	if runtime.GOOS == "darwin" {
+		legacy = filepath.Join(dir, "Library", "Application Support", "hister")
+	}
+	if err := os.MkdirAll(legacy, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(legacy, ".secret_key"), []byte("existing"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	check(legacy)
+	t.Setenv("NOGON_DATA_DIR", "explicit")
+	check(filepath.Join(dir, "explicit"))
+}
+
+func TestMachineServiceRejectsProfileRelativeWatch(t *testing.T) {
+	dir := t.TempDir()
+	t.Chdir(dir)
+	t.Setenv("NOGON_DATA_DIR", dir)
+	if err := os.WriteFile("config.yml", []byte("indexer:\n  directories:\n    - path: ~/Documents\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	_, err := serviceSettings(dir)
+	if err == nil || !strings.Contains(err.Error(), "~/Documents") {
+		t.Fatalf("expected actionable error for watch under installer profile, got %v", err)
 	}
 }

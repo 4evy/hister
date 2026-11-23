@@ -148,7 +148,7 @@ func recParseStaticFiles(entries []iofs.DirEntry, dir, baseDir string) error {
 // Listen owns idx and the database connection until the server stops. Reloads
 // close and recreate runtime components after active requests have drained.
 func Listen(ctx context.Context, cfg *config.Config, idx *indexer.Indexer, overrides ...config.Override) error {
-	return listenRuntime(ctx, cfg, idx, overrides...)
+	return ListenWithReady(ctx, cfg, idx, nil, overrides...)
 }
 
 func newListener(cfg config.Server) (net.Listener, error) {

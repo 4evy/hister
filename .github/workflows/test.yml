@@ -35,7 +35,7 @@ jobs:
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
         run: |
-          if git diff --quiet "$BASE_SHA" HEAD -- '*.go' 'cmd/testdata/zim/**' 'go.mod' 'go.sum' '.goreleaser*.yml' 'Dockerfile' 'compose.yml' 'contrib/systemd/**' 'contrib/winget/**' 'scripts/fetch_dataset.sh' '.github/workflows/*.yml' '.forgejo/workflows/*.yml' 'webui/**' 'package.json' 'package-lock.json' '.github/workflows/test.yml'; then
+          if git diff --quiet "$BASE_SHA" HEAD -- '*.go' 'cmd/testdata/zim/**' 'scripts/test_windows_service.ps1' 'go.mod' 'go.sum' '.goreleaser*.yml' 'Dockerfile' 'compose.yml' 'contrib/systemd/**' 'contrib/winget/**' 'scripts/fetch_dataset.sh' '.github/workflows/*.yml' '.forgejo/workflows/*.yml' 'webui/**' 'package.json' 'package-lock.json' '.github/workflows/test.yml'; then
             echo "skip=true" >> "$GITHUB_OUTPUT"
           else
             echo "skip=false" >> "$GITHUB_OUTPUT"
@@ -61,6 +61,11 @@ jobs:
         if: steps.changes.outputs.skip != 'true'
         # Windows race tests can exceed Go's default 10 minute package timeout.
         run: go test -race -cover -timeout 30m ./...
+
+      - name: Exercise the Windows service lifecycle
+        if: runner.os == 'Windows' && steps.changes.outputs.skip != 'true'
+        shell: pwsh
+        run: ./scripts/test_windows_service.ps1
 
   nix-test:
     name: Nix compatibility

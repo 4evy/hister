@@ -1914,7 +1914,8 @@ func startRuntimeTestServer(t *testing.T) (*config.Config, func(), func(string, 
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
-	go func() { done <- Listen(ctx, active, idx) }()
+	ready := make(chan struct{})
+	go func() { done <- ListenWithReady(ctx, active, idx, func() { close(ready) }) }()
 	hc := &http.Client{Timeout: 10 * time.Second}
 	t.Cleanup(func() {
 		cancel()
@@ -1928,18 +1929,16 @@ func startRuntimeTestServer(t *testing.T) (*config.Config, func(), func(string, 
 		}
 		hc.CloseIdleConnections()
 	})
-	deadline := time.Now().Add(5 * time.Second)
-	for {
-		resp, err := hc.Get(active.BaseURL("/health"))
-		if err == nil {
-			_ = resp.Body.Close()
-			break
-		}
-		if time.Now().After(deadline) {
-			t.Fatal("server did not start: ", err)
-		}
-		time.Sleep(10 * time.Millisecond)
+	select {
+	case <-ready:
+	case <-time.After(5 * time.Second):
+		t.Fatal("server did not signal readiness")
 	}
+	resp, err := hc.Get(active.BaseURL("/health"))
+	if err != nil {
+		t.Fatal("server reported ready before accepting requests: ", err)
+	}
+	_ = resp.Body.Close()
 	request := func(baseURL, path, token, body string) (int, string) {
 		t.Helper()
 		method := http.MethodGet

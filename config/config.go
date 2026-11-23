@@ -787,10 +787,6 @@ func (c *Config) resolveDataDirectory() error {
 	}
 	var selected, legacy string
 	var seen []os.FileInfo
-	var database string
-	if !strings.Contains(c.Server.Database, "=") && !filepath.IsAbs(c.Server.Database) {
-		database, _, _ = strings.Cut(filepath.Clean(c.Server.Database), string(filepath.Separator))
-	}
 	for _, name := range paths {
 		info, err := os.Stat(name)
 		if errors.Is(err, os.ErrNotExist) {
@@ -803,21 +799,13 @@ func (c *Config) resolveDataDirectory() error {
 			continue
 		}
 		seen = append(seen, info)
-		entries, err := os.ReadDir(name)
+		populated, err := c.HasStoredData(name)
 		if err != nil {
 			return fmt.Errorf("inspect data directory %q: %w; set app.directory explicitly", name, err)
 		}
 		if legacy == "" && filepath.Base(name) == "hister" {
 			legacy = name
 		}
-		populated := slices.ContainsFunc(entries, func(entry os.DirEntry) bool {
-			name := entry.Name()
-			switch name {
-			case secretKeyFilename, "rules.json", "config.web.yml", "db.sqlite3", "db.sqlite3-wal", "data", "index.db":
-				return true
-			}
-			return name == database || name == database+"-wal" || (strings.HasPrefix(name, "index_") && strings.HasSuffix(name, ".db"))
-		})
 		if populated {
 			if selected != "" {
 				return fmt.Errorf("multiple data directories contain stored files: %q and %q; set app.directory or NOGON_DATA_DIR explicitly", selected, name)
@@ -831,6 +819,26 @@ func (c *Config) resolveDataDirectory() error {
 		c.App.Directory = legacy
 	}
 	return nil
+}
+
+// HasStoredData reports whether a directory contains recognizable Nogon or Hister storage.
+func (c *Config) HasStoredData(dir string) (bool, error) {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return false, err
+	}
+	var database string
+	if !strings.Contains(c.Server.Database, "=") && !filepath.IsAbs(c.Server.Database) {
+		database, _, _ = strings.Cut(filepath.Clean(c.Server.Database), string(filepath.Separator))
+	}
+	return slices.ContainsFunc(entries, func(entry os.DirEntry) bool {
+		name := entry.Name()
+		switch name {
+		case secretKeyFilename, "rules.json", "config.web.yml", "db.sqlite3", "db.sqlite3-wal", "data", "index.db":
+			return true
+		}
+		return name == database || name == database+"-wal" || (strings.HasPrefix(name, "index_") && strings.HasSuffix(name, ".db"))
+	}), nil
 }
 
 // getConfigSearchPaths returns the list of paths to search for config files

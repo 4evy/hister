@@ -21,7 +21,10 @@ var listURLsCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, _ []string) {
 		offline, _ := cmd.Flags().GetBool("offline")
 		if offline {
-			idx := initIndex(model.ReadOnly)
+			idx, err := initIndex(model.ReadOnly)
+			if err != nil {
+				exit(1, err.Error())
+			}
 			defer idx.Close()
 			idx.Iterate(func(doc *document.Document) {
 				fmt.Println(doc.URL)

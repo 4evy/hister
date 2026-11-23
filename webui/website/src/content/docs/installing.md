@@ -51,10 +51,11 @@ You may optionally move the binary to a directory on your `PATH`, such as `/usr/
 
 ### Run Nogon in the background
 
-On Linux with systemd or on macOS, you can start a standalone Nogon installation
-at login. Put the executable in a permanent location, stop any foreground server,
-then run the following as your usual user from the directory where you normally
-run `nogon listen`.
+On Windows, Nogon can start at boot as a Windows service. On Linux with systemd
+and on macOS it can start at login. Put the executable in a permanent location
+(such as `C:\Program Files\Nogon` on Windows) and stop any foreground server.
+From the directory where you normally run `nogon listen`, use your usual account
+to run these commands.
 
 ```bash
 nogon service install
@@ -67,13 +68,30 @@ path. To select one explicitly, use `nogon service install --config /path/to/con
 Put server settings such as your access token in that file before installing.
 Keep using your package manager for a service installed through Homebrew or Nix.
 
+On Windows, installation and service control normally require administrator
+rights. If needed, the installer prints a command to run in an administrator
+PowerShell window with your selected paths.
+The default account is `NT SERVICE\Nogon`. A fresh installation stores its data
+in `%ProgramData%\Nogon`. An existing index or an explicit data path takes
+precedence. For your own data directory, create it first and grant the service
+account **Modify** access. Give it **Read and execute** access to the executable
+and working directory, and **Read** access to the configuration and watched files.
+Use an absolute path for watches under your home directory.
+For a domain network share, grant the computer account Read access or select
+a service account with access to the share.
+
+To change the account, open **Services**, select **Nogon → Properties → Log On**,
+and restart the service. `nogon service status` shows the configured account.
+For startup failures, open **Event Viewer → Windows Logs → Application** and look
+for **Nogon**.
+
 Use `nogon service stop`, `nogon service start`, or `nogon service restart`
 to control the server. The status command exits with 0 when running, 3 when
 installed but not running, and 4 when absent. On Linux, use
 `journalctl --user -u nogon.service` to read the service log. On macOS, set
 `app.log_file` in your configuration to keep a server log.
 
-Run `nogon service uninstall` to stop the server and remove its login service.
+Run `nogon service uninstall` to stop the server and remove its service.
 Your configuration and indexed data stay in place.
 
 ## Upgrading from Hister

@@ -982,7 +982,8 @@ func (r *serverRuntime) close() {
 	}
 }
 
-func listenRuntime(ctx context.Context, cfg *config.Config, idx *indexer.Indexer, overrides ...config.Override) error {
+// ListenWithReady calls ready after the initial listener and runtime are active.
+func ListenWithReady(ctx context.Context, cfg *config.Config, idx *indexer.Indexer, ready func(), overrides ...config.Override) error {
 	r := &serverRuntime{ctx: ctx, overrides: overrides, failures: make(chan error, 1)}
 	if err := cfg.DiscardManagedStaging(); err != nil {
 		idx.Close()
@@ -1005,6 +1006,9 @@ func listenRuntime(ctx context.Context, cfg *config.Config, idx *indexer.Indexer
 	r.current = g
 	r.serving = r.startListener(listener)
 	defer r.close()
+	if ready != nil {
+		ready()
+	}
 	log.Info().Str("Address", cfg.Server.Address).Str("Version", Version).Str("URL", cfg.BaseURL("/")).Msg("Starting webserver")
 	select {
 	case <-ctx.Done():
