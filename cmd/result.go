@@ -24,10 +24,14 @@ func (e *partialFailure) Error() string {
 }
 
 // ExitCode maps command results to shell status codes: 0 for success, 1 for
-// execution errors, and 2 for completed operations with item failures.
+// execution errors, and 2 for completed operations with item failures. Service
+// status also uses 3 for a nonrunning service and 4 for a missing definition.
 func ExitCode(err error) int {
 	if err == nil {
 		return 0
+	}
+	if code, ok := errors.AsType[serviceStatusCode](err); ok {
+		return int(code)
 	}
 	if _, ok := errors.AsType[*partialFailure](err); ok {
 		return 2

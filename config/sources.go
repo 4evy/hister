@@ -4,6 +4,8 @@ package config
 
 import (
 	"errors"
+	"iter"
+	"maps"
 	"reflect"
 	"strings"
 
@@ -28,6 +30,11 @@ type Override struct {
 	Path   string
 	Value  any
 	Source ValueSource
+}
+
+// Sources returns the origins of explicitly configured settings without their values.
+func (c *Config) Sources() iter.Seq2[string, ValueSource] {
+	return maps.All(c.sources)
 }
 
 // Source returns the active origin of a setting or collection member.

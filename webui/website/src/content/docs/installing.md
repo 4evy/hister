@@ -49,6 +49,33 @@ Release pages also contain a checksums file that can be used to verify the downl
 
 You may optionally move the binary to a directory on your `PATH`, such as `/usr/local/bin` or `~/.local/bin`.
 
+### Run Nogon in the background
+
+On Linux with systemd or on macOS, you can start a standalone Nogon installation
+at login. Put the executable in a permanent location, stop any foreground server,
+then run the following as your usual user from the directory where you normally
+run `nogon listen`.
+
+```bash
+nogon service install
+nogon service status
+```
+
+Installation starts the service and records your executable, working directory,
+and data directory. If you use a configuration file, Nogon records its absolute
+path. To select one explicitly, use `nogon service install --config /path/to/config.yml`.
+Put server settings such as your access token in that file before installing.
+Keep using your package manager for a service installed through Homebrew or Nix.
+
+Use `nogon service stop`, `nogon service start`, or `nogon service restart`
+to control the server. The status command exits with 0 when running, 3 when
+installed but not running, and 4 when absent. On Linux, use
+`journalctl --user -u nogon.service` to read the service log. On macOS, set
+`app.log_file` in your configuration to keep a server log.
+
+Run `nogon service uninstall` to stop the server and remove its login service.
+Your configuration and indexed data stay in place.
+
 ## Upgrading from Hister
 
 Nogon reuses your existing Hister configuration and data. The rename itself does

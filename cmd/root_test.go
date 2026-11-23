@@ -28,6 +28,15 @@ import (
 	"github.com/asciimoo/nogon/server/types"
 )
 
+func TestServiceCommands(t *testing.T) {
+	for _, action := range []string{"install", "uninstall", "start", "stop", "restart", "status"} {
+		command, _, err := rootCmd.Find([]string{"service", action})
+		if err != nil || command.CommandPath() != "nogon service "+action {
+			t.Errorf("service %s resolved to %s: %v", action, command.CommandPath(), err)
+		}
+	}
+}
+
 func TestPurgeCommandPreviewsBeforeDeletion(t *testing.T) {
 	for _, tc := range []struct {
 		name, input, want  string

@@ -13,6 +13,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"runtime"
 	"runtime/debug"
 	"strconv"
 	"strings"
@@ -246,7 +247,7 @@ func init() {
 	bindConfigFlag(rootCmd.PersistentFlags(), "token", "app.access_token")
 	rootCmd.PersistentFlags().Int("client-timeout", 0, "HTTP client timeout in seconds (default 10; explicitly set 0 to disable the timeout)")
 
-	rootCmd.AddCommand(listenCmd)
+	rootCmd.AddCommand(listenCmd, newServiceCommand(runtime.GOOS, nativeServiceCommand))
 	rootCmd.AddCommand(configCmd, doctorCmd)
 	configCmd.AddCommand(configCreateCmd, configPathCmd, configShowCmd, configValidateCmd)
 	configCreateCmd.Flags().Bool("full", false, "Write all default settings as active YAML values")
