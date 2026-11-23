@@ -910,20 +910,24 @@
                             <span
                               class="font-inter bg-muted-surface text-text-brand-secondary w-fit px-1.5 py-0.5 text-xs font-semibold whitespace-nowrap"
                               title={formatTimestamp(timestamp)}
-                              >{formatRelativeTime(timestamp)}</span
                             >
+                              {formatRelativeTime(timestamp)}
+                            </span>
                           {/if}
                           {#if (item.add_count ?? 0) > 1}
                             <span
                               class="font-inter bg-muted-surface text-text-brand-secondary w-fit px-1.5 py-0.5 text-xs font-semibold whitespace-nowrap"
                               title={`Added ${item.add_count?.toLocaleString()} times`}
-                              >x{item.add_count?.toLocaleString()}</span
                             >
+                              x{item.add_count?.toLocaleString()}
+                            </span>
                           {/if}
                           <span
                             class="history-url font-fira text-text-brand-muted line-clamp-1 min-w-0 flex-1 text-xs md:text-sm"
-                            title={item.url}>{displayText(item.url)}</span
+                            title={item.url}
                           >
+                            {displayText(item.url)}
+                          </span>
                         </div>
                       </div>
                       <nav class="flex shrink-0 items-center gap-1 self-start">

@@ -62,8 +62,9 @@
             <span
               aria-hidden="true"
               class="font-fira border-brutal-border bg-nogon-indigo mb-3 flex size-8 items-center justify-center border-[2px] text-sm font-bold text-white"
-              >{i + 1}</span
             >
+              {i + 1}
+            </span>
             <h3 class="font-space flex items-center justify-between gap-2 text-base font-bold">
               {step.title}
               <ArrowRightIcon aria-hidden="true" size={16} class="shrink-0" />

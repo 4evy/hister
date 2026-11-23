@@ -668,8 +668,10 @@
             variant="outline"
             disabled={busy}
             onclick={refreshSettings}
-            size="sm">Refresh settings</Button
-          >{/if}
+            size="sm"
+          >
+            Refresh settings
+          </Button>{/if}
       </div>
       <p class="text-text-brand-muted my-2 text-sm">
         Configure appearance, search behavior, logging, indexing, crawling, extraction and web
@@ -690,8 +692,10 @@
                     <a
                       href={categoryUrl(field.category, `setting-${field.path}-row`)}
                       onclick={followErrorLink}
-                      class="underline underline-offset-2">{field.label}: {error.message}</a
+                      class="underline underline-offset-2"
                     >
+                      {field.label}: {error.message}
+                    </a>
                   {:else}
                     {error.message}
                   {/if}
@@ -736,10 +740,11 @@
                   : ''} {category === item
                   ? 'border-nogon-indigo text-text-brand lg:bg-nogon-indigo/10 font-semibold'
                   : 'text-text-brand-muted border-transparent font-medium'}"
-                >{categoryLabels[item] ?? item}{count
-                  ? ` (${count} ${count === 1 ? 'error' : 'errors'})`
-                  : ''}</button
               >
+                {categoryLabels[item] ?? item}{count
+                  ? ` (${count} ${count === 1 ? 'error' : 'errors'})`
+                  : ''}
+              </button>
               {#if unsavedCount}
                 <span id={`tab-${item}-unsaved`} hidden>{unsavedDescription}</span>
                 <Tooltip.Provider delayDuration={0}>
@@ -754,8 +759,9 @@
                         variant="outline"
                         aria-hidden="true"
                         class="border-nogon-indigo/30 bg-nogon-indigo/10 text-text-brand min-w-5 px-1.5 tabular-nums"
-                        >{unsavedCount}</Badge
                       >
+                        {unsavedCount}
+                      </Badge>
                     </Tooltip.Trigger>
                     <Tooltip.Content role="tooltip" side="bottom" sideOffset={6}>
                       {unsavedDescription}
@@ -807,8 +813,10 @@
                         type="button"
                         class="bg-amber-400 text-amber-950 hover:bg-amber-300"
                         disabled={busy}
-                        onclick={applyConfiguration}>Reload configuration</Button
+                        onclick={applyConfiguration}
                       >
+                        Reload configuration
+                      </Button>
                     {:else}
                       <p>
                         {settings.pending.status === 'unreadable'
@@ -828,10 +836,10 @@
               <div class="space-y-6">
                 {#if category === 'semantic_search'}
                   <p class="text-text-brand-muted text-sm">
-                    Saving does not start reindexing or test the embedding endpoint. Run <code
-                      >nogon reindex</code
-                    > to rebuild existing embeddings when needed. Ranking and query settings apply without
-                    reindexing.
+                    Saving does not start reindexing or test the embedding endpoint. Run <code>
+                      nogon reindex
+                    </code> to rebuild existing embeddings when needed. Ranking and query settings apply
+                    without reindexing.
                   </p>
                 {:else if category === 'extractors'}
                   <p class="text-text-brand-muted text-sm">
@@ -929,15 +937,19 @@
                           document
                             .getElementById(`setting-${editor.path}`)
                             ?.scrollIntoView({ block: 'nearest' });
-                        }}>Continue editing</Button
-                      >{/if}
+                        }}
+                      >
+                        Continue editing
+                      </Button>{/if}
                     <Button
                       type="button"
                       variant="link"
                       size="sm"
                       disabled={busy}
-                      onclick={() => changeEditor(null)}>Cancel edit</Button
+                      onclick={() => changeEditor(null)}
                     >
+                      Cancel edit
+                    </Button>
                   </div>
                 {/if}
                 <p
@@ -962,8 +974,10 @@
                   variant="ghost"
                   disabled={busy || !dirty}
                   onclick={discard}
-                  class="text-text-brand-secondary px-2 sm:px-3">Discard changes</Button
+                  class="text-text-brand-secondary px-2 sm:px-3"
                 >
+                  Discard changes
+                </Button>
                 <Button
                   id="save-settings"
                   type="submit"
@@ -973,8 +987,10 @@
                     needsReload ||
                     !!settings.pending ||
                     conflictCount > 0}
-                  class="px-2 sm:px-4">Save and apply</Button
+                  class="px-2 sm:px-4"
                 >
+                  Save and apply
+                </Button>
               </div>
             </div>
           </div>

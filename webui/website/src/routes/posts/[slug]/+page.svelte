@@ -28,8 +28,9 @@
 <header class="w-full bg-(--text-primary) px-6 py-12 md:py-16">
   <div class="mx-auto max-w-3xl">
     {#if data.date}
-      <time class="font-inter text-sm text-white/70" datetime={data.publishedTime}>{data.date}</time
-      >
+      <time class="font-inter text-sm text-white/70" datetime={data.publishedTime}>
+        {data.date}
+      </time>
     {/if}
     <h1
       class="font-space mt-3 text-3xl leading-tight font-black tracking-[-1px] text-white md:text-5xl"

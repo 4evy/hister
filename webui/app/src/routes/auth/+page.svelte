@@ -195,9 +195,9 @@
             {#if !oauthOnly && requiredMethod !== 'oauth'}
               <div class="relative flex items-center py-2">
                 <div class="border-border-brand-muted flex-grow border-t"></div>
-                <span class="text-text-brand-muted font-inter mx-3 flex-shrink text-xs uppercase"
-                  >or</span
-                >
+                <span class="text-text-brand-muted font-inter mx-3 flex-shrink text-xs uppercase">
+                  or
+                </span>
                 <div class="border-border-brand-muted flex-grow border-t"></div>
               </div>
             {/if}

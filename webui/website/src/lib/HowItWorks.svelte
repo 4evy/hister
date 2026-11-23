@@ -102,8 +102,9 @@
                 <ItemIcon size={32} class="mb-4 text-[var(--text-primary)]" />
                 <span
                   class="font-fira block text-[11px] leading-tight font-bold tracking-[0.7px] text-[var(--text-secondary)] uppercase"
-                  >{item.label}</span
                 >
+                  {item.label}
+                </span>
               </div>
             {/each}
           </div>
@@ -131,8 +132,9 @@
         class="md:border-brutal-border flex items-center gap-3 border-b-[3px] border-white/20 bg-[#59598f] px-5 py-4 md:border-r-[3px] md:border-b-0"
       >
         <Browser size={20} />
-        <span class="font-space text-xs font-black tracking-[1.4px] uppercase">The simple loop</span
-        >
+        <span class="font-space text-xs font-black tracking-[1.4px] uppercase">
+          The simple loop
+        </span>
       </div>
       <p class="px-5 py-4 text-sm leading-relaxed text-white/70 md:px-7">
         Browser extensions can index pages as they are visited. File watchers, history imports, and

@@ -144,9 +144,9 @@
         >
           <span class="min-w-0">
             <code>{example.query}</code>
-            <span class="text-text-brand-secondary mt-1.5 block text-sm leading-relaxed"
-              >{example.description}</span
-            >
+            <span class="text-text-brand-secondary mt-1.5 block text-sm leading-relaxed">
+              {example.description}
+            </span>
           </span>
           <ArrowRight
             class="text-text-brand-muted group-hover:text-text-brand mt-1 size-4 shrink-0"
@@ -185,9 +185,9 @@
           {@render docLink('query-language', 'Query language guide')}
         </div>
         <p class="text-text-brand-secondary mt-5 text-sm">
-          For setup and indexing instructions, see <a class="text-link" href={resolve('/about')}
-            >About Nogon</a
-          >.
+          For setup and indexing instructions, see <a class="text-link" href={resolve('/about')}>
+            About Nogon
+          </a>.
         </p>
       </div>
       <nav
@@ -198,9 +198,9 @@
         <ul class="grid gap-x-5 gap-y-1 sm:grid-cols-2">
           {#each sections as section (section.id)}
             <li>
-              <a class="section-link" href={`#${section.id}`}
-                >{section.title}<ArrowRight class="size-3.5 shrink-0" aria-hidden="true" /></a
-              >
+              <a class="section-link" href={`#${section.id}`}>
+                {section.title}<ArrowRight class="size-3.5 shrink-0" aria-hidden="true" />
+              </a>
             </li>
           {/each}
         </ul>
@@ -255,9 +255,9 @@
                     {hotkeyDescriptions[action] ?? action}
                   </dt>
                   <dd class="shrink-0">
-                    <Kbd class="font-fira text-text-brand m-0 h-auto border px-2 py-1 text-xs"
-                      >{key}</Kbd
-                    >
+                    <Kbd class="font-fira text-text-brand m-0 h-auto border px-2 py-1 text-xs">
+                      {key}
+                    </Kbd>
                   </dd>
                 </div>
               {/each}
@@ -310,8 +310,9 @@
             A leading minus sign excludes a filter. For example, <a
               class="query-link"
               href={`${resolve('/')}?q=${encodeURIComponent('golang -domain:stackoverflow.com')}`}
-              ><code>golang -domain:stackoverflow.com</code></a
-            > excludes results from that domain.
+            >
+              <code>golang -domain:stackoverflow.com</code>
+            </a> excludes results from that domain.
           </p>
         </div>
         <div class="reference-note">
@@ -322,8 +323,10 @@
           </p>
           <a
             class="query-link mt-3 block"
-            href={`${resolve('/')}?q=${encodeURIComponent(urlRegexp)}`}><code>{urlRegexp}</code></a
+            href={`${resolve('/')}?q=${encodeURIComponent(urlRegexp)}`}
           >
+            <code>{urlRegexp}</code>
+          </a>
           <div class="mt-3">
             {@render docLink('query-language#url-regular-expressions', 'Regular expression syntax')}
           </div>
@@ -343,9 +346,9 @@
           </p>
           {@render queryExamples(dateExamples)}
           <p class="text-text-brand-secondary mt-4 text-sm leading-relaxed">
-            Durations support seconds (<code>s</code>), minutes (<code>m</code>), hours (<code
-              >h</code
-            >), days (<code>d</code>), and weeks (<code>w</code>). Absolute dates use
+            Durations support seconds (<code>s</code>), minutes (<code>m</code>), hours (<code>
+              h
+            </code>), days (<code>d</code>), and weeks (<code>w</code>). Absolute dates use
             <code>YYYY-MM-DD</code> at midnight UTC. Use the following day as an exclusive upper bound
             to include an entire day.
           </p>
@@ -377,9 +380,9 @@
         </p>
         <div class="mt-5 flex flex-wrap gap-x-5 gap-y-3">
           {#if config?.canWrite}
-            <a class="text-link" href={resolve('/rules')}
-              >Manage aliases<ArrowRight class="size-4" aria-hidden="true" /></a
-            >
+            <a class="text-link" href={resolve('/rules')}>
+              Manage aliases<ArrowRight class="size-4" aria-hidden="true" />
+            </a>
           {/if}
           {@render docLink('rules#aliases', 'Alias reference')}
         </div>
@@ -421,8 +424,10 @@
           <p class="text-text-brand-secondary mt-2 text-sm leading-relaxed">
             Remove filters and try a single keyword. Search for <a
               class="query-link"
-              href={`${resolve('/')}?q=*`}><code>*</code></a
-            > to check which documents are available. Nogon searches its index, not the live web.
+              href={`${resolve('/')}?q=*`}
+            >
+              <code>*</code>
+            </a> to check which documents are available. Nogon searches its index, not the live web.
           </p>
           <div class="mt-4">
             {@render docLink('query-language#troubleshooting-queries', 'Search troubleshooting')}

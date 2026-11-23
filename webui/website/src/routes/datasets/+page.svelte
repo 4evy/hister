@@ -158,8 +158,9 @@
         onclick={() => (submitModalOpen = true)}
         aria-haspopup="dialog"
         class="font-space border-brutal-border brutal-press cursor-pointer border-[2px] bg-(--nogon-cyan) px-4 py-2.5 text-[12px] font-bold tracking-[1px] text-white uppercase"
-        >Submit new dataset</button
       >
+        Submit new dataset
+      </button>
     </p>
   </div>
 
@@ -203,8 +204,9 @@
           <label
             for="dataset-search"
             class="font-space font-bold tracking-[1.5px] text-(--text-secondary) uppercase"
-            >Search</label
           >
+            Search
+          </label>
           <div
             class="border-brutal-border focus-within:border-nogon-indigo focus-within:ring-nogon-indigo/35 relative flex items-center border-[2px] transition-[border-color,box-shadow] focus-within:ring-[3px]"
           >
@@ -233,9 +235,9 @@
         <!-- Tags -->
         {#if allTags.length > 0}
           <div class="flex flex-col gap-2">
-            <span class="font-space font-bold tracking-[1.5px] text-(--text-secondary) uppercase"
-              >Tags</span
-            >
+            <span class="font-space font-bold tracking-[1.5px] text-(--text-secondary) uppercase">
+              Tags
+            </span>
             <ul class="m-0 flex list-none flex-col gap-1 p-0">
               {#each allTags as tag}
                 {@const count = tagCount(tag)}
@@ -254,8 +256,10 @@
                     <span
                       class="font-space shrink-0 font-bold {active
                         ? 'text-white/70'
-                        : 'text-(--text-secondary)'}">{count}</span
+                        : 'text-(--text-secondary)'}"
                     >
+                      {count}
+                    </span>
                   </button>
                 </li>
               {/each}
@@ -266,9 +270,9 @@
         <!-- License -->
         {#if allLicenses.length > 0}
           <div class="flex flex-col gap-2">
-            <span class="font-space font-bold tracking-[1.5px] text-(--text-secondary) uppercase"
-              >License</span
-            >
+            <span class="font-space font-bold tracking-[1.5px] text-(--text-secondary) uppercase">
+              License
+            </span>
             <ul class="m-0 flex list-none flex-col gap-1 p-0">
               {#each allLicenses as license}
                 {@const count = licenseCount(license)}
@@ -287,8 +291,10 @@
                     <span
                       class="font-space shrink-0 font-bold {active
                         ? 'text-white/70'
-                        : 'text-(--text-secondary)'}">{count}</span
+                        : 'text-(--text-secondary)'}"
                     >
+                      {count}
+                    </span>
                   </button>
                 </li>
               {/each}
@@ -299,9 +305,9 @@
         <!-- Author -->
         {#if allAuthors.length > 0}
           <div class="flex flex-col gap-2">
-            <span class="font-space font-bold tracking-[1.5px] text-(--text-secondary) uppercase"
-              >Author</span
-            >
+            <span class="font-space font-bold tracking-[1.5px] text-(--text-secondary) uppercase">
+              Author
+            </span>
             <ul class="m-0 flex list-none flex-col gap-1 p-0">
               {#each allAuthors as author}
                 {@const count = authorCount(author)}
@@ -320,8 +326,10 @@
                     <span
                       class="font-space shrink-0 font-bold {active
                         ? 'text-white/70'
-                        : 'text-(--text-secondary)'}">{count}</span
+                        : 'text-(--text-secondary)'}"
                     >
+                      {count}
+                    </span>
                   </button>
                 </li>
               {/each}
@@ -398,14 +406,16 @@
               <Terminal size={16} aria-hidden="true" class="shrink-0 text-white/60" />
               <code
                 class="font-fira min-w-0 text-xs leading-6 break-words select-all sm:text-[13px]"
-                >nogon import zim <span class="text-[#b9d8ce]">collection.zim</span></code
               >
+                nogon import zim <span class="text-[#b9d8ce]">collection.zim</span>
+              </code>
             </div>
             <a
               href="/docs/import#importing-kiwix-archives"
               class="font-space shrink-0 self-start text-xs leading-6 font-semibold text-white/80 underline underline-offset-4 hover:text-white"
-              >ZIM import guide</a
             >
+              ZIM import guide
+            </a>
           </div>
         </li>
         {#if filtered.length > 0}
@@ -573,20 +583,23 @@
             href="https://github.com/asciimoo/nogon"
             target="_blank"
             rel="noopener noreferrer"
-            class="text-(--text-primary) underline">github.com/asciimoo/nogon</a
+            class="text-(--text-primary) underline"
           >
+            github.com/asciimoo/nogon
+          </a>
           and add a JSON file at
-          <code class="bg-(--muted-surface) px-1 py-0.5 text-[12px] text-(--text-primary)"
-            >webui/website/src/content/datasets/your-dataset-name.json</code
-          >
+          <code class="bg-(--muted-surface) px-1 py-0.5 text-[12px] text-(--text-primary)">
+            webui/website/src/content/datasets/your-dataset-name.json
+          </code>
           following the format below.
         </p>
 
         <div class="flex flex-col gap-2">
           <span
             class="font-space text-[11px] font-bold tracking-[1.5px] text-(--text-secondary) uppercase"
-            >JSON Format</span
           >
+            JSON Format
+          </span>
           <pre
             class="border-brutal-border overflow-x-auto border-[2px] bg-black p-4 text-[13px] leading-relaxed text-green-400">{sampleJson}</pre>
         </div>

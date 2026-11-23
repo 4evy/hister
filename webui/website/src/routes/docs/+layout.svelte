@@ -34,8 +34,9 @@
         <a
           href="/docs"
           class="font-space text-[11px] font-bold tracking-[2px] text-white/65 no-underline transition-colors hover:text-white"
-          >Docs</a
         >
+          Docs
+        </a>
         <span aria-hidden="true">/</span>
         <span aria-current="page" class="text-white/80">{currentDoc?.title}</span>
       </nav>
@@ -59,16 +60,18 @@
         <span class="min-w-0 flex-1">
           <span
             class="font-space block text-[9px] font-bold tracking-[1.5px] text-(--text-secondary) uppercase"
-            >{currentCategory?.name ?? 'Documentation'}</span
           >
-          <span class="font-inter block truncate text-sm font-semibold text-(--text-primary)"
-            >{currentDoc?.title}</span
-          >
+            {currentCategory?.name ?? 'Documentation'}
+          </span>
+          <span class="font-inter block truncate text-sm font-semibold text-(--text-primary)">
+            {currentDoc?.title}
+          </span>
         </span>
         <span
           class="font-space text-[9px] font-bold tracking-[1.25px] text-(--text-secondary) uppercase"
-          >Browse</span
         >
+          Browse
+        </span>
         <ChevronDownIcon
           aria-hidden="true"
           size={18}

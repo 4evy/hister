@@ -227,9 +227,9 @@
           <div class="mt-auto flex flex-wrap gap-x-4 gap-y-2 pt-5">
             {@render docLink('crawler', 'Crawling guide')}
             {#if config?.canWrite}
-              <a class="text-link" href={resolve('/add')}
-                >Add a page<ArrowRight class="size-4" aria-hidden="true" /></a
-              >
+              <a class="text-link" href={resolve('/add')}>
+                Add a page<ArrowRight class="size-4" aria-hidden="true" />
+              </a>
             {/if}
           </div>
         </li>
@@ -247,9 +247,9 @@
           <div class="mt-auto flex flex-wrap gap-x-4 gap-y-2 pt-5">
             {@render docLink('rules', 'Rules reference')}
             {#if config?.canWrite}
-              <a class="text-link" href={resolve('/rules')}
-                >Manage rules<ArrowRight class="size-4" aria-hidden="true" /></a
-              >
+              <a class="text-link" href={resolve('/rules')}>
+                Manage rules<ArrowRight class="size-4" aria-hidden="true" />
+              </a>
             {/if}
           </div>
         </li>
@@ -272,12 +272,12 @@
                 href={`${resolve('/')}?q=${encodeURIComponent(example.query)}`}
               >
                 <span class="min-w-0">
-                  <code class="font-fira text-text-brand bg-transparent p-0 text-sm break-words"
-                    >{example.query}</code
-                  >
-                  <span class="text-text-brand-secondary mt-1 block text-sm"
-                    >{example.description}</span
-                  >
+                  <code class="font-fira text-text-brand bg-transparent p-0 text-sm break-words">
+                    {example.query}
+                  </code>
+                  <span class="text-text-brand-secondary mt-1 block text-sm">
+                    {example.description}
+                  </span>
                 </span>
                 <ArrowRight
                   class="text-text-brand-muted group-hover:text-text-brand size-4 shrink-0"
@@ -310,9 +310,9 @@
               When history is enabled, revisit earlier searches and the results you opened.
             </p>
             {#if config?.canWrite && config.historyEnabled}
-              <a class="text-link mt-2" href={resolve('/history')}
-                >Open history<ArrowRight class="size-4" aria-hidden="true" /></a
-              >
+              <a class="text-link mt-2" href={resolve('/history')}>
+                Open history<ArrowRight class="size-4" aria-hidden="true" />
+              </a>
             {/if}
           </div>
           <div>
@@ -320,9 +320,9 @@
             <p class="text-text-brand-secondary mt-1">
               Open the search page's menu for your configured keyboard shortcuts.
             </p>
-            <a class="text-link mt-2" href={resolve('/help')}
-              >Search help<ArrowRight class="size-4" aria-hidden="true" /></a
-            >
+            <a class="text-link mt-2" href={resolve('/help')}>
+              Search help<ArrowRight class="size-4" aria-hidden="true" />
+            </a>
           </div>
         </div>
       </aside>
@@ -373,9 +373,9 @@
       <div class="md:max-w-xs">
         <nav class="flex flex-wrap gap-x-5 gap-y-3" aria-label="Project and community">
           {#each communityLinks as link (link.href)}
-            <a class="text-link" href={link.href} target="_blank" rel="noopener noreferrer"
-              >{link.label}<ArrowUpRight class="size-3.5" aria-hidden="true" /></a
-            >
+            <a class="text-link" href={link.href} target="_blank" rel="noopener noreferrer">
+              {link.label}<ArrowUpRight class="size-3.5" aria-hidden="true" />
+            </a>
           {/each}
         </nav>
         <p class="text-text-brand-secondary mt-4 text-xs">IRC: #hister on IRCNet.</p>

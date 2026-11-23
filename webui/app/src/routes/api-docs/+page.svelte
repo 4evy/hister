@@ -156,8 +156,10 @@
                 <span
                   class="shrink-0 font-bold {ep.method === 'GET'
                     ? 'text-nogon-teal'
-                    : 'text-nogon-coral'}">{ep.method}</span
+                    : 'text-nogon-coral'}"
                 >
+                  {ep.method}
+                </span>
                 <span class="truncate">{ep.name}</span>
               </a>
             </li>
@@ -214,9 +216,9 @@
             >
               <Card.Header class="gap-0 px-4 py-3">
                 <div class="flex flex-wrap items-center gap-2.5">
-                  <Card.Title class="font-outfit text-text-brand text-base font-bold md:text-xl"
-                    >{ep.name}</Card.Title
-                  >
+                  <Card.Title class="font-outfit text-text-brand text-base font-bold md:text-xl">
+                    {ep.name}
+                  </Card.Title>
                   <Badge
                     variant="default"
                     class="border-0 px-2 py-0 text-[11px] leading-5 font-bold {ep.method === 'GET'
@@ -278,20 +280,24 @@
                         >
                           <Table.Head
                             class="font-inter text-text-brand-muted h-auto px-3 py-2 text-xs font-bold"
-                            >Name</Table.Head
                           >
+                            Name
+                          </Table.Head>
                           <Table.Head
                             class="font-inter text-text-brand-muted h-auto px-3 py-2 text-xs font-bold"
-                            >Type</Table.Head
                           >
+                            Type
+                          </Table.Head>
                           <Table.Head
                             class="font-inter text-text-brand-muted h-auto px-3 py-2 text-xs font-bold"
-                            >Required</Table.Head
                           >
+                            Required
+                          </Table.Head>
                           <Table.Head
                             class="font-inter text-text-brand-muted h-auto px-3 py-2 text-xs font-bold"
-                            >Description</Table.Head
                           >
+                            Description
+                          </Table.Head>
                         </Table.Row>
                       </Table.Header>
                       <Table.Body>
@@ -299,29 +305,33 @@
                           <Table.Row class="border-brutal-border/30 border-b">
                             <Table.Cell
                               class="font-fira text-text-brand px-3 py-2 text-sm font-semibold"
-                              ><code>{arg.name}</code></Table.Cell
                             >
+                              <code>{arg.name}</code>
+                            </Table.Cell>
                             <Table.Cell
                               class="font-fira text-text-brand-secondary px-3 py-2 text-sm"
-                              ><code>{arg.type}</code></Table.Cell
                             >
+                              <code>{arg.type}</code>
+                            </Table.Cell>
                             <Table.Cell class="px-3 py-2">
                               {#if arg.required}
                                 <Badge
                                   variant="default"
                                   class="bg-nogon-rose border-0 px-1.5 py-0 text-[10px] text-white"
-                                  >required</Badge
                                 >
+                                  required
+                                </Badge>
                               {:else}
-                                <span class="font-inter text-text-brand-muted text-xs"
-                                  >optional</span
-                                >
+                                <span class="font-inter text-text-brand-muted text-xs">
+                                  optional
+                                </span>
                               {/if}
                             </Table.Cell>
                             <Table.Cell
                               class="font-inter text-text-brand-secondary px-3 py-2 text-sm whitespace-normal"
-                              >{arg.description}</Table.Cell
                             >
+                              {arg.description}
+                            </Table.Cell>
                           </Table.Row>
                         {/each}
                       </Table.Body>
@@ -331,16 +341,17 @@
                     {#each ep.args as arg}
                       <div class="space-y-0.5">
                         <div class="flex items-center gap-2">
-                          <code class="font-fira text-text-brand text-sm font-semibold"
-                            >{arg.name}</code
-                          >
+                          <code class="font-fira text-text-brand text-sm font-semibold">
+                            {arg.name}
+                          </code>
                           <code class="font-fira text-text-brand-muted text-xs">{arg.type}</code>
                           {#if arg.required}
                             <Badge
                               variant="default"
                               class="bg-nogon-rose border-0 px-1.5 py-0 text-[10px] text-white"
-                              >required</Badge
                             >
+                              required
+                            </Badge>
                           {/if}
                         </div>
                         <p class="font-inter text-text-brand-secondary text-xs">
@@ -359,29 +370,31 @@
                           class="font-fira text-text-brand px-3 py-2 text-sm font-semibold"
                         >
                           {#if depth > 0}
-                            <span class="text-text-brand-muted select-none"
-                              >{'  '.repeat(depth)}↳&nbsp;</span
-                            >
+                            <span class="text-text-brand-muted select-none">
+                              {'  '.repeat(depth)}↳&nbsp;
+                            </span>
                           {/if}<code>{field.name}</code>
                         </Table.Cell>
-                        <Table.Cell class="font-fira text-text-brand-secondary px-3 py-2 text-sm"
-                          ><code>{field.type}</code></Table.Cell
-                        >
+                        <Table.Cell class="font-fira text-text-brand-secondary px-3 py-2 text-sm">
+                          <code>{field.type}</code>
+                        </Table.Cell>
                         <Table.Cell class="px-3 py-2">
                           {#if field.required}
                             <Badge
                               variant="default"
                               class="bg-nogon-rose border-0 px-1.5 py-0 text-[10px] text-white"
-                              >required</Badge
                             >
+                              required
+                            </Badge>
                           {:else}
                             <span class="font-inter text-text-brand-muted text-xs">optional</span>
                           {/if}
                         </Table.Cell>
                         <Table.Cell
                           class="font-inter text-text-brand-secondary px-3 py-2 text-sm whitespace-normal"
-                          >{field.description}</Table.Cell
                         >
+                          {field.description}
+                        </Table.Cell>
                       </Table.Row>
                       {#if field.fields && field.fields.length > 0}
                         {@render schemaTableRows(field.fields, depth + 1)}
@@ -396,16 +409,17 @@
                           {#if depth > 0}
                             <span class="text-text-brand-muted text-xs">↳</span>
                           {/if}
-                          <code class="font-fira text-text-brand text-sm font-semibold"
-                            >{field.name}</code
-                          >
+                          <code class="font-fira text-text-brand text-sm font-semibold">
+                            {field.name}
+                          </code>
                           <code class="font-fira text-text-brand-muted text-xs">{field.type}</code>
                           {#if field.required}
                             <Badge
                               variant="default"
                               class="bg-nogon-rose border-0 px-1.5 py-0 text-[10px] text-white"
-                              >required</Badge
                             >
+                              required
+                            </Badge>
                           {/if}
                         </div>
                         <p class="font-inter text-text-brand-secondary text-xs">
@@ -431,20 +445,24 @@
                         >
                           <Table.Head
                             class="font-inter text-text-brand-muted h-auto px-3 py-2 text-xs font-bold"
-                            >Field</Table.Head
                           >
+                            Field
+                          </Table.Head>
                           <Table.Head
                             class="font-inter text-text-brand-muted h-auto px-3 py-2 text-xs font-bold"
-                            >Type</Table.Head
                           >
+                            Type
+                          </Table.Head>
                           <Table.Head
                             class="font-inter text-text-brand-muted h-auto px-3 py-2 text-xs font-bold"
-                            >Required</Table.Head
                           >
+                            Required
+                          </Table.Head>
                           <Table.Head
                             class="font-inter text-text-brand-muted h-auto px-3 py-2 text-xs font-bold"
-                            >Description</Table.Head
                           >
+                            Description
+                          </Table.Head>
                         </Table.Row>
                       </Table.Header>
                       <Table.Body>

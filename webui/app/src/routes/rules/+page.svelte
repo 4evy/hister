@@ -677,11 +677,12 @@
           <div class="flex flex-col gap-1">
             <Card.Title
               class="font-space text-xl font-extrabold tracking-[1px] text-white uppercase"
-              >Search aliases</Card.Title
             >
-            <Card.Description class="font-inter text-sm text-white/80"
-              >{Object.keys(rules.aliases).length} aliases configured</Card.Description
-            >
+              Search aliases
+            </Card.Title>
+            <Card.Description class="font-inter text-sm text-white/80">
+              {Object.keys(rules.aliases).length} aliases configured
+            </Card.Description>
           </div>
         </Card.Header>
 
@@ -797,12 +798,14 @@
                   {:else}
                     <Table.Cell
                       class="font-fira text-text-brand w-20 px-2 py-3 text-sm font-semibold md:w-35 md:px-5"
-                      >{keyword}</Table.Cell
                     >
+                      {keyword}
+                    </Table.Cell>
                     <Table.Cell
                       class="font-fira text-text-brand-secondary max-w-0 truncate px-2 py-3 text-sm md:px-5"
-                      >{value}</Table.Cell
                     >
+                      {value}
+                    </Table.Cell>
                     <Table.Cell class="w-16 px-1 py-3 md:w-20 md:px-3">
                       {@render editDeleteButtons(
                         () => startEditAlias(keyword, value),
@@ -841,8 +844,9 @@
           <div class="flex flex-col gap-1">
             <Card.Title
               class="font-space text-xl font-extrabold tracking-[1px] text-white uppercase"
-              >Indexing rules</Card.Title
             >
+              Indexing rules
+            </Card.Title>
             <Card.Description class="font-inter text-sm text-white/80">
               {ruleRows.length} rules configured. Choose what to match and which action to apply.
             </Card.Description>
@@ -902,9 +906,9 @@
 
             <div class="space-y-1.5">
               <div class="flex flex-col gap-1.5 sm:flex-row sm:items-center sm:gap-3">
-                <Label for="rule-type" class="font-outfit text-text-brand text-sm font-bold"
-                  >Action</Label
-                >
+                <Label for="rule-type" class="font-outfit text-text-brand text-sm font-bold">
+                  Action
+                </Label>
                 <select
                   id="rule-type"
                   value={newRuleType}
@@ -1009,9 +1013,9 @@
                           />
                         {/key}
                         <div class="flex items-center gap-2">
-                          <Label for="edit-rule-type" class="font-outfit text-sm font-bold"
-                            >Action</Label
-                          >
+                          <Label for="edit-rule-type" class="font-outfit text-sm font-bold">
+                            Action
+                          </Label>
                           <select
                             id="edit-rule-type"
                             value={editRuleType}
@@ -1053,8 +1057,9 @@
                   {:else}
                     <Table.Cell
                       class="font-fira text-text-brand max-w-0 truncate px-2 py-3 text-sm md:px-5"
-                      >{row.pattern}</Table.Cell
                     >
+                      {row.pattern}
+                    </Table.Cell>
                     <Table.Cell class="w-20 px-2 py-3 md:w-28 md:px-5">
                       <Badge
                         variant="default"

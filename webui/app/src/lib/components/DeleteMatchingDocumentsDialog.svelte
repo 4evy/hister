@@ -38,8 +38,9 @@
     <Dialog.Header class="bg-nogon-rose flex-row items-center gap-2 px-5 py-4">
       <Dialog.Title class="flex items-center gap-2">
         <Trash2 class="size-5 text-white" />
-        <span class="font-outfit text-lg font-extrabold text-white">Delete matching documents?</span
-        >
+        <span class="font-outfit text-lg font-extrabold text-white">
+          Delete matching documents?
+        </span>
       </Dialog.Title>
     </Dialog.Header>
     <div class="space-y-3 px-5 py-5">

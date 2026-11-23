@@ -367,9 +367,9 @@
                 </Button>
               {/snippet}
             </Tooltip.Trigger>
-            <Tooltip.Content role="tooltip" side="bottom" sideOffset={6}
-              >{fullscreen ? 'Exit fullscreen' : 'Enter fullscreen'}</Tooltip.Content
-            >
+            <Tooltip.Content role="tooltip" side="bottom" sideOffset={6}>
+              {fullscreen ? 'Exit fullscreen' : 'Enter fullscreen'}
+            </Tooltip.Content>
           </Tooltip.Root>
         {/if}
         <Tooltip.Root>
@@ -386,9 +386,9 @@
               </Button>
             {/snippet}
           </Tooltip.Trigger>
-          <Tooltip.Content role="tooltip" side="bottom" sideOffset={6}
-            >Close preview</Tooltip.Content
-          >
+          <Tooltip.Content role="tooltip" side="bottom" sideOffset={6}>
+            Close preview
+          </Tooltip.Content>
         </Tooltip.Root>
       </Tooltip.Provider>
     </div>
@@ -423,9 +423,9 @@
                     </Button>
                   {/snippet}
                 </Tooltip.Trigger>
-                <Tooltip.Content role="tooltip" side="bottom" sideOffset={6}
-                  >Download file</Tooltip.Content
-                >
+                <Tooltip.Content role="tooltip" side="bottom" sideOffset={6}>
+                  Download file
+                </Tooltip.Content>
               </Tooltip.Root>
             {/if}
             <DropdownMenu.Root
@@ -451,9 +451,9 @@
                     </DropdownMenu.Trigger>
                   {/snippet}
                 </Tooltip.Trigger>
-                <Tooltip.Content role="tooltip" side="bottom" sideOffset={6}
-                  >Change extractor</Tooltip.Content
-                >
+                <Tooltip.Content role="tooltip" side="bottom" sideOffset={6}>
+                  Change extractor
+                </Tooltip.Content>
               </Tooltip.Root>
               <DropdownMenu.Content
                 class="border-brutal-border bg-card-surface w-44 rounded-none border-[3px] p-3 shadow-[4px_4px_0_var(--brutal-shadow)]"
@@ -500,9 +500,9 @@
                   </Button>
                 {/snippet}
               </Tooltip.Trigger>
-              <Tooltip.Content role="tooltip" side="bottom" sideOffset={6}
-                >Open direct preview</Tooltip.Content
-              >
+              <Tooltip.Content role="tooltip" side="bottom" sideOffset={6}>
+                Open direct preview
+              </Tooltip.Content>
             </Tooltip.Root>
             {#if hasDocumentDetails}
               <Tooltip.Root>
@@ -525,11 +525,9 @@
                     </Button>
                   {/snippet}
                 </Tooltip.Trigger>
-                <Tooltip.Content role="tooltip" side="bottom" sideOffset={6}
-                  >{showDocumentDetails
-                    ? 'Hide document details'
-                    : 'Show document details'}</Tooltip.Content
-                >
+                <Tooltip.Content role="tooltip" side="bottom" sideOffset={6}>
+                  {showDocumentDetails ? 'Hide document details' : 'Show document details'}
+                </Tooltip.Content>
               </Tooltip.Root>
             {/if}
             {#if onfullscreentoggle}
@@ -551,9 +549,9 @@
                     </Button>
                   {/snippet}
                 </Tooltip.Trigger>
-                <Tooltip.Content role="tooltip" side="bottom" sideOffset={6}
-                  >{fullscreen ? 'Exit fullscreen' : 'Enter fullscreen'}</Tooltip.Content
-                >
+                <Tooltip.Content role="tooltip" side="bottom" sideOffset={6}>
+                  {fullscreen ? 'Exit fullscreen' : 'Enter fullscreen'}
+                </Tooltip.Content>
               </Tooltip.Root>
             {/if}
             <Tooltip.Root>
@@ -570,9 +568,9 @@
                   </Button>
                 {/snippet}
               </Tooltip.Trigger>
-              <Tooltip.Content role="tooltip" side="bottom" sideOffset={6}
-                >Close preview</Tooltip.Content
-              >
+              <Tooltip.Content role="tooltip" side="bottom" sideOffset={6}>
+                Close preview
+              </Tooltip.Content>
             </Tooltip.Root>
           </Tooltip.Provider>
         </div>
@@ -580,9 +578,9 @@
           {#if url.startsWith('remote-file://')}
             {title}
           {:else}
-            <a href={url} target="_blank" rel="noopener noreferrer" class="hover:underline"
-              >{title}</a
-            >
+            <a href={url} target="_blank" rel="noopener noreferrer" class="hover:underline">
+              {title}
+            </a>
           {/if}
         </h2>
       </div>

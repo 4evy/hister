@@ -32,9 +32,9 @@
           id="config-option-{item.name}"
           class="font-outfit text-xl font-extrabold text-(--brutal-bg)"
         >
-          <code class="border-0! bg-transparent! p-0! text-xl! wrap-anywhere text-(--brutal-bg)"
-            >{item.name}</code
-          >
+          <code class="border-0! bg-transparent! p-0! text-xl! wrap-anywhere text-(--brutal-bg)">
+            {item.name}
+          </code>
         </Card.Title>
         {#if optionScopes.length > 0}
           <div class="flex shrink-0 flex-wrap justify-end gap-1.5">
@@ -71,12 +71,14 @@
         <div class="flex min-w-0 items-baseline gap-2 px-4 py-2">
           <span
             class="font-space shrink-0 text-[9px] font-bold tracking-[1.25px] text-(--text-secondary) uppercase"
-            >Type</span
           >
+            Type
+          </span>
           <code
             class="border-0! bg-(--muted-surface)! px-1.5! py-0.5! text-sm whitespace-nowrap text-(--text-primary)"
-            >{item.type}</code
           >
+            {item.type}
+          </code>
         </div>
         {#if item.defaultValue !== undefined}
           <div
@@ -84,12 +86,14 @@
           >
             <span
               class="font-space shrink-0 text-[9px] font-bold tracking-[1.25px] text-(--text-secondary) uppercase"
-              >Default</span
             >
+              Default
+            </span>
             <code
               class="border-0! bg-(--muted-surface)! px-1.5! py-0.5! text-sm wrap-anywhere text-(--text-primary)"
-              >{item.defaultValue}</code
             >
+              {item.defaultValue}
+            </code>
           </div>
         {/if}
         {#if item.requirement}

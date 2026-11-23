@@ -31,23 +31,25 @@
         class="text-nogon-teal font-semibold hover:underline"
         href={authorURL}
         target="_blank"
-        rel="noopener noreferrer">{comment.author || 'Unknown author'}</a
+        rel="noopener noreferrer"
       >
+        {comment.author || 'Unknown author'}
+      </a>
     {:else}
       <span class="font-semibold">{comment.author || 'Unknown author'}</span>
     {/if}
     {#if comment.createdAt}
       {#if permalink}
-        <a class="hover:underline" href={permalink} target="_blank" rel="noopener noreferrer"
-          >{formatDate(comment.createdAt)}</a
-        >
+        <a class="hover:underline" href={permalink} target="_blank" rel="noopener noreferrer">
+          {formatDate(comment.createdAt)}
+        </a>
       {:else}
         <span>{formatDate(comment.createdAt)}</span>
       {/if}
     {:else if permalink}
-      <a class="hover:underline" href={permalink} target="_blank" rel="noopener noreferrer"
-        >View original</a
-      >
+      <a class="hover:underline" href={permalink} target="_blank" rel="noopener noreferrer">
+        View original
+      </a>
     {/if}
   </div>
 {/snippet}
@@ -63,8 +65,9 @@
       {#if data.state}
         <span
           class="border-border-brand-muted bg-card-surface-muted text-text-brand rounded-full border px-2 py-0.5 font-semibold"
-          >{data.state}</span
         >
+          {data.state}
+        </span>
       {/if}
     </div>
     <h2 class="font-outfit text-text-brand text-xl leading-snug font-bold">

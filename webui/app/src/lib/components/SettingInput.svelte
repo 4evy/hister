@@ -120,8 +120,9 @@
     aria-invalid={invalid}
     class={`${controlClass} cursor-pointer`}
   >
-    {#each schema.choices as choice}<option value={choice}>{choiceLabel(schema, choice)}</option
-      >{/each}
+    {#each schema.choices as choice}<option value={choice}>
+        {choiceLabel(schema, choice)}
+      </option>{/each}
   </select>
 {:else if schema.control === 'number'}
   <div class="flex min-w-0 items-center gap-2">
@@ -199,8 +200,9 @@
           aria-label={`Remove ${label} item ${index + 1}`}
           onclick={() =>
             onChange(Object.fromEntries(Object.entries(record).filter(([key]) => key !== name)))}
-          >Remove</Button
         >
+          Remove
+        </Button>
       </fieldset>
     {/each}
     {#if dictionaryError}<p role="alert" class="text-nogon-rose text-sm">{dictionaryError}</p>{/if}
@@ -212,8 +214,10 @@
         Object.hasOwn(record, '') ||
         (!!schema.max_items && Object.keys(record).length >= schema.max_items)}
       aria-label={`Add ${label} item`}
-      onclick={() => onChange({ ...record, '': empty(schema.items) })}>Add item</Button
+      onclick={() => onChange({ ...record, '': empty(schema.items) })}
     >
+      Add item
+    </Button>
   </div>
 {:else if schema.type === 'list' && schema.items.control === 'select'}
   <select
@@ -228,9 +232,9 @@
     aria-invalid={invalid}
     class={`${controlClass} h-auto cursor-pointer`}
   >
-    {#each schema.items.choices as choice}<option value={choice}
-        >{choiceLabel(schema.items, choice)}</option
-      >{/each}
+    {#each schema.items.choices as choice}<option value={choice}>
+        {choiceLabel(schema.items, choice)}
+      </option>{/each}
   </select>
 {:else if schema.type === 'list' && schema.items.type === 'string'}
   <textarea
@@ -273,8 +277,10 @@
           size="sm"
           {disabled}
           aria-label={`Remove ${label} item ${index + 1}`}
-          onclick={() => onChange(items.filter((_, i) => i !== index))}>Remove</Button
+          onclick={() => onChange(items.filter((_, i) => i !== index))}
         >
+          Remove
+        </Button>
       </fieldset>
     {/each}
     <Button
@@ -283,8 +289,10 @@
       size="sm"
       disabled={disabled || (!!schema.max_items && items.length >= schema.max_items)}
       aria-label={`Add ${label} item`}
-      onclick={() => onChange([...items, empty(schema.items)])}>Add item</Button
+      onclick={() => onChange([...items, empty(schema.items)])}
     >
+      Add item
+    </Button>
   </div>
 {:else if schema.type === 'object'}
   <div class="w-full min-w-0 space-y-3">
@@ -325,8 +333,10 @@
                 Object.fromEntries(
                   Object.entries(record).filter(([name]) => name !== property.name),
                 ),
-              )}>Remove selection</Button
+              )}
           >
+            Remove selection
+          </Button>
         {/if}
       </div>
     {/each}

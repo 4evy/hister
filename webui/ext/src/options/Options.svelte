@@ -175,12 +175,12 @@
       class="bg-card-surface border-nogon-indigo gap-0 overflow-hidden rounded-none border-[3px] py-0 shadow-[6px_6px_0_var(--nogon-indigo)]"
     >
       <Card.Header class="bg-nogon-indigo px-7 py-5">
-        <Card.Title class="font-outfit text-xl font-black tracking-wide text-white"
-          >Connection Settings</Card.Title
-        >
-        <Card.Description class="font-inter text-sm text-white/70"
-          >Configure how the extension connects to your Nogon server.</Card.Description
-        >
+        <Card.Title class="font-outfit text-xl font-black tracking-wide text-white">
+          Connection Settings
+        </Card.Title>
+        <Card.Description class="font-inter text-sm text-white/70">
+          Configure how the extension connects to your Nogon server.
+        </Card.Description>
       </Card.Header>
 
       <Card.Content class="space-y-6 p-7">
@@ -299,11 +299,12 @@
       class="bg-card-surface border-brutal-border gap-0 overflow-hidden rounded-none border-[3px] py-0 opacity-50"
     >
       <Card.Header class="px-7 py-5">
-        <Card.Title class="font-outfit text-text-brand text-lg font-bold">Indexing Rules</Card.Title
-        >
-        <Card.Description class="font-inter text-text-brand-muted text-sm"
-          >Coming soon — configure which pages to index or skip.</Card.Description
-        >
+        <Card.Title class="font-outfit text-text-brand text-lg font-bold">
+          Indexing Rules
+        </Card.Title>
+        <Card.Description class="font-inter text-text-brand-muted text-sm">
+          Coming soon — configure which pages to index or skip.
+        </Card.Description>
       </Card.Header>
     </Card.Root>
   </div>

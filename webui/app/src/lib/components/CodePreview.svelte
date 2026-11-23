@@ -211,29 +211,29 @@
         {/each}
       </select>
     </label>
-    <label class="flex items-center gap-1.5 whitespace-nowrap"
-      ><input
+    <label class="flex items-center gap-1.5 whitespace-nowrap">
+      <input
         type="checkbox"
         bind:checked={enabled}
         disabled={large}
         onchange={() => savePreference('hister-code-highlight', String(enabled))}
-      /> Highlight syntax</label
-    >
-    <label class="flex items-center gap-1.5 whitespace-nowrap"
-      ><input
+      /> Highlight syntax
+    </label>
+    <label class="flex items-center gap-1.5 whitespace-nowrap">
+      <input
         type="checkbox"
         bind:checked={wrapLines}
         onchange={() => savePreference('hister-code-wrap', String(wrapLines))}
-      /> Wrap lines</label
-    >
-    <label class="flex items-center gap-1.5 whitespace-nowrap"
-      ><input
+      /> Wrap lines
+    </label>
+    <label class="flex items-center gap-1.5 whitespace-nowrap">
+      <input
         type="checkbox"
         bind:checked={lineNumbers}
         disabled={large}
         onchange={() => savePreference('hister-code-numbers', String(lineNumbers))}
-      /> Line numbers</label
-    >
+      /> Line numbers
+    </label>
     <Button
       variant="ghost"
       size="sm"

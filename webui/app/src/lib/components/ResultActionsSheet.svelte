@@ -268,8 +268,9 @@
           <p class="font-inter text-text-brand-muted text-sm" id="{id}-label-help">
             Leave empty to remove the label.
           </p>
-          <Button type="submit" class="min-h-11 w-full">{pending ? 'Saving…' : 'Save label'}</Button
-          >
+          <Button type="submit" class="min-h-11 w-full">
+            {pending ? 'Saving…' : 'Save label'}
+          </Button>
         </fieldset>
       </form>
       {#if resultState.labelMessage}

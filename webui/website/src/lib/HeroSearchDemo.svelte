@@ -33,9 +33,9 @@
         <img src="/logo.png" alt="" class="h-6 w-6" />
         <span class="font-space text-xs font-black tracking-[1.8px] uppercase">Nogon</span>
       </div>
-      <span class="font-fira text-[9px] tracking-[1px] text-white/70 uppercase"
-        >1,924 pages indexed</span
-      >
+      <span class="font-fira text-[9px] tracking-[1px] text-white/70 uppercase">
+        1,924 pages indexed
+      </span>
     </div>
 
     <div class="p-4 sm:p-6">
@@ -45,8 +45,9 @@
         <Search size={20} class="shrink-0 text-[var(--text-secondary)]" />
         <span
           class="font-inter min-w-0 flex-1 truncate text-sm font-medium text-[var(--text-primary)] sm:text-base"
-          >privacy notes I read last month</span
         >
+          privacy notes I read last month
+        </span>
         <span class="bg-nogon-indigo h-5 w-1 shrink-0" aria-hidden="true"></span>
       </div>
 
@@ -55,8 +56,9 @@
           <div class="flex items-center justify-between">
             <span
               class="font-fira text-[9px] font-bold tracking-[1.2px] text-[var(--text-secondary)] uppercase"
-              >6 results in your index</span
             >
+              6 results in your index
+            </span>
             <span class="font-fira text-[9px] text-[var(--text-secondary)]">0.04 sec</span>
           </div>
 
@@ -95,8 +97,9 @@
           <div class="flex items-center justify-between border-b border-black/15 pb-3">
             <span
               class="font-fira text-[9px] font-bold tracking-[1px] text-[var(--text-secondary)] uppercase"
-              >Stored preview</span
             >
+              Stored preview
+            </span>
             <span class="bg-nogon-coral h-2.5 w-2.5"></span>
           </div>
           <p class="font-space mt-4 text-lg leading-tight font-black text-[var(--text-primary)]">
@@ -113,8 +116,9 @@
               >
                 <span
                   class="bg-nogon-lime flex h-4 w-4 items-center justify-center text-[var(--text-primary)]"
-                  ><Check size={11} strokeWidth={3} /></span
                 >
+                  <Check size={11} strokeWidth={3} />
+                </span>
                 {item}
               </span>
             {/each}

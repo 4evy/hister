@@ -1642,9 +1642,9 @@
     <Dialog.Header class="bg-nogon-indigo flex-row items-center justify-between gap-2 px-5 py-4">
       <Dialog.Title class="flex items-center gap-2">
         <Keyboard class="text-primary-foreground size-5" />
-        <span class="font-outfit text-primary-foreground text-lg font-extrabold"
-          >Keyboard Shortcuts</span
-        >
+        <span class="font-outfit text-primary-foreground text-lg font-extrabold">
+          Keyboard Shortcuts
+        </span>
       </Dialog.Title>
       <Dialog.Close class="text-primary-foreground/70 hover:text-primary-foreground p-0.5">
         <X class="size-5" />
@@ -1655,13 +1655,14 @@
         <div
           class="border-border-brand-muted flex items-center justify-between border-b-[1px] py-2.5"
         >
-          <span class="font-inter text-text-brand-secondary"
-            >{hotkeyDescriptions[action] || action}</span
-          >
+          <span class="font-inter text-text-brand-secondary">
+            {hotkeyDescriptions[action] || action}
+          </span>
           <Kbd
             class="bg-muted-surface border-border-brand-muted font-fira text-text-brand h-auto rounded-none border-[2px] px-2.5 py-0.5 text-xs font-semibold"
-            >{key}</Kbd
           >
+            {key}
+          </Kbd>
         </div>
       {/each}
     </Card.Content>
@@ -1669,8 +1670,9 @@
       <p class="font-inter text-text-brand-muted text-xs">
         Press <Kbd
           class="bg-card-surface border-border-brand-muted font-fira h-auto rounded-none border px-1.5 py-0.5 text-[10px]"
-          >?</Kbd
-        > to toggle this dialog
+        >
+          ?
+        </Kbd> to toggle this dialog
       </p>
     </Card.Footer>
   </Dialog.Content>
@@ -1685,8 +1687,9 @@
     <Dialog.Header class="bg-nogon-rose flex-row items-center justify-between gap-2 px-5 py-4">
       <Dialog.Title class="flex items-center gap-2">
         <Trash2 class="text-primary-foreground size-5" />
-        <span class="font-outfit text-primary-foreground text-lg font-extrabold">Delete result</span
-        >
+        <span class="font-outfit text-primary-foreground text-lg font-extrabold">
+          Delete result
+        </span>
       </Dialog.Title>
     </Dialog.Header>
     <div class="min-h-0 flex-1 space-y-4 overflow-y-auto px-5 py-4">
@@ -1695,8 +1698,10 @@
       </p>
       <code
         class="font-fira bg-muted-surface text-text-brand-muted block px-2 py-1 text-xs break-all"
-        title={deleteConfirmUrl}>{deleteConfirmUrl}</code
+        title={deleteConfirmUrl}
       >
+        {deleteConfirmUrl}
+      </code>
       <label class="flex cursor-pointer items-center gap-2">
         <input type="checkbox" bind:checked={deleteConfirmSkip} class="accent-nogon-rose" />
         <span class="font-inter text-text-brand-secondary text-sm">Don't ask again</span>
@@ -1731,21 +1736,22 @@
     <Dialog.Header class="bg-nogon-rose flex-row items-center justify-between gap-2 px-5 py-4">
       <Dialog.Title class="flex items-center gap-2">
         <Trash2 class="text-primary-foreground size-5" />
-        <span class="font-outfit text-primary-foreground text-lg font-extrabold"
-          >Delete all matching results</span
-        >
+        <span class="font-outfit text-primary-foreground text-lg font-extrabold">
+          Delete all matching results
+        </span>
       </Dialog.Title>
     </Dialog.Header>
     <div class="min-h-0 flex-1 space-y-4 overflow-y-auto px-5 py-4">
       <p class="font-inter text-text-brand-secondary text-sm">
-        Are you sure you want to delete <strong
-          >all {lastResults?.total || totalResults} result(s)</strong
-        > matching:
+        Are you sure you want to delete <strong>
+          all {lastResults?.total || totalResults} result(s)
+        </strong> matching:
       </p>
       <code
         class="font-fira bg-muted-surface text-text-brand-muted block px-2 py-1 text-xs break-all"
-        >{query}</code
       >
+        {query}
+      </code>
       <p class="font-inter text-nogon-rose text-xs font-semibold">This action cannot be undone.</p>
     </div>
     <div class="border-border-brand-muted flex shrink-0 justify-end gap-2 border-t-[3px] px-5 py-3">
@@ -1969,8 +1975,10 @@
                 <button
                   class="shrink-0 cursor-pointer opacity-60 hover:opacity-100"
                   onclick={() => (deleteError = null)}
-                  aria-label="Dismiss">✕</button
+                  aria-label="Dismiss"
                 >
+                  ✕
+                </button>
               </div>
             {/if}
             <div
@@ -2004,8 +2012,9 @@
                           {#if activeFilterCount > 0}
                             <span
                               class="bg-nogon-indigo text-background flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[10px] leading-none font-bold"
-                              >{activeFilterCount}</span
                             >
+                              {activeFilterCount}
+                            </span>
                           {/if}
                         </Button>
                       {/snippet}
@@ -2049,8 +2058,10 @@
                             {#if currentFacets?.terms?.[facet.name]?.other}
                               <button
                                 class="font-inter text-text-brand-muted hover:text-nogon-indigo mt-1 cursor-pointer text-xs underline-offset-2 hover:underline"
-                                onclick={() => loadMoreFacet(facet.name)}>Load more</button
+                                onclick={() => loadMoreFacet(facet.name)}
                               >
+                                Load more
+                              </button>
                             {/if}
                           </div>
                         {/snippet}
@@ -2068,14 +2079,15 @@
                             <details class="group/custom w-full">
                               <summary
                                 class="font-inter text-text-brand-muted hover:text-nogon-indigo cursor-pointer list-none text-xs underline-offset-2 hover:underline"
-                                >Custom</summary
                               >
+                                Custom
+                              </summary>
                               <div
                                 class="mt-1.5 grid grid-cols-[auto_1fr] items-center gap-x-1.5 gap-y-2"
                               >
-                                <span class="font-inter text-text-brand-secondary text-xs"
-                                  >From:</span
-                                >
+                                <span class="font-inter text-text-brand-secondary text-xs">
+                                  From:
+                                </span>
                                 <Input
                                   type="date"
                                   value={dateFrom}
@@ -2083,8 +2095,9 @@
                                     updateCustomDateFilter('from', event.currentTarget.value)}
                                   class="border-border-brand-muted bg-card-surface text-text-brand font-fira focus-visible:border-nogon-indigo h-7 w-auto min-w-0 border-[2px] px-2 text-xs shadow-none focus-visible:ring-0"
                                 />
-                                <span class="font-inter text-text-brand-secondary text-xs">To:</span
-                                >
+                                <span class="font-inter text-text-brand-secondary text-xs">
+                                  To:
+                                </span>
                                 <Input
                                   type="date"
                                   value={dateTo}
@@ -2117,11 +2130,10 @@
                                         : 'border-border-brand-muted text-text-brand-secondary hover:border-nogon-indigo hover:text-nogon-indigo'}"
                                       onclick={() => toggleDateBucket(name)}
                                     >
-                                      <span
-                                        >{dateFacetValues.find(
-                                          (value) => value.facetBucket === name,
-                                        )?.label ?? name}</span
-                                      >
+                                      <span>
+                                        {dateFacetValues.find((value) => value.facetBucket === name)
+                                          ?.label ?? name}
+                                      </span>
                                       <span class="opacity-60">{count}</span>
                                     </button>
                                   {/if}
@@ -2168,9 +2180,9 @@
                             : 'text-text-brand-muted hover:text-nogon-indigo'}"
                         >
                           <ArrowUpDown class="size-3" />
-                          <span class="max-w-28 truncate"
-                            >{currentSort ? currentSortLabel : 'Sort'}</span
-                          >
+                          <span class="max-w-28 truncate">
+                            {currentSort ? currentSortLabel : 'Sort'}
+                          </span>
                         </Button>
                       {/snippet}
                     </DropdownMenu.Trigger>
@@ -2302,11 +2314,11 @@
                           <label
                             class="font-inter text-text-brand-secondary flex flex-col gap-1 text-xs"
                           >
-                            <span
-                              >Similarity threshold: <span class="font-fira text-nogon-indigo"
-                                >{similarityThreshold.toFixed(2)}</span
-                              ></span
-                            >
+                            <span>
+                              Similarity threshold: <span class="font-fira text-nogon-indigo">
+                                {similarityThreshold.toFixed(2)}
+                              </span>
+                            </span>
                             <input
                               type="range"
                               min="0"
@@ -2323,11 +2335,11 @@
                           <label
                             class="font-inter text-text-brand-secondary flex flex-col gap-1 text-xs"
                           >
-                            <span
-                              >Semantic weight: <span class="font-fira text-nogon-indigo"
-                                >{semanticWeight.toFixed(2)}</span
-                              ></span
-                            >
+                            <span>
+                              Semantic weight: <span class="font-fira text-nogon-indigo">
+                                {semanticWeight.toFixed(2)}
+                              </span>
+                            </span>
                             <input
                               type="range"
                               min="0"
@@ -2452,8 +2464,9 @@
                 <p class="font-inter text-text-brand-muted text-sm">
                   Expanded query: <code
                     class="font-fira bg-muted-surface text-primary px-1.5 py-0.5 text-xs"
-                    >{lastResults.query.text}</code
                   >
+                    {lastResults.query.text}
+                  </code>
                 </p>
               {/if}
 
@@ -2520,17 +2533,19 @@
                             class="result-url-text font-inter min-w-0 overflow-hidden text-xs text-ellipsis whitespace-nowrap md:text-sm"
                             title={r.url}
                           >
-                            {#if r.domain}<span class="result-domain font-bold">{r.domain}</span
-                              >{/if}<span class="result-path"
-                              >{displayResultPath(r.url, r.domain)}</span
-                            >
+                            {#if r.domain}<span class="result-domain font-bold">
+                                {r.domain}
+                              </span>{/if}<span class="result-path">
+                              {displayResultPath(r.url, r.domain)}
+                            </span>
                           </span>
                           {#if updated && updated > 0}
                             <span
                               aria-hidden="true"
                               class="font-inter text-text-brand-muted/60 shrink-0 text-xs md:text-sm"
-                              >·</span
                             >
+                              ·
+                            </span>
                             <time
                               class="font-inter shrink-0 text-xs whitespace-nowrap md:text-sm"
                               datetime={new Date(updated * 1000).toISOString()}
@@ -2543,8 +2558,9 @@
                             <span
                               aria-hidden="true"
                               class="font-inter text-text-brand-muted/60 shrink-0 text-xs md:text-sm"
-                              >·</span
                             >
+                              ·
+                            </span>
                             <Button
                               data-readable
                               variant="link"
@@ -2796,21 +2812,24 @@
           <Kbd
             bind:ref={kbdEl}
             class="bg-muted-surface border-border-brand-muted font-fira text-text-brand-secondary rounded-none border-[2px] px-2 py-0.5 text-xs font-semibold"
-            >{part.value}</Kbd
           >
+            {part.value}
+          </Kbd>
         {:else if part.type === 'hotkey'}
           {#if hotkeyByAction[part.action]}
             <Kbd
               bind:ref={kbdEl}
               class="bg-muted-surface border-border-brand-muted font-fira text-text-brand-secondary rounded-none border-[2px] px-2 py-0.5 text-xs font-semibold"
-              >{hotkeyByAction[part.action]}</Kbd
             >
+              {hotkeyByAction[part.action]}
+            </Kbd>
           {/if}
         {:else if part.type === 'code'}
           <code
             class="bg-muted-surface border-border-brand-muted font-fira text-text-brand-secondary rounded-none border-[2px] px-2 py-0.5 font-semibold"
-            >{part.value}</code
           >
+            {part.value}
+          </code>
         {:else if part.type === 'link'}
           <a href={part.href} class="text-nogon-indigo hover:underline">{part.value}</a>
         {/if}
@@ -2887,9 +2906,9 @@
             <Globe class="text-nogon-indigo size-5 shrink-0" />
             <span class="min-w-0">
               <span class="font-outfit text-text-brand block font-bold">Install the extension</span>
-              <span class="font-inter text-text-brand-muted block text-xs"
-                >Capture pages as you browse</span
-              >
+              <span class="font-inter text-text-brand-muted block text-xs">
+                Capture pages as you browse
+              </span>
             </span>
             <ExternalLink class="text-text-brand-muted ml-auto size-3.5 shrink-0" />
           </a>
@@ -2901,9 +2920,9 @@
             <Link2 class="text-nogon-coral size-5 shrink-0" />
             <span class="min-w-0">
               <span class="font-outfit text-text-brand block font-bold">Add manually</span>
-              <span class="font-inter text-text-brand-muted block text-xs"
-                >Save a URL with optional title and content</span
-              >
+              <span class="font-inter text-text-brand-muted block text-xs">
+                Save a URL with optional title and content
+              </span>
             </span>
           </a>
 
@@ -2915,11 +2934,12 @@
           >
             <History class="text-nogon-teal size-5 shrink-0" />
             <span class="min-w-0">
-              <span class="font-outfit text-text-brand block font-bold">Import browser history</span
-              >
-              <span class="font-inter text-text-brand-muted block text-xs"
-                >Bring your previously visited pages</span
-              >
+              <span class="font-outfit text-text-brand block font-bold">
+                Import browser history
+              </span>
+              <span class="font-inter text-text-brand-muted block text-xs">
+                Bring your previously visited pages
+              </span>
             </span>
             <ExternalLink class="text-text-brand-muted ml-auto size-3.5 shrink-0" />
           </a>

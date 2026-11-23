@@ -239,9 +239,9 @@
       <div
         class="bg-nogon-rose border-brutal-border inline-flex w-fit items-center gap-2 border-[3px] px-3.5 py-1.5"
       >
-        <span class="font-space text-[11px] font-bold tracking-[2px] text-white uppercase"
-          >The Mission</span
-        >
+        <span class="font-space text-[11px] font-bold tracking-[2px] text-white uppercase">
+          The Mission
+        </span>
       </div>
       <h2
         class="font-outfit text-4xl leading-[1] font-black tracking-[-1.5px] text-[var(--text-primary)] uppercase md:text-5xl"
@@ -252,10 +252,10 @@
 
     <article class="flex flex-col justify-center gap-5 p-10 md:p-14">
       <p class="font-inter text-lg leading-[1.8] text-[var(--text-secondary)]">
-        Our goal is to <strong class="text-[var(--text-primary)]"
-          >reduce and ultimately eliminate dependence on untrusted search services</strong
-        > by providing the best overall private search experience that comes with batteries included and
-        supports privacy at every level.
+        Our goal is to <strong class="text-[var(--text-primary)]">
+          reduce and ultimately eliminate dependence on untrusted search services
+        </strong> by providing the best overall private search experience that comes with batteries included
+        and supports privacy at every level.
       </p>
       <p class="font-inter text-lg leading-[1.8] text-[var(--text-secondary)]">
         This is a fresh, independent approach to search. To make it a reality, we need your support.

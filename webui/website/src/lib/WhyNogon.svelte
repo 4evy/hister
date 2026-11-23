@@ -95,9 +95,9 @@
       <div
         class="flex flex-wrap items-center justify-between gap-2 border-b-[2px] border-white/20 px-5 py-3"
       >
-        <span class="font-fira text-[10px] font-bold tracking-[1.4px] text-white/65 uppercase"
-          >Your private search path</span
-        >
+        <span class="font-fira text-[10px] font-bold tracking-[1.4px] text-white/65 uppercase">
+          Your private search path
+        </span>
       </div>
       <div class="grid items-stretch md:grid-cols-[1fr_auto_1fr_auto_1fr]">
         {#each [{ icon: EyeOff, label: 'Your sources', copy: 'Pages, files, and history you choose', color: 'bg-nogon-coral' }, { icon: Server, label: 'Your Nogon server', copy: 'Extraction, rules, and searchable index', color: 'bg-nogon-indigo' }, { icon: Check, label: 'Your answers', copy: 'Results, previews, and integrations', color: 'bg-nogon-lime' }] as stage, i}

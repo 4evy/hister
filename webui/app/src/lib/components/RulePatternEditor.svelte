@@ -154,8 +154,10 @@
           href="https://pkg.go.dev/regexp/syntax"
           target="_blank"
           rel="noopener noreferrer"
-          class="underline underline-offset-2">Go regexp pattern</a
+          class="underline underline-offset-2"
         >
+          Go regexp pattern
+        </a>
         matched against the full URL. Use <code>\s</code> to match whitespace.
       </p>
     {/if}

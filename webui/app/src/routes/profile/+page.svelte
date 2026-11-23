@@ -148,8 +148,9 @@
         <div class="flex items-center gap-3">
           <span
             class="font-outfit text-text-brand-muted text-sm font-bold tracking-widest uppercase"
-            >Username</span
           >
+            Username
+          </span>
           <span class="font-fira text-text-brand text-sm">{username}</span>
         </div>
       </Card.Content>
@@ -160,9 +161,9 @@
       class="bg-card-surface border-brutal-border gap-0 overflow-hidden rounded-none border-[3px] py-0 shadow-[6px_6px_0_var(--brutal-shadow)]"
     >
       <Card.Header class="border-brutal-border border-b-[3px] px-7 py-5">
-        <Card.Title class="font-outfit text-text-brand text-xl font-black tracking-wide"
-          >Access Token</Card.Title
-        >
+        <Card.Title class="font-outfit text-text-brand text-xl font-black tracking-wide">
+          Access Token
+        </Card.Title>
         <Card.Description class="font-inter text-text-brand-muted text-sm">
           Use this token to authenticate CLI and API access. Generating a new token will invalidate
           the previous one.
@@ -178,12 +179,13 @@
         {#if token}
           <div class="border-brutal-border flex items-center gap-2 border-[3px] px-4 py-3">
             {#if tokenVisible}
-              <code class="font-fira text-text-brand min-w-0 flex-1 text-sm break-all">{token}</code
-              >
+              <code class="font-fira text-text-brand min-w-0 flex-1 text-sm break-all">
+                {token}
+              </code>
             {:else}
-              <code class="font-fira text-text-brand-muted min-w-0 flex-1 text-sm break-all"
-                >{'•'.repeat(40)}</code
-              >
+              <code class="font-fira text-text-brand-muted min-w-0 flex-1 text-sm break-all">
+                {'•'.repeat(40)}
+              </code>
             {/if}
             <button
               onclick={() => (tokenVisible = !tokenVisible)}
@@ -239,8 +241,9 @@
           <div class="flex items-center gap-3">
             <span
               class="font-outfit text-text-brand-muted w-32 shrink-0 text-sm font-bold tracking-widest uppercase"
-              >Version</span
             >
+              Version
+            </span>
             <span class="font-fira text-text-brand text-sm">{version}</span>
           </div>
         </Card.Content>

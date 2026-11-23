@@ -30,8 +30,9 @@
   {#if enabled}
     <span
       class="{colorClass} font-space rounded px-2 py-0.5 text-[11px] font-semibold tracking-wider uppercase"
-      >{label}</span
     >
+      {label}
+    </span>
   {/if}
 {/snippet}
 
@@ -56,13 +57,15 @@
               {#if ext.enabled}
                 <span
                   class="bg-nogon-green/20 text-nogon-green font-space rounded px-2 py-0.5 text-[11px] font-semibold tracking-wider uppercase"
-                  >Enabled</span
                 >
+                  Enabled
+                </span>
               {:else}
                 <span
                   class="bg-text-brand-muted/10 text-text-brand-muted font-space rounded px-2 py-0.5 text-[11px] font-semibold tracking-wider uppercase"
-                  >Disabled</span
                 >
+                  Disabled
+                </span>
               {/if}
               {@render capabilityBadge(
                 ext.capabilities.enrich,
@@ -96,9 +99,9 @@
                       <tr class="border-border-brand-muted border-b last:border-0">
                         <td class="font-space text-text-brand py-1.5 pr-4 font-medium">{key}</td>
                         <td class="font-inter text-text-brand-secondary py-1.5">
-                          <code class="bg-brutal-bg rounded px-1 py-0.5 text-xs"
-                            >{formatOptionValue(value)}</code
-                          >
+                          <code class="bg-brutal-bg rounded px-1 py-0.5 text-xs">
+                            {formatOptionValue(value)}
+                          </code>
                         </td>
                       </tr>
                     {/each}

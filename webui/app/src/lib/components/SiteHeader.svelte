@@ -107,8 +107,10 @@
             : 'text-text-brand-muted hover:bg-muted-surface hover:text-text-brand'}"
           style="--nav-color: {item.color};"
           aria-current={active ? 'page' : undefined}
-          href={item.href}>{item.label}</a
+          href={item.href}
         >
+          {item.label}
+        </a>
       {/each}
     {/if}
   </nav>

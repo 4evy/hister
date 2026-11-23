@@ -181,12 +181,12 @@
         >
           <ListIcon aria-hidden="true" size={18} class="text-nogon-indigo shrink-0" />
           <span class="min-w-0 flex-1">
-            <span class="font-inter block text-sm font-bold text-(--text-secondary)"
-              >On this page</span
-            >
-            <span class="font-inter block truncate text-sm font-semibold text-(--text-primary)"
-              >{activeEntry?.text}</span
-            >
+            <span class="font-inter block text-sm font-bold text-(--text-secondary)">
+              On this page
+            </span>
+            <span class="font-inter block truncate text-sm font-semibold text-(--text-primary)">
+              {activeEntry?.text}
+            </span>
           </span>
           <ChevronDownIcon
             aria-hidden="true"
@@ -237,8 +237,9 @@
           <div class="flex flex-col items-start">
             <span
               class="font-space text-[10px] font-bold tracking-[2px] text-(--text-secondary) uppercase"
-              >Previous</span
             >
+              Previous
+            </span>
             <span class="font-inter text-sm font-semibold">{data.prev.title}</span>
           </div>
         </Button>
@@ -255,8 +256,9 @@
           <div class="flex flex-col items-end">
             <span
               class="font-space text-[10px] font-bold tracking-[2px] text-(--text-secondary) uppercase"
-              >Next</span
             >
+              Next
+            </span>
             <span class="font-inter text-sm font-semibold">{data.next.title}</span>
           </div>
           <ArrowRight size={18} class="transition-transform group-hover:translate-x-1" />
@@ -274,9 +276,9 @@
         aria-label="On this page"
         class="sticky top-6 flex max-h-[calc(100vh-3rem)] flex-col gap-0.5 overflow-y-auto pb-4"
       >
-        <span class="font-inter mb-3 text-[13px] font-bold text-(--text-secondary)"
-          >On this page</span
-        >
+        <span class="font-inter mb-3 text-[13px] font-bold text-(--text-secondary)">
+          On this page
+        </span>
         {#each toc as entry}
           <Button
             variant="ghost"

@@ -176,8 +176,9 @@
           </span>
           <code
             class="font-fira bg-muted-surface text-text-brand-muted hidden max-w-52 shrink-0 truncate px-1.5 py-0.5 text-[10px] md:block"
-            >{suggestion.insertText}</code
           >
+            {suggestion.insertText}
+          </code>
         </button>
       {/each}
       {#if loading && suggestions.length === 0}

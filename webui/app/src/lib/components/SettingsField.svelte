@@ -152,8 +152,9 @@
           this={editable ? 'label' : 'span'}
           for={editable ? id : undefined}
           class="font-inter text-text-brand min-w-0 text-sm font-medium break-words"
-          >{field.label}</svelte:element
         >
+          {field.label}
+        </svelte:element>
         <Tooltip.Provider delayDuration={0}>
           <Tooltip.Root bind:open={sourceOpen} disableCloseOnTriggerClick>
             <Tooltip.Trigger
@@ -220,8 +221,9 @@
             target="_blank"
             rel="noopener noreferrer"
             class="text-nogon-indigo underline underline-offset-2"
-            >PDF parser profile setup example</a
           >
+            PDF parser profile setup example
+          </a>
         {/if}
         {#if field.effect === 'reembed'}
           <span class="mt-1 block">Reindex existing documents after changing this setting.</span>
@@ -362,15 +364,19 @@
             variant="outline"
             size="sm"
             {disabled}
-            onclick={() => onEdit(undefined)}>Use current value</Button
+            onclick={() => onEdit(undefined)}
           >
+            Use current value
+          </Button>
           {#if editable && edit && field.schema.sensitivity === 'none'}<Button
               type="button"
               variant="outline"
               size="sm"
               {disabled}
-              onclick={() => onEdit(edit)}>Keep my edit</Button
-            >{/if}
+              onclick={() => onEdit(edit)}
+            >
+              Keep my edit
+            </Button>{/if}
         </div>
       </div>
     {/if}
@@ -396,8 +402,10 @@
                       : field.schema.sensitivity === 'none'
                         ? ''
                         : { action: 'clear' },
-              })}>Clear</Button
+              })}
           >
+            Clear
+          </Button>
         {/if}
         {#if active.source.web_selected}
           <Button
@@ -407,8 +415,10 @@
             class={actionClass}
             aria-label={`Reset ${field.label}`}
             disabled={disabled || edit?.action === 'reset'}
-            onclick={() => onEdit({ path: field.path, action: 'reset' })}>Reset</Button
+            onclick={() => onEdit({ path: field.path, action: 'reset' })}
           >
+            Reset
+          </Button>
         {/if}
         {#if edit}<Button
             type="button"
@@ -417,8 +427,10 @@
             class={actionClass}
             aria-label={`Undo ${field.label}`}
             {disabled}
-            onclick={() => onEdit(undefined)}>Undo</Button
-          >{/if}
+            onclick={() => onEdit(undefined)}
+          >
+            Undo
+          </Button>{/if}
       </div>
     {/if}
   </div>

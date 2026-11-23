@@ -194,8 +194,10 @@
         class="text-nogon-indigo block [overflow-wrap:anywhere] underline"
         href={target.href}
         target="_blank"
-        rel="noreferrer">Open new address: {target.href}</a
+        rel="noreferrer"
       >
+        Open new address: {target.href}
+      </a>
     {:else}
       <p role="alert">
         The server did not supply a valid HTTP or HTTPS destination. Wait for automatic rollback.
@@ -218,8 +220,10 @@
         onclick={() =>
           navigator.clipboard.writeText(confirmationToken).catch(() => {
             problem = 'Could not copy the code. Select and copy it from the field.';
-          })}>Copy confirmation code</Button
+          })}
       >
+        Copy confirmation code
+      </Button>
     {/if}
   {:else}
     {#if pending?.authentication || needsLogin}
@@ -254,16 +258,20 @@
           uncertain ||
           expired ||
           (noAuthentication && !confirmationToken)}
-        onclick={() => complete(true)}>Restore previous settings</Button
+        onclick={() => complete(true)}
       >
+        Restore previous settings
+      </Button>
       <Button
         disabled={busy ||
           !pending ||
           uncertain ||
           expired ||
           (noAuthentication && !confirmationToken)}
-        onclick={() => complete(false)}>Confirm working access</Button
+        onclick={() => complete(false)}
       >
+        Confirm working access
+      </Button>
     </div>
   {/if}
 </section>

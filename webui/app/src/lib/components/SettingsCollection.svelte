@@ -215,9 +215,10 @@
       class="border-nogon-indigo/40 min-w-0 space-y-4 border p-4"
       use:focusEditor
     >
-      <legend class="px-1 text-sm font-medium"
-        >{current.index === null ? 'New' : 'Edit'} {noun}</legend
-      >
+      <legend class="px-1 text-sm font-medium">
+        {current.index === null ? 'New' : 'Edit'}
+        {noun}
+      </legend>
       {#if dictionary}
         <label class="block text-sm" for={`${id}-${index}-name`}>{keyLabel}</label>
         <Input
@@ -260,9 +261,9 @@
           {nameError}
         </p>{/if}
       <div class="flex flex-wrap justify-end gap-2">
-        <Button type="button" variant="outline" size="sm" {disabled} onclick={() => onEditor(null)}
-          >Cancel</Button
-        >
+        <Button type="button" variant="outline" size="sm" {disabled} onclick={() => onEditor(null)}>
+          Cancel
+        </Button>
         <Button type="button" size="sm" disabled={disabled || blocked} onclick={done}>
           {current.index === null ? `Add ${noun}` : 'Done'}
         </Button>
@@ -286,9 +287,9 @@
     <div class="flex min-w-0 items-start justify-between gap-2">
       <div class="flex min-h-10 min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-1.5 sm:min-h-9">
         {#if presentation.layout === 'shortcut'}
-          <Kbd class="border-border-brand-muted text-text-brand h-7 border px-2 font-mono text-xs"
-            >{text.title}</Kbd
-          >
+          <Kbd class="border-border-brand-muted text-text-brand h-7 border px-2 font-mono text-xs">
+            {text.title}
+          </Kbd>
           <p class="text-text-brand-muted text-sm [overflow-wrap:anywhere]">{text.detail}</p>
         {:else}
           <p class="min-w-0 text-sm font-medium [overflow-wrap:anywhere]">{text.title}</p>
@@ -296,8 +297,10 @@
         {#if changed}
           <Badge
             variant="outline"
-            class="border-nogon-indigo/30 text-text-brand shrink-0 text-[10px]">Unsaved</Badge
+            class="border-nogon-indigo/30 text-text-brand shrink-0 text-[10px]"
           >
+            Unsaved
+          </Badge>
         {/if}
       </div>
       <div class="flex shrink-0 items-center gap-0.5">
@@ -342,9 +345,9 @@
                 </Button>
               {/snippet}
             </Tooltip.Trigger>
-            <Tooltip.Content role="tooltip" side="top" sideOffset={6}
-              >Remove {noun} from draft</Tooltip.Content
-            >
+            <Tooltip.Content role="tooltip" side="top" sideOffset={6}>
+              Remove {noun} from draft
+            </Tooltip.Content>
           </Tooltip.Root>
         </Tooltip.Provider>
       </div>
@@ -352,8 +355,9 @@
     {#if presentation.layout === 'pattern'}
       <code
         class="bg-muted/50 text-text-brand block min-w-0 px-2.5 py-2 font-mono text-xs leading-relaxed [overflow-wrap:anywhere] whitespace-pre-wrap"
-        >{text.detail}</code
       >
+        {text.detail}
+      </code>
     {:else if presentation.layout !== 'shortcut'}
       <p class="text-text-brand-muted pb-1 text-xs [overflow-wrap:anywhere]">{text.detail}</p>
     {/if}
@@ -383,8 +387,10 @@
         !!editor ||
         blocked ||
         (field.schema.max_items !== undefined && entries.length >= field.schema.max_items)}
-      onclick={() => start(null)}><Plus class="size-4" aria-hidden="true" />Add {noun}</Button
+      onclick={() => start(null)}
     >
+      <Plus class="size-4" aria-hidden="true" />Add {noun}
+    </Button>
   {/if}
   {#if removal?.path === field.path}
     <div class="flex flex-wrap items-center gap-2 text-sm" aria-live="polite">
@@ -394,8 +400,10 @@
         variant="link"
         size="sm"
         disabled={disabled || !!editor || blocked}
-        onclick={onUndoRemoval}>Undo removal</Button
+        onclick={onUndoRemoval}
       >
+        Undo removal
+      </Button>
     </div>
   {/if}
 </div>

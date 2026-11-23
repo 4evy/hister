@@ -117,13 +117,14 @@
         <Badge
           variant="secondary"
           class="bg-nogon-indigo/15 text-nogon-indigo border-nogon-indigo/30 text-[11px]"
-          >{cat}</Badge
         >
+          {cat}
+        </Badge>
       {/each}
       {#each data.tags || [] as tag}
-        <Badge variant="outline" class="text-nogon-teal border-nogon-teal/30 text-[11px]"
-          >{tag}</Badge
-        >
+        <Badge variant="outline" class="text-nogon-teal border-nogon-teal/30 text-[11px]">
+          {tag}
+        </Badge>
       {/each}
     </nav>
   {/if}

@@ -63,9 +63,9 @@
 
     <div class="space-y-4 px-5 py-5">
       <div class="space-y-1.5">
-        <Label for="bulk-rule-patterns" class="font-outfit text-text-brand text-sm font-bold"
-          >Patterns</Label
-        >
+        <Label for="bulk-rule-patterns" class="font-outfit text-text-brand text-sm font-bold">
+          Patterns
+        </Label>
         <Textarea
           id="bulk-rule-patterns"
           bind:value={patterns}
@@ -84,9 +84,9 @@
       </div>
 
       <div class="space-y-1.5">
-        <Label for="bulk-rule-type" class="font-outfit text-text-brand text-sm font-bold"
-          >Type</Label
-        >
+        <Label for="bulk-rule-type" class="font-outfit text-text-brand text-sm font-bold">
+          Type
+        </Label>
         <select
           id="bulk-rule-type"
           value={ruleType}
