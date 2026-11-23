@@ -21,7 +21,7 @@ RUN npm run build --workspace=@nogon/app
 
 # Build a static Go binary. Cache downloads and compiled packages separately so
 # source changes do not force the toolchain to start cold.
-FROM golang:1.27-alpine3.24@sha256:fa3d596898d9f126af7c01d14ee7597bab3f39cccf392ef36b69fe77cd681f18 AS builder
+FROM golang:1.27-alpine3.24@sha256:70bd7ddea8b6cbe5d6943cde279d6b67feb10cc924fb9100d1d8757c1575b280 AS builder
 
 RUN apk add --no-cache gcc musl-dev
 
