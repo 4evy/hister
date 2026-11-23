@@ -3,6 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "prepare": "node -e \"if (process.env.NODE_ENV !== 'production') require('node:child_process').execSync('svelte-kit sync', { stdio: 'inherit' })\"",
     "test:markdown": "node tests/markdown.test.js",
     "test:browser": "playwright test",
     "build": "vite build",

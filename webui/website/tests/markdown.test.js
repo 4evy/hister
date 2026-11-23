@@ -5,7 +5,13 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { join, relative, resolve } from 'node:path';
 import { after, test } from 'node:test';
 import { compile, preprocess } from 'svelte/compiler';
-import { createServer, normalizePath } from 'vite';
+import { createServer, normalizePath, transformWithOxc } from 'vite';
+
+// Starting the dev server also generates the config and would hide an incomplete install.
+await test('the installed website can transform its docs layout with Vite', async () => {
+  const layout = resolve('src/routes/docs/+layout.ts');
+  await assert.doesNotReject(transformWithOxc(readFileSync(layout, 'utf8'), layout));
+});
 
 const server = await createServer({
   logLevel: 'silent',
