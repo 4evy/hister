@@ -1,8 +1,5 @@
 import adapter from '@sveltejs/adapter-static';
-import { mdsvex, escapeSvelte } from 'mdsvex';
-import rehypeSlug from 'rehype-slug';
-import type { Comment, Element, Root } from 'hast';
-import { createHighlighter } from 'shiki';
+import { markdown } from './markdown.ts';
 import { sveltekit } from '@sveltejs/kit/vite';
 import tailwindcss from '@tailwindcss/vite';
 import { cpSync, mkdirSync } from 'fs';
@@ -22,90 +19,12 @@ function copyDatasetJsons() {
   };
 }
 
-function scrollableDocTables() {
-  return (tree: Root, file: { filename?: string }) => {
-    if (!file.filename?.replaceAll('\\', '/').includes('/src/content/docs/')) return;
-
-    function wrapTables(parent: Root | Element) {
-      parent.children = parent.children.flatMap((node): Root['children'] => {
-        if (node.type !== 'element') return [node];
-        wrapTables(node);
-        if (node.tagName !== 'table') return [node];
-
-        const exception =
-          ' svelte-ignore a11y_no_noninteractive_tabindex (Keyboard users need to focus this region to scroll wide tables.) ';
-        const focusException: Comment = {
-          type: 'comment',
-          // MDsveX emits root comment values verbatim; nested comments get delimiters.
-          value: parent.type === 'root' ? `<!--${exception}-->` : exception,
-        };
-        const wrapper: Element = {
-          type: 'element',
-          tagName: 'div',
-          properties: {
-            className: ['table-scroll'],
-            tabIndex: 0,
-            role: 'region',
-            ariaLabel: 'Scrollable table',
-          },
-          children: [node],
-        };
-        return [focusException, wrapper];
-      });
-    }
-
-    wrapTables(tree);
-  };
-}
-
-const theme = 'github-dark';
-
-const langs = [
-  'bash',
-  'shell',
-  'yaml',
-  'json',
-  'javascript',
-  'typescript',
-  'html',
-  'css',
-  'nginx',
-  'nix',
-  'go',
-  'text',
-  'plaintext',
-  'markdown',
-  'dockerfile',
-];
-
-const langAliases: Record<string, string> = { textplain: 'text', caddy: 'text' };
-const highlighter = await createHighlighter({ themes: [theme], langs });
-const loadedLangs = new Set(highlighter.getLoadedLanguages());
-
 export default defineConfig({
   plugins: [
     tailwindcss(),
     sveltekit({
       extensions: ['.svelte', '.md', '.svx'],
-      preprocess: [
-        mdsvex({
-          extensions: ['.md', '.svx'],
-          rehypePlugins: [rehypeSlug, scrollableDocTables],
-          highlight: {
-            highlighter: (code, lang) => {
-              const resolved = lang ? langAliases[lang] || lang : 'text';
-              const html = escapeSvelte(
-                highlighter.codeToHtml(code, {
-                  lang: loadedLangs.has(resolved) ? resolved : 'text',
-                  theme,
-                }),
-              );
-
-              return `{@html \`${html}\` }`;
-            },
-          },
-        }),
-      ],
+      preprocess: [markdown],
       adapter: adapter({ pages: 'build', assets: 'build', fallback: '404.html' }),
       prerender: { handleHttpError: 'warn', handleMissingId: 'ignore' },
     }),

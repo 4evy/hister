@@ -1,6 +1,26 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import { expect, test } from '@playwright/test';
 
+test('Markdown renders imported configuration cards and the quickstart image preview', async ({
+  page,
+}) => {
+  await page.goto('/docs/configuration');
+  const address = page.locator('[aria-labelledby="config-option-address"]');
+  await expect(address.getByText('server', { exact: true })).toBeVisible();
+  await expect(address.getByText('127.0.0.1:4433', { exact: true })).toBeVisible();
+
+  await page.goto('/docs/quickstart');
+  const image = page.getByRole('button', { name: /Open image preview: Screenshot of Nogon/ });
+  await image.click();
+  const preview = page.getByRole('dialog', { name: 'Image preview' });
+  await expect(preview.getByRole('img')).toHaveAttribute(
+    'src',
+    await image.evaluate((element: HTMLImageElement) => element.src),
+  );
+  await page.keyboard.press('Escape');
+  await expect(preview).toBeHidden();
+});
+
 test('canonical metadata uses the Nogon domain and preserves existing page paths', async ({
   page,
 }) => {
