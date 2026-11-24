@@ -3,7 +3,6 @@ package server
 import (
 	"bytes"
 	"context"
-	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
 	"encoding/xml"
@@ -67,8 +66,12 @@ var ws = websocket.Upgrader{
 }
 
 func registerEndpoints(cfg *config.Config, idx *indexer.Indexer, overrides ...config.Override) http.Handler {
+	return newConfigReloader(cfg, overrides).registerEndpoints(idx)
+}
+
+func (reloader *configReloader) registerEndpoints(idx *indexer.Indexer) http.Handler {
+	cfg := reloader.cfg
 	mux := http.NewServeMux()
-	reloader := &configReloader{current: cfg, overrides: overrides, revision: rand.Text()}
 	tokenAuth := cfg.App.AccessToken != ""
 	userHandling := cfg.App.UserHandling
 

@@ -176,10 +176,10 @@
     };
   }
 
-  function showActivity(activity: SettingsActivity) {
+  function showActivity(activity: SettingsActivity, status = activityMessages[activity]) {
     if (workflow.phase !== 'working') return;
     workflow.activity = activity;
-    message = activityMessages[activity];
+    message = status;
   }
 
   function requireRefresh(required = true) {
@@ -607,7 +607,10 @@
         message = 'Review the sensitive changes before applying this draft.';
         return;
       }
-      showActivity('applying');
+      const uninterrupted = draft.edits.every((edit) =>
+        settings?.fields.some((field) => field.path === edit.path && field.applies_without_reload),
+      );
+      showActivity('applying', uninterrupted ? 'Applying settings…' : undefined);
       const result = await settingsRequest<PendingAccess | { saved: boolean }>(
         '/apply',
         accepted ? { ...accepted.draft, acknowledgment: accepted.acknowledgment } : draft,
@@ -617,7 +620,7 @@
         return;
       }
       clearDraft();
-      showActivity('reconnecting');
+      showActivity('reconnecting', uninterrupted ? 'Reading active settings…' : undefined);
       await readActive();
       message = 'Settings saved and applied.';
     } catch (error) {

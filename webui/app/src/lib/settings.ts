@@ -84,6 +84,7 @@ export interface SettingField {
   schema: SettingSchema;
   default?: unknown;
   effect: string;
+  applies_without_reload?: boolean;
   read_only_reason?: string;
   requires_confirmation: boolean;
 }

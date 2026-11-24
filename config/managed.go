@@ -43,7 +43,7 @@ var ErrManagedRecovery = errors.New("managed configuration recovery failed; insp
 var ErrManagedConflict = errors.New("configuration sources changed; reload and read settings again")
 
 // ManagedWrite owns private staging files until Commit or Close. The runtime
-// owner must serialize it with reloads and keep requests paused during Commit.
+// owner must serialize it with reloads and only mark a revision saved after Commit.
 type ManagedWrite struct {
 	candidate     *Config
 	managed       map[string]any

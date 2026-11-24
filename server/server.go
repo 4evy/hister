@@ -66,20 +66,21 @@ func (lrw *loggingResponseWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) 
 }
 
 type webContext struct {
-	Request       *http.Request
-	Response      http.ResponseWriter
-	Config        *config.Config
-	Indexer       *indexer.Indexer
-	nonce         string
-	csrf          string
-	UserID        uint
-	Username      string
-	IsAdmin       bool
-	Authenticated bool
-	settingsActor configurationActor
-	userRules     *config.Rules
-	reloader      *configReloader
-	releaseConfig func()
+	Request        *http.Request
+	Response       http.ResponseWriter
+	Config         *config.Config
+	Indexer        *indexer.Indexer
+	nonce          string
+	csrf           string
+	UserID         uint
+	Username       string
+	IsAdmin        bool
+	Authenticated  bool
+	settingsActor  configurationActor
+	userRules      *config.Rules
+	reloader       *configReloader
+	configRevision string
+	releaseConfig  func()
 }
 
 func (c *webContext) effectiveRules() *config.Rules {
@@ -165,20 +166,22 @@ func createHandler(cfg *config.Config, idx *indexer.Indexer, h func(*webContext)
 	return func(w http.ResponseWriter, r *http.Request) {
 		requestConfig := cfg
 		var reloader *configReloader
+		var revision string
 		release := func() {}
 		if len(reloaders) > 0 {
 			reloader = reloaders[0]
-			requestConfig, release = reloader.beginRequest(r)
+			requestConfig, revision, release = reloader.beginRequest(r)
 			defer release()
 		}
 		c := &webContext{
-			Request:       r,
-			Response:      w,
-			Config:        requestConfig,
-			Indexer:       idx,
-			nonce:         rand.Text(),
-			reloader:      reloader,
-			releaseConfig: release,
+			Request:        r,
+			Response:       w,
+			Config:         requestConfig,
+			Indexer:        idx,
+			nonce:          rand.Text(),
+			reloader:       reloader,
+			configRevision: revision,
+			releaseConfig:  release,
 		}
 		if requestConfig.App.UserHandling {
 			populateUserContext(c)

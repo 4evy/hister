@@ -93,7 +93,10 @@ type FieldMetadata struct {
 	Schema             SettingSchema        `json:"schema"`
 	Default            any                  `json:"default,omitempty"`
 	Effect             string               `json:"effect"`
-	ReadOnlyReason     string               `json:"read_only_reason,omitempty"`
+	// AppliesWithoutReload is opt-in for fields whose consumers read the next
+	// request snapshot or load the persisted configuration in another process.
+	AppliesWithoutReload bool   `json:"applies_without_reload,omitempty"`
+	ReadOnlyReason       string `json:"read_only_reason,omitempty"`
 	// Confirmation compares validated configurations without changing them or exposing secrets.
 	Confirmation *ConfirmationPolicy `json:"-"`
 	// RequiresConfirmation identifies fields that may need consent. Validation
@@ -490,6 +493,7 @@ func fieldCatalog(parser PDFParser) []FieldMetadata {
 				Sensitivity: "none",
 				MaxLength:   256,
 			},
+			AppliesWithoutReload: true,
 		},
 		{
 			Path:        "app.subtitle",
@@ -500,6 +504,7 @@ func fieldCatalog(parser PDFParser) []FieldMetadata {
 				Sensitivity: "none",
 				MaxLength:   1024,
 			},
+			AppliesWithoutReload: true,
 		},
 		{
 			Path:        "app.color_scheme",
@@ -510,6 +515,7 @@ func fieldCatalog(parser PDFParser) []FieldMetadata {
 				Sensitivity: "none",
 				Choices:     []string{"automatic", "light", "dark"},
 			},
+			AppliesWithoutReload: true,
 		},
 		{
 			Path:        "app.display_extractor_config",
@@ -519,6 +525,7 @@ func fieldCatalog(parser PDFParser) []FieldMetadata {
 			Schema: SettingSchema{
 				Sensitivity: "none",
 			},
+			AppliesWithoutReload: true,
 		},
 		{
 			Path:        "app.snippet_length",
@@ -542,6 +549,7 @@ func fieldCatalog(parser PDFParser) []FieldMetadata {
 				Sensitivity: "none",
 				MaxLength:   4096,
 			},
+			AppliesWithoutReload: true,
 		},
 		{
 			Path:        "app.open_results_on_new_tab",
@@ -551,6 +559,7 @@ func fieldCatalog(parser PDFParser) []FieldMetadata {
 			Schema: SettingSchema{
 				Sensitivity: "none",
 			},
+			AppliesWithoutReload: true,
 		},
 		{
 			Path:        "app.show_suggestions",
@@ -560,6 +569,7 @@ func fieldCatalog(parser PDFParser) []FieldMetadata {
 			Schema: SettingSchema{
 				Sensitivity: "none",
 			},
+			AppliesWithoutReload: true,
 		},
 		{
 			Path:        "app.redirect_on_no_results",
@@ -569,6 +579,7 @@ func fieldCatalog(parser PDFParser) []FieldMetadata {
 			Schema: SettingSchema{
 				Sensitivity: "none",
 			},
+			AppliesWithoutReload: true,
 		},
 		{
 			Path:        "app.disable_previews",
@@ -823,6 +834,7 @@ func fieldCatalog(parser PDFParser) []FieldMetadata {
 				Min:         &minFileSize,
 				Max:         &maxFileSize,
 			},
+			AppliesWithoutReload: true,
 		},
 		{
 			Path:        "server.metrics",
@@ -841,6 +853,7 @@ func fieldCatalog(parser PDFParser) []FieldMetadata {
 			Schema: SettingSchema{
 				Sensitivity: "none",
 			},
+			AppliesWithoutReload: true,
 		},
 		{
 			Path:        "indexer.detect_languages",
@@ -978,6 +991,7 @@ func fieldCatalog(parser PDFParser) []FieldMetadata {
 				Min:         &minSeconds,
 				Max:         &maxSeconds,
 			},
+			AppliesWithoutReload: true,
 		},
 		{
 			Path:        "crawler.delay",
@@ -990,6 +1004,7 @@ func fieldCatalog(parser PDFParser) []FieldMetadata {
 				Min:         &minSeconds,
 				Max:         &maxSeconds,
 			},
+			AppliesWithoutReload: true,
 		},
 		{
 			Path:        "crawler.no_robots",
@@ -999,6 +1014,7 @@ func fieldCatalog(parser PDFParser) []FieldMetadata {
 			Schema: SettingSchema{
 				Sensitivity: "none",
 			},
+			AppliesWithoutReload: true,
 		},
 		{
 			Path:        "crawler.backend",
@@ -1009,14 +1025,16 @@ func fieldCatalog(parser PDFParser) []FieldMetadata {
 				Sensitivity: "none",
 				Choices:     []string{"http", "chromedp", "bidi"},
 			},
+			AppliesWithoutReload: true,
 		},
 		{
-			Path:          "crawler.backend_options",
-			Group:         groupPageFetching,
-			Label:         "Crawler backend options",
-			Description:   "Executable selections remain file managed.",
-			AvailableWhen: crawlerBackendAvailability("capture_delay"),
-			Schema:        crawlerBackendSchema(),
+			Path:                 "crawler.backend_options",
+			Group:                groupPageFetching,
+			Label:                "Crawler backend options",
+			Description:          "Executable selections remain file managed.",
+			AvailableWhen:        crawlerBackendAvailability("capture_delay"),
+			Schema:               crawlerBackendSchema(),
+			AppliesWithoutReload: true,
 		},
 		{
 			Path:        "crawler.proxy",
@@ -1027,6 +1045,7 @@ func fieldCatalog(parser PDFParser) []FieldMetadata {
 				Sensitivity: "secret",
 				MaxLength:   4096,
 			},
+			AppliesWithoutReload: true,
 		},
 		{
 			Path:        "crawler.user_agent",
@@ -1037,6 +1056,7 @@ func fieldCatalog(parser PDFParser) []FieldMetadata {
 				Sensitivity: "none",
 				MaxLength:   4096,
 			},
+			AppliesWithoutReload: true,
 		},
 		{
 			Path:        "crawler.headers",
@@ -1057,13 +1077,15 @@ func fieldCatalog(parser PDFParser) []FieldMetadata {
 					MaxLength:   16384,
 				},
 			},
+			AppliesWithoutReload: true,
 		},
 		{
-			Path:        "crawler.cookies",
-			Group:       groupRequests,
-			Label:       "Crawler cookies",
-			Description: "Cookies for HTTP and Chrome crawls, scoped to domains and paths. BiDi uses its browser cookies. Stored values cannot be reused with a different name, domain, or path.",
-			Schema:      crawlerCookieSchema(),
+			Path:                 "crawler.cookies",
+			Group:                groupRequests,
+			Label:                "Crawler cookies",
+			Description:          "Cookies for HTTP and Chrome crawls, scoped to domains and paths. BiDi uses its browser cookies. Stored values cannot be reused with a different name, domain, or path.",
+			Schema:               crawlerCookieSchema(),
+			AppliesWithoutReload: true,
 		},
 		{
 			Path:        "semantic_search.enable",
@@ -1317,10 +1339,11 @@ func fieldCatalog(parser PDFParser) []FieldMetadata {
 			Effect: "runtime",
 		},
 		{
-			Path:        "hotkeys.web",
-			Label:       "Web keyboard shortcuts",
-			Description: "Shortcuts apply on the search page after saving. Use lowercase letters, digits, /, ?, enter, tab, arrowup, arrowdown, arrowleft, arrowright, or f1 through f12, optionally prefixed with ctrl+, alt+, or meta+. Some combinations are reserved by your browser or system. Built in navigation remains available without configured shortcuts. Terminal shortcuts are configured separately.",
-			Schema:      webHotkeySchema(),
+			Path:                 "hotkeys.web",
+			Label:                "Web keyboard shortcuts",
+			Description:          "Shortcuts apply on the search page after saving. Use lowercase letters, digits, /, ?, enter, tab, arrowup, arrowdown, arrowleft, arrowright, or f1 through f12, optionally prefixed with ctrl+, alt+, or meta+. Some combinations are reserved by your browser or system. Built in navigation remains available without configured shortcuts. Terminal shortcuts are configured separately.",
+			Schema:               webHotkeySchema(),
+			AppliesWithoutReload: true,
 		},
 		{
 			Path:        "sensitive_content_patterns",

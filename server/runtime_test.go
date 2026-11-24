@@ -1170,16 +1170,7 @@ func TestSettingsSaveSkipsUnchangedSelections(t *testing.T) {
 			}
 			headers := map[string]string{"Origin": "nogon://", "X-Access-Token": "secret"}
 			revision, _ := readConfigurationState(t, handler, headers)
-			server := httptest.NewServer(handler)
-			defer server.Close()
-			conn, resp, err := websocket.DefaultDialer.Dial("ws"+strings.TrimPrefix(server.URL, "http")+"/nogon/search", http.Header{"Origin": {cfg.Server.BaseURL}, "X-Access-Token": {"secret"}})
-			if resp != nil {
-				defer func() { _ = resp.Body.Close() }()
-			}
-			if err != nil {
-				t.Fatal(err)
-			}
-			defer func() { _ = conn.Close() }()
+			searchSocket := openSettingsSearch(t, cfg, handler)
 			response := testutil.ServeHTTP(t, handler, http.MethodPost, "/nogon/api/settings/apply", strings.NewReader(fmt.Sprintf(`{"revision":%q,"edits":%s}`, revision, tc.edits)), headers)
 			if response.Code != http.StatusOK {
 				t.Fatalf("unchanged save: %d %s", response.Code, response.Body)
@@ -1202,17 +1193,175 @@ func TestSettingsSaveSkipsUnchangedSelections(t *testing.T) {
 					t.Error("unchanged save rewrote managed selections")
 				}
 			}
-			if err := conn.SetReadDeadline(time.Now().Add(5 * time.Second)); err != nil {
-				t.Fatal(err)
-			}
-			if err := conn.WriteJSON(map[string]string{"text": "retained connection"}); err != nil {
-				t.Fatal(err)
-			}
-			var result json.RawMessage
-			if err := conn.ReadJSON(&result); err != nil {
-				t.Fatalf("unchanged save interrupted the search WebSocket: %v", err)
-			}
+			searchSocket()
 		})
+	}
+}
+
+func openSettingsSearch(t *testing.T, cfg *config.Config, handler http.Handler) func() {
+	t.Helper()
+	server := httptest.NewServer(handler)
+	t.Cleanup(server.Close)
+	conn, resp, err := websocket.DefaultDialer.Dial("ws"+strings.TrimPrefix(server.URL, "http")+"/nogon/search", http.Header{"Origin": {cfg.Server.BaseURL}, "X-Access-Token": {"secret"}})
+	if resp != nil {
+		defer func() { _ = resp.Body.Close() }()
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = conn.Close() })
+	return func() {
+		t.Helper()
+		if err := conn.SetReadDeadline(time.Now().Add(5 * time.Second)); err != nil {
+			t.Fatal(err)
+		}
+		if err := conn.WriteJSON(map[string]string{"text": "retained connection"}); err != nil {
+			t.Fatal(err)
+		}
+		var result json.RawMessage
+		if err := conn.ReadJSON(&result); err != nil {
+			t.Fatalf("settings save interrupted the search WebSocket: %v", err)
+		}
+	}
+}
+
+type heldSearchResponse struct {
+	*httptest.ResponseRecorder
+	wait func()
+}
+
+func (w *heldSearchResponse) Write(p []byte) (int, error) {
+	w.wait()
+	return w.ResponseRecorder.Write(p)
+}
+
+func TestSettingsLiveSaveKeepsSearchesAvailable(t *testing.T) {
+	cfg, handler, write := newReloadTestServer(t, false)
+	write("")
+	if status := reloadRequest(t, handler, "secret"); status != http.StatusOK {
+		t.Fatalf("reload: %d", status)
+	}
+	headers := map[string]string{"Origin": "nogon://", "X-Access-Token": "secret"}
+	search := "/nogon/search?q=example&format=json"
+	searchSocket := openSettingsSearch(t, cfg, handler)
+	ruleHeaders := maps.Clone(headers)
+	ruleHeaders["Content-Type"] = "application/x-www-form-urlencoded"
+	if result := testutil.ServeHTTP(t, handler, http.MethodPost, "/nogon/api/add_alias", strings.NewReader("alias-keyword=docs&alias-value=documentation"), ruleHeaders); result.Code != http.StatusOK {
+		t.Fatalf("add alias: %d %s", result.Code, result.Body)
+	}
+	admin := testutil.ServeHTTP(t, handler, http.MethodGet, "/nogon/api/settings", nil, headers)
+	var catalog struct {
+		Revision string
+		Fields   []struct {
+			Path string
+			Live bool `json:"applies_without_reload"`
+		}
+	}
+	if err := json.Unmarshal(admin.Body.Bytes(), &catalog); err != nil {
+		t.Fatal(err)
+	}
+	live := make(map[string]bool)
+	for _, field := range catalog.Fields {
+		live[field.Path] = field.Live
+	}
+	for _, path := range []string{
+		"app.title", "app.subtitle", "app.color_scheme", "app.display_extractor_config", "app.search_url",
+		"app.open_results_on_new_tab", "app.show_suggestions", "app.redirect_on_no_results",
+		"server.expose_version", "server.max_batch_body_size", "hotkeys.web",
+		"crawler.backend", "crawler.backend_options", "crawler.timeout", "crawler.delay", "crawler.no_robots",
+		"crawler.user_agent", "crawler.proxy", "crawler.headers", "crawler.cookies",
+	} {
+		if !live[path] {
+			t.Errorf("catalog says %s requires a reload", path)
+		}
+	}
+	for _, path := range []string{"server.address", "server.metrics", "app.disable_previews", "indexer.directories", "extractors.ytdlp.enable"} {
+		if withoutReload, exists := live[path]; !exists || withoutReload {
+			t.Errorf("expected %s in the catalog with a reload required", path)
+		}
+	}
+	entered, resume := make(chan struct{}), make(chan struct{})
+	held := &heldSearchResponse{httptest.NewRecorder(), sync.OnceFunc(func() { close(entered); <-resume })}
+	first := httptest.NewRequest(http.MethodGet, search, nil)
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		handler.ServeHTTP(held, first)
+	}()
+	<-entered
+	release := sync.OnceFunc(func() { close(resume); <-done })
+	defer release()
+
+	body := fmt.Sprintf(`{"revision":%q,"edits":[
+		{"path":"app.title","action":"set","value":"Library"},
+		{"path":"app.subtitle","action":"set","value":"Local archive"},
+		{"path":"app.color_scheme","action":"set","value":"dark"},
+		{"path":"app.search_url","action":"set","value":"https://search.example/?q={query}"},
+		{"path":"hotkeys.web","action":"set","value":{"alt+n":"select_next_result"}},
+		{"path":"server.max_batch_body_size","action":"set","value":1},
+		{"path":"crawler.timeout","action":"set","value":17}
+	]}`, catalog.Revision)
+	saved := make(chan *httptest.ResponseRecorder, 1)
+	go func() {
+		saved <- testutil.ServeHTTP(t, handler, http.MethodPost, "/nogon/api/settings/apply", strings.NewReader(body), headers)
+	}()
+	timeout := time.After(5 * time.Second)
+	checkSearch := func() {
+		t.Helper()
+		response := testutil.ServeHTTP(t, handler, http.MethodGet, search, nil, nil)
+		if response.Code != http.StatusOK || !json.Valid(response.Body.Bytes()) {
+			t.Fatalf("concurrent search: %d %s", response.Code, response.Body)
+		}
+	}
+	for {
+		checkSearch()
+		select {
+		case response := <-saved:
+			if response.Code != http.StatusOK {
+				t.Fatalf("save: %d %s", response.Code, response.Body)
+			}
+		case <-timeout:
+			t.Fatal("live save waited for the active search")
+		case <-time.After(10 * time.Millisecond):
+			continue
+		}
+		break
+	}
+	checkSearch()
+	searchSocket()
+	rules := testutil.ServeHTTP(t, handler, http.MethodGet, "/nogon/api/rules", nil, headers)
+	if rules.Code != http.StatusOK || !strings.Contains(rules.Body.String(), `"docs":"documentation"`) {
+		t.Fatalf("published configuration lost the active alias: %d %s", rules.Code, rules.Body)
+	}
+	release()
+	if held.Code != http.StatusOK || !json.Valid(held.Body.Bytes()) {
+		t.Fatalf("in-flight search: %d %s", held.Code, held.Body)
+	}
+	public := testutil.ServeHTTP(t, handler, http.MethodGet, "/nogon/api/config", nil, nil)
+	var display struct {
+		Title, Subtitle, ColorScheme string
+		Hotkeys                      map[string]string
+	}
+	if public.Code != http.StatusOK || json.Unmarshal(public.Body.Bytes(), &display) != nil ||
+		display.Title != "Library" || display.Subtitle != "Local archive" || display.ColorScheme != "dark" ||
+		!maps.Equal(display.Hotkeys, map[string]string{"alt+n": "select_next_result"}) {
+		t.Fatalf("public configuration after save: %d %s", public.Code, public.Body)
+	}
+	redirect := testutil.ServeHTTP(t, handler, http.MethodGet, "/nogon/?q=!!library", nil, nil)
+	if redirect.Code != http.StatusFound || redirect.Header().Get("Location") != "https://search.example/?q=library" {
+		t.Fatalf("search redirect after save: %d %q", redirect.Code, redirect.Header().Get("Location"))
+	}
+	batch := testutil.ServeHTTP(t, handler, http.MethodPost, "/nogon/api/batch", strings.NewReader(strings.Repeat(" ", 1<<20+1)), headers)
+	if batch.Code != http.StatusRequestEntityTooLarge {
+		t.Fatalf("batch over the new limit: %d %s", batch.Code, batch.Body)
+	}
+	fresh, values := readConfigurationState(t, handler, headers)
+	loaded, _, err := config.LoadForInspection(cfg.Filename(), true)
+	if err != nil || fresh == catalog.Revision || loaded.App.Title != display.Title || loaded.App.Subtitle != display.Subtitle || values["app.title"].Value != display.Title || values["app.subtitle"].Value != display.Subtitle {
+		t.Fatalf("persisted settings and published revision disagree: %v", err)
+	}
+	if loaded.Crawler.Timeout != 17 {
+		t.Fatalf("new crawl commands would read timeout %d, want 17", loaded.Crawler.Timeout)
 	}
 }
 
@@ -1254,11 +1403,12 @@ func TestSettingsSavePersistsDefaultSelections(t *testing.T) {
 func TestSettingsConcurrentSavesAndReloads(t *testing.T) {
 	cfg, handler, _ := newReloadTestServer(t, false)
 	headers := map[string]string{"Origin": "nogon://", "X-Access-Token": "secret"}
-	for round := range 4 {
+	// Two writers share a revision. Add a competing full reload in alternate rounds.
+	for round, workers := range []int{2, 3, 2, 3} {
 		revision, _ := readConfigurationState(t, handler, headers)
 		start := make(chan struct{})
-		results := make(chan int, 3)
-		for worker := range 3 {
+		results := make(chan int, workers)
+		for worker := range workers {
 			go func() {
 				<-start
 				path, body := "/nogon/api/reload", ""
@@ -1275,13 +1425,16 @@ func TestSettingsConcurrentSavesAndReloads(t *testing.T) {
 		}
 		close(start)
 		var succeeded int
-		for range 3 {
+		for range workers {
 			if <-results == http.StatusOK {
 				succeeded++
 			}
 		}
 		if succeeded == 0 {
 			t.Fatal("no configuration operation completed")
+		}
+		if workers == 2 && succeeded != 1 {
+			t.Fatal("two presentation saves committed against the same revision")
 		}
 		_, values := readConfigurationState(t, handler, headers)
 		persisted, _, err := config.LoadForInspection(cfg.Filename(), true)
@@ -1523,7 +1676,7 @@ func TestSettingsSaveRechecksActorAfterDraining(t *testing.T) {
 			<-entered
 			result := make(chan *httptest.ResponseRecorder, 1)
 			go func() {
-				result <- testutil.ServeHTTP(t, handler, http.MethodPost, "/nogon/api/settings/apply", strings.NewReader(fmt.Sprintf(`{"revision":%q,"edits":[{"path":"app.subtitle","action":"set","value":"Unauthorized"}]}`, revision)), headers)
+				result <- testutil.ServeHTTP(t, handler, http.MethodPost, "/nogon/api/settings/apply", strings.NewReader(fmt.Sprintf(`{"revision":%q,"edits":[{"path":"app.subtitle","action":"set","value":"Unauthorized"},{"path":"app.disable_previews","action":"set","value":true}]}`, revision)), headers)
 			}()
 			waitRuntimePause(t, handler)
 			unblock()
@@ -1666,7 +1819,7 @@ func TestSettingsSaveDrainingAndRecovery(t *testing.T) {
 			<-entered
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
-			request := httptest.NewRequest(http.MethodPost, "/nogon/api/settings/apply", strings.NewReader(fmt.Sprintf(`{"revision":%q,"edits":[{"path":"app.subtitle","action":"set","value":"Saved subtitle"}]}`, revision))).WithContext(ctx)
+			request := httptest.NewRequest(http.MethodPost, "/nogon/api/settings/apply", strings.NewReader(fmt.Sprintf(`{"revision":%q,"edits":[{"path":"app.subtitle","action":"set","value":"Saved subtitle"},{"path":"app.disable_previews","action":"set","value":true}]}`, revision))).WithContext(ctx)
 			for key, value := range headers {
 				request.Header.Set(key, value)
 			}
@@ -1851,7 +2004,7 @@ func TestSettingsSaveReportsOtherApplyFailures(t *testing.T) {
 	if err := os.Remove(cfg.RulesPath()); err != nil {
 		t.Fatal(err)
 	}
-	response := testutil.ServeHTTP(t, handler, http.MethodPost, "/nogon/api/settings/apply", strings.NewReader(fmt.Sprintf(`{"revision":%q,"edits":[{"path":"app.subtitle","action":"set","value":"Candidate"}]}`, revision)), headers)
+	response := testutil.ServeHTTP(t, handler, http.MethodPost, "/nogon/api/settings/apply", strings.NewReader(fmt.Sprintf(`{"revision":%q,"edits":[{"path":"app.subtitle","action":"set","value":"Candidate"},{"path":"app.disable_previews","action":"set","value":true}]}`, revision)), headers)
 	var failure struct{ Code string }
 	if err := json.Unmarshal(response.Body.Bytes(), &failure); err != nil || response.Code != http.StatusBadRequest || failure.Code != "apply_failed" {
 		t.Fatalf("activation failure misclassified: %d %s (%v)", response.Code, response.Body, err)

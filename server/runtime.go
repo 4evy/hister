@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"net/url"
 	"reflect"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -45,9 +46,9 @@ type serverRuntime struct {
 }
 
 type runtimeGeneration struct {
+	*configReloader
 	authID        string
 	pendingAccess *pendingAccessStatus // guarded by serverRuntime.mu
-	cfg           *config.Config
 	idx           *indexer.Indexer
 	db            *sql.DB
 	handler       http.Handler
@@ -509,11 +510,11 @@ func (r *serverRuntime) generation(cfg *config.Config, idx *indexer.Indexer) (*r
 	}
 	sessionStore = newSessionStore(cfg.SecretKey(), cfg.BaseURL(""), sessionMaxAge)
 	ctx, cancel := context.WithCancel(r.ctx)
-	g := &runtimeGeneration{authID: rand.Text(), cfg: cfg, idx: idx, db: db, stop: cancel}
+	g := &runtimeGeneration{authID: rand.Text(), configReloader: newConfigReloader(cfg, r.overrides), idx: idx, db: db, stop: cancel}
 	g.drained = make(chan struct{})
 	close(g.drained)
 	g.sockets, g.closeSockets = context.WithCancel(r.ctx)
-	g.handler = withLogging(registerEndpoints(cfg, idx, r.overrides...))
+	g.handler = withLogging(g.registerEndpoints(idx))
 	if cfg.Server.Metrics {
 		g.metrics = metrics.New(ctx, idx)
 		idx.SetMetrics(g.metrics)
@@ -620,7 +621,7 @@ func (r *serverRuntime) save(lease *runtimeRequest, edits []config.SettingEdit, 
 	if r.pending != nil {
 		return failure(http.StatusConflict, "confirmation_pending", "Confirm or cancel the pending configuration before saving another draft.")
 	}
-	if !r.isCurrent(lease) {
+	if !r.isCurrent(lease) || lease.generation.revision != revision {
 		return failure(http.StatusConflict, "stale_revision", "Server configuration changed; read settings again.")
 	}
 	old := lease.generation.cfg
@@ -641,7 +642,8 @@ func (r *serverRuntime) save(lease *runtimeRequest, edits []config.SettingEdit, 
 	if len(fields) > 0 {
 		return http.StatusUnprocessableEntity, map[string]any{"code": "invalid_settings", "errors": fields}
 	}
-	mode, _ := configurationConfirmation(old, next, edits)
+	editedFields := editedConfigurationFields(old, edits)
+	mode, _ := configurationConfirmation(old, next, editedFields)
 	if mode != "" || acknowledgment != "" {
 		if mode != "" && acknowledgment == "" {
 			return failure(http.StatusPreconditionRequired, "acknowledgment_required", "Review and explicitly confirm the sensitive changes before applying them.")
@@ -679,7 +681,14 @@ func (r *serverRuntime) save(lease *runtimeRequest, edits []config.SettingEdit, 
 			log.Warn().Msg("Cannot remove configuration staging files")
 		}
 	}()
-	status, err := r.apply(r.ctx, lease, next, runtimeApplyOptions{staged: staged})
+	var status int
+	if len(editedFields) != len(edits) || slices.ContainsFunc(editedFields, func(field config.FieldMetadata) bool {
+		return !field.AppliesWithoutReload
+	}) {
+		status, err = r.apply(r.ctx, lease, next, runtimeApplyOptions{staged: staged})
+	} else {
+		status, err = r.applyWithoutReload(lease, next, staged)
+	}
 	if err != nil {
 		code := "apply_failed"
 		if applyErr, ok := errors.AsType[*runtimeApplyError](err); ok {
@@ -693,6 +702,36 @@ func (r *serverRuntime) save(lease *runtimeRequest, edits []config.SettingEdit, 
 	return http.StatusOK, map[string]bool{"saved": true}
 }
 
+// applyWithoutReload runs under reloadMu. The catalog guarantees the active
+// generation's resources can keep serving with the new request snapshot.
+func (r *serverRuntime) applyWithoutReload(lease *runtimeRequest, next *config.Config, staged *config.ManagedWrite) (int, error) {
+	g := lease.generation
+	if !g.cfg.SourcesUnchanged(r.overrides...) {
+		return http.StatusConflict, &runtimeApplyError{code: "sources_changed", message: "configuration sources changed; active configuration retained"}
+	}
+	if !lease.actor.authorized(g.cfg) {
+		return http.StatusForbidden, &runtimeApplyError{code: "admin_required", message: "administrative authority is no longer available"}
+	}
+	if err := staged.Commit(); err != nil {
+		if errors.Is(err, config.ErrManagedConflict) {
+			return http.StatusConflict, &runtimeApplyError{code: "sources_changed", message: "configuration sources changed; active configuration retained"}
+		}
+		if errors.Is(err, config.ErrManagedRecovery) {
+			failure := &runtimeApplyError{code: "recovery_failed", message: "managed configuration recovery failed; inspect config.web.yml and .config.web-recovery files before restarting the server"}
+			r.failRecovery(failure)
+			return http.StatusServiceUnavailable, failure
+		}
+		return http.StatusInternalServerError, &runtimeApplyError{code: "persistence_failed", message: "cannot commit managed configuration; active configuration retained"}
+	}
+	// Take the rules that are active at publication, including concurrent edits.
+	g.mu.Lock()
+	next.Rules = g.cfg.Rules
+	g.cfg, g.revision = next, rand.Text()
+	g.mu.Unlock()
+	clear(r.reviews)
+	return http.StatusOK, nil
+}
+
 func (r *serverRuntime) review(lease *runtimeRequest, edits []config.SettingEdit, revision string) (int, any) {
 	lease.finish()
 	r.reloadMu.Lock()
@@ -700,7 +739,7 @@ func (r *serverRuntime) review(lease *runtimeRequest, edits []config.SettingEdit
 	failure := func(status int, code, message string) (int, any) {
 		return status, map[string]string{"code": code, "error": message}
 	}
-	if !r.isCurrent(lease) {
+	if !r.isCurrent(lease) || lease.generation.revision != revision {
 		return failure(http.StatusConflict, "stale_revision", "Server configuration changed; read settings again.")
 	}
 	current := lease.generation.cfg
@@ -752,14 +791,14 @@ func (r *serverRuntime) isCurrent(lease *runtimeRequest) bool {
 
 // reload is called after authorization. Release this request's generation
 // lease before draining; the rest of this handler only writes its response.
-func (r *serverRuntime) reload(req *http.Request, lease *runtimeRequest, next *config.Config) (int, error) {
+func (r *serverRuntime) reload(req *http.Request, lease *runtimeRequest, next *config.Config, revision string) (int, error) {
 	lease.finish()
 	r.reloadMu.Lock()
 	defer r.reloadMu.Unlock()
 	if r.pending != nil {
 		return http.StatusConflict, errors.New("confirm or cancel the pending configuration before reloading")
 	}
-	if !r.isCurrent(lease) {
+	if !r.isCurrent(lease) || lease.generation.revision != revision {
 		return http.StatusConflict, errors.New("server configuration changed; retry reload")
 	}
 	if !lease.actor.authorized(lease.generation.cfg) {

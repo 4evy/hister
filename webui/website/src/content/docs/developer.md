@@ -264,8 +264,13 @@ the two minute timeout, or a persistence failure restores the previous runtime w
 possible; restart loads the confirmed file. Competing saves and reloads return `409`
 while confirmation is pending. Source changes before confirmation are not overwritten.
 
-For ordinary changes, the runtime serializes saves with reloads, drains requests, stages private YAML
-beside `config.web.yml`, and commits it before publishing the replacement runtime.
+The runtime serializes saves with reloads and stages private YAML beside `config.web.yml`.
+When every edited field declares `applies_without_reload`, it commits the file and publishes
+the new request configuration and revision together. Set this flag in the field catalog when
+every consumer reads the value from a request snapshot or from disk when a new command starts.
+Active HTTP searches and WebSocket connections continue on the same runtime. Fields consumed
+by the indexer, workers, or route registration require a reload. A draft containing any field
+without the flag drains requests before publishing the replacement runtime.
 Saves with unchanged web selections preserve the file, runtime, and revision.
 Adding or removing an explicit selection is saved even when its value equals the default.
 The main file is never rewritten. Conflicts return `409`; field errors return

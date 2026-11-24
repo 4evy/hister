@@ -78,6 +78,7 @@ async function settingsAPI(page: Page, config: Record<string, unknown> = {}) {
   const fields = [
     {
       path: 'app.title',
+      applies_without_reload: true,
       group: 'Appearance',
       label: 'Title',
       schema: { ...scalar, type: 'string', control: 'text' } satisfies SettingSchema,
@@ -85,6 +86,7 @@ async function settingsAPI(page: Page, config: Record<string, unknown> = {}) {
     },
     {
       path: 'app.subtitle',
+      applies_without_reload: true,
       group: 'Appearance',
       label: 'Subtitle',
       schema: { ...scalar, type: 'string', control: 'text' } satisfies SettingSchema,
@@ -106,6 +108,7 @@ async function settingsAPI(page: Page, config: Record<string, unknown> = {}) {
     },
     {
       path: 'app.color_scheme',
+      applies_without_reload: true,
       group: 'Appearance',
       label: 'Color scheme',
       schema: {
@@ -118,6 +121,7 @@ async function settingsAPI(page: Page, config: Record<string, unknown> = {}) {
     },
     {
       path: 'app.show_suggestions',
+      applies_without_reload: true,
       group: 'Search behavior',
       label: 'Show suggestions',
       schema: { ...scalar, type: 'boolean', control: 'switch' } satisfies SettingSchema,
@@ -139,6 +143,7 @@ async function settingsAPI(page: Page, config: Record<string, unknown> = {}) {
     default: field.default,
     schema: field.schema,
     effect: 'runtime',
+    applies_without_reload: field.applies_without_reload,
     requires_confirmation: field.path === 'server.address',
     read_only_reason:
       field.path === 'server.address'
@@ -2799,6 +2804,7 @@ test('the draft cannot be discarded while saving and the count clears after succ
   await page.route('**/api/settings/apply', async (route) => {
     await applyGate;
     state.values[0].value = 'Saved draft';
+    state.values.find((field) => field.path === 'app.color_scheme')!.value = 'dark';
     applied = true;
     return route.fulfill({ json: { saved: true } });
   });
@@ -2809,15 +2815,17 @@ test('the draft cannot be discarded while saving and the count clears after succ
   const discard = page.getByRole('button', { name: 'Discard changes', exact: true });
   const status = page.getByRole('group', { name: 'Settings actions' }).getByRole('status');
   await title.fill('Saved draft');
+  const colorScheme = page.getByRole('combobox', { name: 'Color scheme', exact: true });
+  await colorScheme.selectOption('dark');
   try {
     await save.click();
     await expect(status).toHaveText('Validating settings…');
     await expect(save).toBeDisabled();
     await expect(discard).toBeDisabled();
     await expect(title).toBeDisabled();
-    await expect(page.getByText('Unsaved', { exact: true })).toBeVisible();
+    await expect(page.getByText('Unsaved', { exact: true })).toHaveCount(2);
     finishValidation();
-    await expect(status).toHaveText('Applying settings. Service may be briefly interrupted…');
+    await expect(status).toHaveText('Applying settings…');
     await expect(status).toBeInViewport();
     await expect(save).toBeInViewport();
     await expect(discard).toBeInViewport();
@@ -2825,7 +2833,7 @@ test('the draft cannot be discarded while saving and the count clears after succ
     const discardBox = (await discard.boundingBox())!;
     expect(discardBox.y).toBe(saveBox.y);
     finishApply();
-    await expect(status).toHaveText('Reconnecting and reading active settings…');
+    await expect(status).toHaveText('Reading active settings…');
     await expect(save).toBeDisabled();
     await expect(discard).toBeDisabled();
     await expect(status).toBeInViewport();
@@ -2838,6 +2846,7 @@ test('the draft cannot be discarded while saving and the count clears after succ
   await expect(status).toBeInViewport();
   await expect(page.getByRole('status')).toHaveCount(1);
   await expect(title).toHaveValue('Saved draft');
+  await expect(colorScheme).toHaveValue('dark');
   await expect(page.getByText('No unsaved changes', { exact: true })).toBeVisible();
   await expect(discard).toBeDisabled();
   await expect(page.getByText('Unsaved', { exact: true })).toHaveCount(0);

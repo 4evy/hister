@@ -831,7 +831,11 @@ token or enable user accounts. You can change both in one save. With anonymous s
 visitors can search shared documents and open their previews and files. Without authentication,
 anyone who can reach the instance can also add or change documents.
 
-Saving briefly interrupts service. Changes made to configuration files require a
+Searches continue when you save the title, subtitle, color scheme, web shortcuts, search engine
+URL, search redirects, suggestions, or how result links open. The same applies to extractor
+option visibility, version visibility, the upload size limit, and crawler defaults.
+If a draft also changes a setting that requires a reload, saving can briefly interrupt service.
+Changes made to configuration files require a
 [reload](#reloading-a-running-server). Invalid or unreadable files block saving.
 If another save or a file change causes a conflict, refresh settings and resolve conflicting fields
 before saving again. If a save or reload response is lost, read the active values before retrying.

@@ -2,6 +2,7 @@ package server
 
 import (
 	"bytes"
+	"crypto/rand"
 	"crypto/sha256"
 	"encoding/json"
 	"errors"
@@ -127,21 +128,22 @@ func (actor configurationActor) authorized(cfg *config.Config) bool {
 	return actor.userID == 0 && actor.token == [32]byte{} && !actor.proxy
 }
 
-func configurationNeedsReview(edits []config.SettingEdit) bool {
-	for _, field := range config.FieldCatalog() {
-		if field.RequiresConfirmation && slices.ContainsFunc(edits, func(edit config.SettingEdit) bool { return edit.Path == field.Path }) {
-			return true
-		}
+func editedConfigurationFields(current *config.Config, edits []config.SettingEdit) []config.FieldMetadata {
+	paths := make(map[string]bool, len(edits))
+	for _, edit := range edits {
+		paths[edit.Path] = true
 	}
-	return false
+	return slices.DeleteFunc(configurationCatalog(current), func(field config.FieldMetadata) bool {
+		return !paths[field.Path]
+	})
 }
 
-func configurationConfirmation(current, candidate *config.Config, edits []config.SettingEdit) (config.ConfirmationMode, []string) {
+func configurationConfirmation(current, candidate *config.Config, fields []config.FieldMetadata) (config.ConfirmationMode, []string) {
 	var mode config.ConfirmationMode
 	var consequences []string
-	for _, field := range configurationCatalog(current) {
+	for _, field := range fields {
 		policy := field.Confirmation
-		if policy == nil || !slices.ContainsFunc(edits, func(edit config.SettingEdit) bool { return edit.Path == field.Path }) {
+		if policy == nil {
 			continue
 		}
 		if message := policy.Describe(current, candidate); message != "" {
@@ -169,7 +171,7 @@ type configurationChange struct {
 }
 
 func describeConfigurationReview(current, candidate *config.Config, edits []config.SettingEdit) configurationReview {
-	mode, consequences := configurationConfirmation(current, candidate, edits)
+	mode, consequences := configurationConfirmation(current, candidate, editedConfigurationFields(current, edits))
 	review := configurationReview{Mode: mode, Consequences: consequences}
 	if mode == config.ConfirmAccess {
 		review.DestinationURL = candidate.BaseURL("/settings")
@@ -231,13 +233,18 @@ func checkConfigurationReviewAdministrator(candidate *config.Config) error {
 	return nil
 }
 
-// configReloader owns one generation's HTTP configuration. Readers receive
-// immutable rule snapshots while writes are serialized with reload preparation.
+// configReloader owns one generation's HTTP configuration. Each request takes
+// its configuration and revision together under mu. The runtime also holds
+// reloadMu when publishing a revision. Rule writes hold mu until they finish.
 type configReloader struct {
 	mu        sync.Mutex
-	current   *config.Config
+	cfg       *config.Config
 	overrides []config.Override
 	revision  string
+}
+
+func newConfigReloader(cfg *config.Config, overrides []config.Override) *configReloader {
+	return &configReloader{cfg: cfg, overrides: overrides, revision: rand.Text()}
 }
 
 type pendingConfiguration struct {
@@ -272,9 +279,9 @@ func serveSettings(c *webContext) {
 		pending = nil
 	}
 	c.JSON(map[string]any{
-		"revision":       c.reloader.revision,
+		"revision":       c.configRevision,
 		"fields":         configurationCatalog(c.Config),
-		"values":         configurationStates(c.Config, c.reloader.revision),
+		"values":         configurationStates(c.Config, c.configRevision),
 		"pending":        pending,
 		"pending_access": pendingAccess,
 	})
@@ -285,16 +292,17 @@ func serveValidateSettings(c *webContext) {
 	if !ok {
 		return
 	}
-	if configurationNeedsReview(edits) {
+	editedFields := editedConfigurationFields(c.Config, edits)
+	if slices.ContainsFunc(editedFields, func(field config.FieldMetadata) bool { return field.RequiresConfirmation }) {
 		lease, ok := c.Request.Context().Value(runtimeRequestKey{}).(*runtimeRequest)
 		if !ok {
-			candidate, fields := prepareConfigurationDraft(c.Config, edits, c.reloader.revision)
+			candidate, fields := prepareConfigurationDraft(c.Config, edits, c.configRevision)
 			if len(fields) > 0 {
 				c.JSONStatus(http.StatusUnprocessableEntity, map[string]any{"code": "invalid_settings", "errors": fields})
 				return
 			}
-			if mode, _ := configurationConfirmation(c.Config, candidate, edits); mode == "" {
-				c.JSON(map[string]any{"revision": c.reloader.revision, "values": configurationStates(candidate, ""), "requires_confirmation": false})
+			if mode, _ := configurationConfirmation(c.Config, candidate, editedFields); mode == "" {
+				c.JSON(map[string]any{"revision": c.configRevision, "values": configurationStates(candidate, ""), "requires_confirmation": false})
 				return
 			}
 			c.JSONStatus(http.StatusServiceUnavailable, map[string]string{"code": "unavailable", "error": "Configuration reviews require a running server."})
@@ -313,16 +321,16 @@ func serveValidateSettings(c *webContext) {
 		}
 		c.releaseConfig()
 		lease.actor = c.settingsActor
-		status, result := lease.runtime.review(lease, edits, c.reloader.revision)
+		status, result := lease.runtime.review(lease, edits, c.configRevision)
 		c.JSONStatus(status, result)
 		return
 	}
-	candidate, fields := prepareConfigurationDraft(c.Config, edits, c.reloader.revision)
+	candidate, fields := prepareConfigurationDraft(c.Config, edits, c.configRevision)
 	if len(fields) > 0 {
 		c.JSONStatus(http.StatusUnprocessableEntity, map[string]any{"code": "invalid_settings", "errors": fields})
 		return
 	}
-	c.JSON(map[string]any{"revision": c.reloader.revision, "values": configurationStates(candidate, ""), "requires_confirmation": false})
+	c.JSON(map[string]any{"revision": c.configRevision, "values": configurationStates(candidate, ""), "requires_confirmation": false})
 }
 
 func serveApplySettings(c *webContext) {
@@ -343,7 +351,7 @@ func serveApplySettings(c *webContext) {
 			lease.actor.session = sessionTokenHash(cookie.Value)
 		}
 	}
-	status, result := lease.runtime.save(lease, edits, c.reloader.revision, acknowledgment)
+	status, result := lease.runtime.save(lease, edits, c.configRevision, acknowledgment)
 	c.JSONStatus(status, result)
 }
 
@@ -378,7 +386,7 @@ func readSettingsDraft(c *webContext, acknowledgment *string) ([]config.SettingE
 		}
 		edits = append(edits, edit)
 	}
-	if revision != c.reloader.revision {
+	if revision != c.configRevision {
 		c.JSONStatus(http.StatusConflict, map[string]string{"code": "stale_revision", "error": "Read the current settings before validating the draft."})
 		return nil, false
 	}
@@ -474,17 +482,17 @@ func decodeSettingsObject(reader io.Reader, fields map[string]any) error {
 
 // beginRequest takes a snapshot for readers and serializes reloads with rule
 // writes. No lock is held during searches or long lived WebSocket connections.
-func (r *configReloader) beginRequest(req *http.Request) (*config.Config, func()) {
+func (r *configReloader) beginRequest(req *http.Request) (*config.Config, string, func()) {
 	r.mu.Lock()
 	if req.Method == http.MethodPost {
 		switch req.URL.Path {
 		case "/api/reload", "/api/rules", "/api/add_alias", "/api/delete_alias":
-			return r.current, sync.OnceFunc(r.mu.Unlock)
+			return r.cfg, r.revision, sync.OnceFunc(r.mu.Unlock)
 		}
 	}
-	snapshot := r.snapshotLocked()
+	snapshot, revision := r.snapshotLocked(), r.revision
 	r.mu.Unlock()
-	return snapshot, func() {}
+	return snapshot, revision, func() {}
 }
 
 func (r *configReloader) snapshot() *config.Config {
@@ -494,7 +502,7 @@ func (r *configReloader) snapshot() *config.Config {
 }
 
 func (r *configReloader) snapshotLocked() *config.Config {
-	snapshot := *r.current
+	snapshot := *r.cfg
 	snapshot.Rules = cloneRules(snapshot.Rules)
 	return &snapshot
 }
@@ -528,7 +536,7 @@ func serveReload(c *webContext) {
 	}
 	c.releaseConfig()
 	lease.actor = c.settingsActor
-	status, err := lease.runtime.reload(c.Request, lease, next)
+	status, err := lease.runtime.reload(c.Request, lease, next, c.configRevision)
 	if err != nil {
 		http.Error(c.Response, err.Error(), status)
 		return
