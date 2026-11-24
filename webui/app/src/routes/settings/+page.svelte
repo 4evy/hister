@@ -5,15 +5,18 @@
   import { page } from '$app/state';
   import { Badge } from '@nogon/components/ui/badge';
   import { Button } from '@nogon/components/ui/button';
+  import { Input } from '@nogon/components/ui/input';
   import * as Tooltip from '@nogon/components/ui/tooltip';
   import * as Dialog from '@nogon/components/ui/dialog';
-  import { TriangleAlert } from '@lucide/svelte';
+  import { Search, TriangleAlert } from '@lucide/svelte';
   import { fetchConfig, resetConfig } from '#lib/api.js';
   import { redirectToAuth } from '#lib/auth-navigation.js';
   import SettingsField from '#lib/components/SettingsField.svelte';
   import SettingsAccess from '#lib/components/SettingsAccess.svelte';
   import {
     categoryLabels,
+    choiceLabel,
+    findSettings,
     groupSettings,
     resolveSettingsDraft,
     settingsRequest,
@@ -26,6 +29,7 @@
     type SettingsDraft,
     type SettingsReview,
     type SettingEdit,
+    type SettingCondition,
     type SettingError,
     type SettingItemEditor,
     type SettingRemoval,
@@ -64,6 +68,7 @@
   });
   let message = $state(activityMessages.loading);
   let problem = $state('');
+  let searchQuery = $state('');
   const busy = $derived(workflow.phase === 'working');
   const denied = $derived(workflow.phase === 'denied');
   const needsReload = $derived(
@@ -125,6 +130,7 @@
     ) ?? [],
   );
   const groups = $derived(groupSettings(visibleFields, category));
+  const matches = $derived(findSettings(settings?.fields ?? [], searchQuery));
 
   onMount(() => {
     void load();
@@ -517,20 +523,28 @@
   }
 
   function selectCategory(next: string) {
+    searchQuery = '';
     const url = categoryUrl(next);
     if (url !== settingsUrl.href) void goto(url, { shallow: true });
   }
 
-  async function followErrorLink(event: MouseEvent & { currentTarget: HTMLAnchorElement }) {
+  async function followSettingLink(
+    event: MouseEvent & { currentTarget: HTMLAnchorElement },
+    controlId?: string,
+  ) {
     if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
     event.preventDefault();
     const { href, hash } = event.currentTarget;
+    searchQuery = '';
     if (href !== settingsUrl.href) await goto(href, { shallow: true });
     await tick();
     const row = document.getElementById(decodeURIComponent(hash.slice(1)));
-    const control = row?.querySelector<HTMLElement>(
-      'input:enabled, select:enabled, textarea:enabled, button[role="switch"]:enabled',
-    );
+    const member = controlId ? document.getElementById(controlId) : null;
+    const control =
+      member ??
+      row?.querySelector<HTMLElement>(
+        'input:enabled, select:enabled, textarea:enabled, button[role="switch"]:enabled, button[id$="-add"]:enabled',
+      );
     (control ?? row)?.focus();
   }
 
@@ -658,6 +672,32 @@
 <svelte:head><title>Settings | Nogon</title></svelte:head>
 <svelte:window onbeforeunload={beforeUnload} />
 
+{#snippet requirements(condition: SettingCondition, ancestors: string[])}
+  {#each condition.any_of as path, index}
+    {@const prerequisite = settings?.fields.find((field) => field.path === path)}
+    {#if index > 0}
+      or
+    {/if}
+    {#if prerequisite && !draftSettings.unavailable.has(path)}
+      <a
+        href={categoryUrl(prerequisite.category, `setting-${path}-row`)}
+        onclick={followSettingLink}
+        class="text-nogon-indigo underline underline-offset-2"
+      >
+        {prerequisite.label}
+      </a>
+    {:else}
+      {prerequisite?.label ?? path}
+      {#if prerequisite?.available_when && !ancestors.includes(path)}
+        (requires {@render requirements(prerequisite.available_when, [...ancestors, path])})
+      {/if}
+    {/if}
+    {#if condition.values?.length && prerequisite}
+      set to {condition.values.map((value) => choiceLabel(prerequisite.schema, value)).join(' or ')}
+    {/if}
+  {/each}
+{/snippet}
+
 <div class="bg-page-bg text-text-brand flex min-h-0 flex-1 flex-col">
   <div class="flex min-h-0 w-full flex-1 flex-col pt-5">
     <div class="flex shrink-0 flex-col px-4 md:px-6">
@@ -673,10 +713,72 @@
             Refresh settings
           </Button>{/if}
       </div>
-      <p class="text-text-brand-muted my-2 text-sm">
-        Configure appearance, search behavior, logging, indexing, crawling, extraction and web
-        shortcuts. Other settings are shown for reference.
-      </p>
+      {#if settings && !denied && !access}
+        <search class="my-2 w-full max-w-xl">
+          <div class="relative">
+            <Search
+              aria-hidden="true"
+              class="text-text-brand-muted pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2"
+            />
+            <Input
+              type="search"
+              aria-label="Find a setting"
+              placeholder="Find a setting"
+              class="pl-9"
+              bind:value={searchQuery}
+            />
+          </div>
+          <p
+            aria-live="polite"
+            class={searchQuery.trim() && !matches.length
+              ? 'text-text-brand-muted p-2 text-sm'
+              : 'sr-only'}
+          >
+            {#if searchQuery.trim()}
+              {matches.length
+                ? `${matches.length} matching ${matches.length === 1 ? 'setting' : 'settings'}`
+                : 'No matching settings.'}
+            {/if}
+          </p>
+          {#if matches.length}
+            <ul
+              aria-label="Matching settings"
+              class="border-border-brand-muted bg-card-surface mt-1 max-h-[30dvh] overflow-y-auto overscroll-contain border text-sm"
+            >
+              {#each matches as match (match.path)}
+                {@const field = match.field}
+                {@const requirement = [match.availableWhen, field.available_when].find(
+                  (condition) => !draftSettings.isAvailable(condition),
+                )}
+                {#snippet resultLabel()}
+                  <span class="font-medium">{match.label}</span>
+                  <span class="text-text-brand-muted block text-xs break-words">
+                    {categoryLabels[field.category] ?? field.category} · {match.path}
+                  </span>
+                {/snippet}
+                <li>
+                  {#if requirement}
+                    <div class="px-3 py-2">
+                      {@render resultLabel()}
+                      <p class="mt-1 text-sm">
+                        Requires {@render requirements(requirement, [field.path])}
+                      </p>
+                    </div>
+                  {:else}
+                    <a
+                      href={categoryUrl(field.category, `setting-${field.path}-row`)}
+                      onclick={(event) => followSettingLink(event, match.controlId)}
+                      class="hover:bg-muted-surface focus-visible:bg-muted-surface block px-3 py-2"
+                    >
+                      {@render resultLabel()}
+                    </a>
+                  {/if}
+                </li>
+              {/each}
+            </ul>
+          {/if}
+        </search>
+      {/if}
       {#if problem || errors.length}<div role="alert" class="text-nogon-rose my-2 text-sm">
           <p>
             {problem || 'Please correct the highlighted settings.'}{needsReload && dirty
@@ -691,7 +793,7 @@
                   {#if field && values.has(field.path)}
                     <a
                       href={categoryUrl(field.category, `setting-${field.path}-row`)}
-                      onclick={followErrorLink}
+                      onclick={followSettingLink}
                       class="underline underline-offset-2"
                     >
                       {field.label}: {error.message}

@@ -818,6 +818,10 @@ Open **Settings** from the navigation menu, edit fields in any category, then se
 for the complete draft. **Discard changes** abandons unsaved edits. Validation errors appear beside
 fields and keep the draft available to correct.
 
+Use **Find a setting** to search names, descriptions, and configuration keys across all categories.
+Select a match to jump to its control. If a setting is hidden, the results link to the settings
+that enable it. Your unsaved edits stay in place.
+
 Web configuration requires administrator access in multi user instances. Token protected instances
 require signing in; instances without authentication need no login. Public search access does not
 grant anonymous visitors access to Settings on an authenticated instance.

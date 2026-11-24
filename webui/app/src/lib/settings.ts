@@ -411,6 +411,50 @@ export const categoryLabels: Record<string, string> = {
   sensitive_content_patterns: 'Sensitive content patterns',
 };
 
+interface SettingMatch {
+  field: SettingField;
+  path: string;
+  label: string;
+  controlId?: string;
+  availableWhen?: SettingCondition;
+}
+
+export function findSettings(fields: SettingField[], query: string): SettingMatch[] {
+  const terms = query.toLowerCase().match(/\S+/g) ?? [];
+  if (!terms.length) return [];
+  const results: SettingMatch[] = [];
+  function match(entry: SettingMatch, description?: string) {
+    const text = [entry.label, entry.path, description].join(' ').toLowerCase();
+    if (terms.every((term) => text.includes(term))) results.push(entry);
+  }
+  for (const field of fields) {
+    match(
+      { field, path: field.path, label: field.label },
+      [field.description, field.enabled_description].join(' '),
+    );
+    const schema =
+      field.schema.type === 'list' || field.schema.type === 'dictionary'
+        ? field.schema.items
+        : field.schema;
+    if (schema?.type !== 'object' || !supportsControl(field.schema)) continue;
+    for (const property of schema.properties) {
+      // Collection members belong to individual items. Open the collection so the user can choose one.
+      match(
+        {
+          field,
+          path: `${field.path}.${property.name}`,
+          label: property.label,
+          availableWhen: property.available_when,
+          controlId:
+            field.schema.type === 'object' ? `setting-${field.path}-${property.name}` : undefined,
+        },
+        property.description,
+      );
+    }
+  }
+  return results;
+}
+
 export function groupSettings(fields: SettingField[], category: string) {
   const groups = new Map<string, SettingField[]>();
   const ungrouped: SettingField[] = [];

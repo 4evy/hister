@@ -2241,6 +2241,83 @@ test('unsaved count tooltips open from badges without opening from category tabs
   await expect(tooltip).not.toBeVisible();
 });
 
+test('find a setting searches across categories and focuses the result without changing the draft', async ({
+  page,
+}) => {
+  await ordinarySettingsAPI(page);
+  await page.goto('/settings');
+  const title = page.getByRole('textbox', { name: 'Title', exact: true });
+  await title.fill('My unsaved title');
+  const search = page.getByRole('searchbox', { name: 'Find a setting' });
+  await expect(search).toBeVisible();
+  const results = page.getByRole('list', { name: 'Matching settings' });
+  await search.fill('My unsaved title');
+  await expect(page.getByText('No matching settings.', { exact: true })).toBeVisible();
+  await search.fill('  DESTINATION  ');
+  await expect(results.getByRole('link', { name: /Search engine URL/ })).toBeVisible();
+  await search.fill('server.max_batch_body_size');
+  await expect(results.getByRole('link')).toHaveCount(1);
+  await search.fill('Maximum batch');
+  await search.press('Tab');
+  await expect(results.getByRole('link', { name: /Maximum batch size/ })).toBeFocused();
+  await page.keyboard.press('Enter');
+  await expect(page.getByRole('spinbutton', { name: 'Maximum batch size' })).toBeFocused();
+  await expect(results).toHaveCount(0);
+  await expect(page.getByRole('tabpanel')).toHaveAccessibleName('Server');
+  await page.getByRole('tab', { name: 'App', exact: true }).click();
+  await expect(title).toHaveValue('My unsaved title');
+  await expect(page.getByText('1 unsaved change', { exact: true })).toBeVisible();
+});
+
+test('find a setting explains hidden prerequisites and follows the current draft', async ({
+  page,
+}) => {
+  await extractionSettingsAPI(page);
+  await page.goto('/settings');
+  const search = page.getByRole('searchbox', { name: 'Find a setting' });
+  const results = page.getByRole('list', { name: 'Matching settings' });
+  await search.fill('sub_language');
+  await expect(results).toContainText('Subtitle language');
+  await expect(results).toContainText('Fetch subtitles');
+  await results.getByRole('link', { name: 'Enable Ytdlp', exact: true }).click();
+  const enabled = page.getByRole('switch', { name: 'Enable Ytdlp', exact: true });
+  await expect(enabled).toBeFocused();
+  await enabled.check();
+  await search.fill('sub_language');
+  await results.getByRole('link', { name: 'Fetch subtitles', exact: true }).click();
+  const subtitles = page.getByRole('switch', { name: 'Fetch subtitles', exact: true });
+  await expect(subtitles).toBeFocused();
+  await subtitles.check();
+  await search.fill('sub_language');
+  await results.getByRole('link', { name: /Subtitle language/ }).click();
+  await expect(page.getByRole('textbox', { name: 'Subtitle language' })).toBeFocused();
+  await expect(page.getByText('2 unsaved changes', { exact: true })).toBeVisible();
+});
+
+test('find a setting shows the required backend for nested options and focuses the selected property', async ({
+  page,
+}) => {
+  await crawlerSettingsAPI(page);
+  await page.goto('/settings');
+  const search = page.getByRole('searchbox', { name: 'Find a setting' });
+  const results = page.getByRole('list', { name: 'Matching settings' });
+  await search.fill('crawler.backend_options.host');
+  await expect(results).toContainText('Browser host');
+  await expect(results).toContainText('bidi');
+  await results.getByRole('link', { name: 'Crawler backend', exact: true }).click();
+  const backend = page.getByRole('combobox', { name: 'Crawler backend', exact: true });
+  await expect(backend).toBeFocused();
+  await backend.selectOption('bidi');
+  await search.fill('Browser host');
+  await results.getByRole('link', { name: /Browser host/ }).click();
+  await expect(page.getByRole('textbox', { name: 'Browser host', exact: true })).toBeFocused();
+  await search.fill('crawler.headers');
+  await results.getByRole('link', { name: /Crawler headers/ }).click();
+  await expect(page.getByRole('button', { name: 'Add header', exact: true })).toBeFocused();
+  await search.fill('authorization');
+  await expect(page.getByText('No matching settings.', { exact: true })).toBeVisible();
+});
+
 test('settings tab selection is restored after a reload', async ({ page }) => {
   await settingsAPI(page);
   await page.goto('/settings?source=bookmark#preferences');
