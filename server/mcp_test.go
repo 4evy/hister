@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -1206,18 +1207,66 @@ func TestMCPUnknownNotificationIsRejected(t *testing.T) {
 	}
 }
 
-func TestMCPInitializeAdvertisesStructuredContentProtocol(t *testing.T) {
+func TestMCPDiscoveryOffersGooseFallback(t *testing.T) {
+	_, handler := newTokenTestServer(t, false)
+	discover := func(version string, wantCode int) []string {
+		t.Helper()
+		body := fmt.Sprintf(`{"jsonrpc":"2.0","id":1,"method":"server/discover","params":{"_meta":{
+			"io.modelcontextprotocol/protocolVersion":%q,
+			"io.modelcontextprotocol/clientInfo":{"name":"goose","version":"1.60.2"},
+			"io.modelcontextprotocol/clientCapabilities":{}
+		}}}`, version)
+		rec := testutil.ServeHTTP(t, handler, http.MethodPost, "/mcp", strings.NewReader(body), mcpTestHeaders(map[string]string{
+			"Authorization":        "Bearer secret",
+			"Mcp-Method":           "server/discover",
+			"MCP-Protocol-Version": version,
+		}))
+		var reply struct {
+			ID    int `json:"id"`
+			Error struct {
+				Code int                                `json:"code"`
+				Data mcp.UnsupportedProtocolVersionData `json:"data"`
+			} `json:"error"`
+		}
+		if err := json.Unmarshal(rec.Body.Bytes(), &reply); err != nil {
+			t.Fatalf("discover %s: HTTP %d: %s", version, rec.Code, rec.Body.String())
+		}
+		if reply.ID != 1 || reply.Error.Code != wantCode {
+			t.Fatalf("discover %s: got %s, want error %d for request 1", version, rec.Body.String(), wantCode)
+		}
+		return reply.Error.Data.Supported
+	}
+
+	supported := discover("2026-07-28", mcp.CodeUnsupportedProtocolVersion)
+	if !slices.Contains(supported, "2025-11-25") {
+		t.Fatalf("discovery advertised %v, want 2025-11-25 for Goose", supported)
+	}
+	// Goose retries discovery at the shared version. Method not found tells it
+	// to switch to the initialize handshake.
+	discover("2025-11-25", jsonrpc.CodeMethodNotFound)
+}
+
+func TestMCPInitializeNegotiatesProtocolVersion(t *testing.T) {
 	cfg, handler := newTokenTestServer(t, false)
-	session := newMCPTestSessionVersion(t, cfg, handler, "secret", "2024-11-05")
-	initResult := session.InitializeResult()
-	if initResult.ServerInfo.Name != "nogon" {
-		t.Fatalf("server identity = %q", initResult.ServerInfo.Name)
-	}
-	if initResult.ProtocolVersion != mcpProtocolVersion {
-		t.Fatalf("protocol version = %q, want %q", initResult.ProtocolVersion, mcpProtocolVersion)
-	}
-	if initResult.ProtocolVersion != "2025-06-18" {
-		t.Fatalf("structured content protocol version = %q", initResult.ProtocolVersion)
+	for _, tc := range []struct{ request, want string }{
+		{"2025-11-25", "2025-11-25"},
+		{"2025-06-18", "2025-06-18"},
+		{"2024-11-05", "2025-11-25"},
+	} {
+		t.Run(tc.request, func(t *testing.T) {
+			session := newMCPTestSessionVersion(t, cfg, handler, "secret", tc.request)
+			init := session.InitializeResult()
+			if init.ServerInfo.Name != "nogon" || init.ProtocolVersion != tc.want {
+				t.Fatalf("initialize returned %s %s, want nogon %s", init.ServerInfo.Name, init.ProtocolVersion, tc.want)
+			}
+			result, err := mcpTestCall(t, session, "get_facets", nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := mcpTestStructured(t, result).Tool; got != "get_facets" {
+				t.Fatalf("tool = %q, want get_facets", got)
+			}
+		})
 	}
 }
 

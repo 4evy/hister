@@ -4,7 +4,7 @@
 // Streamable HTTP transport so that AI assistants (Claude Desktop, Cursor,
 // etc.) can search the Nogon index directly.
 //
-// Specification: https://modelcontextprotocol.io/specification/2025-06-18
+// Specification: https://modelcontextprotocol.io/specification/2025-11-25
 //
 // Exposed tools: search, get_facets, get_preview, get_history. The handler lives
 // at POST /mcp and uses the same authentication as the rest of the API. Bearer tokens are accepted
@@ -37,10 +37,8 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
-// mcpProtocolVersion is the MCP specification version this server targets.
-// The SDK negotiates the version with clients; restricting it to this single
-// version keeps existing clients on the 2025-06-18 protocol.
-const mcpProtocolVersion = "2025-06-18"
+// mcpProtocolVersion is the newest version offered during MCP initialization.
+const mcpProtocolVersion = "2025-11-25"
 
 const mcpStructuredSchemaVersion = "1.0"
 
@@ -151,7 +149,7 @@ func newMCPServer(c *webContext) *mcp.Server {
 		Name:    "nogon",
 		Version: Version,
 	}, &mcp.ServerOptions{
-		SupportedProtocolVersions: []string{mcpProtocolVersion},
+		SupportedProtocolVersions: []string{mcpProtocolVersion, "2025-06-18"},
 		// Advertise tools only. The SDK default also advertises logging and
 		// tools.listChanged, neither of which a stateless server can honour.
 		Capabilities: &mcp.ServerCapabilities{Tools: &mcp.ToolCapabilities{}},
