@@ -203,6 +203,9 @@ func (d *Document) ProcessWithSensitivePatternContext(ctx context.Context, ld La
 			return err
 		}
 	}
+	if !d.SkipSensitiveCheck && sensitivePattern != nil && sensitivePattern.MatchString(d.Text) {
+		return ErrSensitiveContent
+	}
 	d.finalizeDocument(ld)
 	return nil
 }

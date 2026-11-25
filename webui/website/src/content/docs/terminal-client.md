@@ -174,6 +174,17 @@ To manually index a specific URL:
 For persistent recursive crawls, URL input jobs, custom job names, resume behavior, request
 backends, and every `crawl` subcommand, see [Website Crawler](crawler).
 
+### Add a Document
+
+Use `nogon add document URL` to make your own text searchable at an HTTP or HTTPS URL. Nogon uses the content you provide without fetching the page.
+
+```bash
+nogon add document https://example.com/notes --title "Project notes" --text "Meeting agenda"
+gh-stars info asciimoo/nogon | nogon add document https://github.com/asciimoo/nogon --text-file - --label github
+```
+
+Supply a nonblank title or body. Use `--text` for literal text, `--text-file PATH` for a UTF 8 file, or `--text-file -` for standard input. Adding the same URL again replaces its title and body for the current owner. An existing label is kept unless you supply a new one with `--label`. URL rules apply by default. Use `--ignore-rules` to override them for this document.
+
 ### Search Output And Scripting
 
 Provide search terms to print results. Use `--fields` to select fields and `--limit` to stop

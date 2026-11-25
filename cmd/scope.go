@@ -40,6 +40,8 @@ func configureCommandScopes() {
 	setCommandScope(doctorCmd, executionScopeHybrid, "client-timeout", "search-url")
 	setCommandScope(listURLsCmd, executionScopeHybrid)
 	setCommandScope(listFilesCmd, executionScopeLocal)
+	setCommandScope(addCmd, executionScopeRemote, "client-timeout")
+	setCommandScope(addDocumentCmd, executionScopeRemote, "client-timeout")
 	setCommandScope(indexCmd, executionScopeHybrid, "client-timeout")
 	setCommandScope(exportCmd, executionScopeRemote)
 	setCommandScope(importCmd, executionScopeHybrid)
@@ -85,6 +87,7 @@ func configureCommandScopes() {
 	setCommandScope(importWallabagCmd, executionScopeRemote)
 
 	configureScopeGroups(rootCmd)
+	configureScopeGroups(addCmd)
 	configureScopeGroups(importCmd)
 	configureScopeGroups(importBrowserCmd)
 	configureScopeGroups(crawlCmd)

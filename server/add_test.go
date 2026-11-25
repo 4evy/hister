@@ -401,6 +401,39 @@ func TestServeAddFormRejectsRemoteFileURLWithoutType(t *testing.T) {
 	}
 }
 
+func TestServeAddWebTextUpdate(t *testing.T) {
+	cfg := testutil.Config(t)
+	idx := newServerTestIndexer(t, cfg)
+	c := webContext{Config: cfg, Indexer: idx}
+	d := document.Document{URL: "https://example.org/repo", Title: "Repository", Label: "github"}
+	for _, tc := range []struct {
+		text   string
+		status int
+	}{
+		{"Initial description", http.StatusCreated},
+		{"Updated description\nSearchable narwhal", http.StatusCreated},
+		{"-----BEGIN OPENSSH PRIVATE KEY-----", http.StatusUnprocessableEntity},
+	} {
+		d.Text = tc.text
+		result := submitTestDocuments(t, c, "/api/add", nil, d)[0]
+		if result.Status != tc.status {
+			t.Fatalf("add returned %+v, want status %d", result, tc.status)
+		}
+	}
+	found, err := idx.Search(&indexer.Query{Text: "narwhal", IncludeText: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if idx.Total() != 1 || len(found.Documents) != 1 {
+		t.Fatalf("index contains %d documents, search returned %d", idx.Total(), len(found.Documents))
+	}
+	got := found.Documents[0]
+	if got.URL != d.URL || got.Type != document.Web || got.Title != d.Title || got.Label != d.Label ||
+		got.Text != "Updated description\nSearchable narwhal" {
+		t.Fatalf("unexpected search result: %+v", got)
+	}
+}
+
 func TestServeAddRechecksSensitiveRemoteFileContent(t *testing.T) {
 	cfg := testutil.Config(t)
 	idx, err := indexer.New(cfg)

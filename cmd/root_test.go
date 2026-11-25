@@ -22,12 +22,119 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 
+	"github.com/asciimoo/nogon/client"
 	"github.com/asciimoo/nogon/config"
 	"github.com/asciimoo/nogon/server/indexer"
 	"github.com/asciimoo/nogon/server/model"
 	"github.com/asciimoo/nogon/server/testutil"
 	"github.com/asciimoo/nogon/server/types"
 )
+
+func TestAddDocumentCommand(t *testing.T) {
+	const page = "https://example.org/projects/nogon"
+	const body = "Search engine\n\nTopics: search, bookmarks\n"
+	path := testutil.WriteFile(t, t.TempDir(), "repo.txt", []byte(body))
+	for _, tc := range []struct {
+		name, title, text string
+		flags             []string
+		ignoreRules       bool
+	}{
+		{"pipe", "Nogon", body, []string{"--title", "Nogon", "--text-file", "-"}, false},
+		{"file", "", body, []string{"--text-file", path}, false},
+		{"inline", "", body, []string{"--text", body}, false},
+		{"title only", "Nogon", "", []string{"--title", "Nogon", "--ignore-rules"}, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			oldConfig, oldPreRun, oldTransport := cfg, rootCmd.PersistentPreRun, http.DefaultTransport
+			t.Cleanup(func() {
+				cfg, rootCmd.PersistentPreRun, http.DefaultTransport = oldConfig, oldPreRun, oldTransport
+				rootCmd.SetIn(nil)
+			})
+			cfg = testutil.Config(t)
+			cfg.App.AccessToken = "test-token"
+			if err := cfg.UpdateBaseURL("https://nogon.example"); err != nil {
+				t.Fatal(err)
+			}
+			rootCmd.PersistentPreRun = func(*cobra.Command, []string) {}
+			rootCmd.SetIn(strings.NewReader(body))
+			var stored *client.Document
+			http.DefaultTransport = roundTripFunc(func(r *http.Request) (*http.Response, error) {
+				if r.URL.Host != "nogon.example" {
+					t.Fatalf("contacted %s instead of the configured server", r.URL)
+				}
+				if r.Method == http.MethodGet && r.URL.Path == "/api/config" {
+					return jsonHTTPResponse(r, http.StatusOK, `{"maxBatchBodyBytes":8192}`), nil
+				}
+				if r.Method != http.MethodPost || r.URL.Path != "/api/add" || r.Header.Get("X-Access-Token") != cfg.App.AccessToken {
+					t.Fatalf("unexpected request: %s %s", r.Method, r.URL)
+				}
+				if err := json.NewDecoder(r.Body).Decode(&stored); err != nil {
+					t.Fatal(err)
+				}
+				return jsonHTTPResponse(r, http.StatusCreated, ""), nil
+			})
+			args := append([]string{"add", "document", page, "--label", "github"}, tc.flags...)
+			if _, _, err := executeUserCommandForTest(t, args...); err != nil {
+				t.Fatal(err)
+			}
+			if stored == nil || stored.URL != page || stored.Type != client.Web || stored.Title != tc.title ||
+				stored.Text != tc.text || stored.Label != "github" || stored.HTML != "" || stored.Processed || stored.SkipSensitiveCheck {
+				t.Fatalf("incorrect document: %+v", stored)
+			}
+			if override, _ := stored.Metadata["ignore_skip_rules"].(bool); override != tc.ignoreRules {
+				t.Fatalf("unexpected rule override: %v", stored.Metadata)
+			}
+		})
+	}
+}
+
+func TestAddDocumentRequiresValidInput(t *testing.T) {
+	const page = "https://example.org/article"
+	oldConfig, oldPreRun, oldTransport := cfg, rootCmd.PersistentPreRun, http.DefaultTransport
+	t.Cleanup(func() {
+		cfg, rootCmd.PersistentPreRun, http.DefaultTransport = oldConfig, oldPreRun, oldTransport
+		rootCmd.SetIn(nil)
+	})
+	cfg = testutil.Config(t)
+	rootCmd.PersistentPreRun = func(*cobra.Command, []string) {}
+	http.DefaultTransport = roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		if r.Method == http.MethodGet && r.URL.Path == "/api/config" {
+			return jsonHTTPResponse(r, http.StatusOK, `{"maxBatchBodyBytes":32}`), nil
+		}
+		t.Errorf("invalid input sent a request to %s", r.URL)
+		return jsonHTTPResponse(r, http.StatusCreated, ""), nil
+	})
+	for _, tc := range []struct {
+		name, input string
+		args        []string
+	}{
+		{"no URL", "", []string{"--text", "notes"}},
+		{"relative URL", "", []string{"/relative", "--title", "notes"}},
+		{"missing host", "", []string{"https:///notes", "--title", "notes"}},
+		{"file URL", "", []string{"file:///tmp/notes", "--text", "notes"}},
+		{"whitespace in URL", "", []string{page + " note", "--text", "notes"}},
+		{"no fields", "", []string{page}},
+		{"blank fields", " \n\t", []string{page, "--title", " ", "--text-file", "-"}},
+		{"conflicting sources", "", []string{page, "--text=", "--text-file", "-"}},
+		{"missing file", "", []string{page, "--text-file", filepath.Join(t.TempDir(), "absent")}},
+		{"invalid UTF8", "\xff", []string{page, "--text-file", "-"}},
+		{"oversized pipe", strings.Repeat("a", 33), []string{page, "--text-file", "-"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			rootCmd.SetIn(strings.NewReader(tc.input))
+			if _, _, err := executeUserCommandForTest(t, append([]string{"add", "document"}, tc.args...)...); err == nil {
+				t.Fatal("expected an error")
+			}
+		})
+	}
+}
+
+func TestAddGroupShowsAvailableCommands(t *testing.T) {
+	out, _, err := executeUserCommandForTest(t, "add")
+	if err != nil || !strings.Contains(out, "document") {
+		t.Fatalf("add help = %q, error = %v", out, err)
+	}
+}
 
 func TestServiceCommands(t *testing.T) {
 	for _, action := range []string{"install", "uninstall", "start", "stop", "restart", "status"} {

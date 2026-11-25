@@ -1,9 +1,15 @@
 package cmd
 
 import (
+	"errors"
 	"fmt"
 	"io/fs"
+	"net/url"
+	"os"
 	"path/filepath"
+	"strings"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/asciimoo/nogon/client"
 	"github.com/asciimoo/nogon/files"
@@ -13,6 +19,58 @@ import (
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
 )
+
+var addCmd = &cobra.Command{
+	Use:   "add",
+	Short: "Add content to Nogon",
+}
+
+var addDocumentCmd = &cobra.Command{
+	Use:   "document URL",
+	Short: "Add or update a web document using text you supply",
+	Long: `Supply a title, plain text, or both for an HTTP or HTTPS URL.
+Use --text-file - to read standard input. Adding the same URL again replaces
+its title and text for the current owner. The page itself is never fetched.`,
+	Example: `  nogon add document https://example.com/notes --title "My notes" --text "Meeting agenda"
+  gh-stars info asciimoo/nogon | nogon add document https://github.com/asciimoo/nogon --text-file - --label github`,
+	Args: cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		rawURL := args[0]
+		u, err := url.Parse(rawURL)
+		if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Hostname() == "" || strings.ContainsFunc(rawURL, unicode.IsSpace) {
+			return errors.New("expected an absolute HTTP or HTTPS document URL")
+		}
+		title, _ := cmd.Flags().GetString("title")
+		text, _ := cmd.Flags().GetString("text")
+		label, _ := cmd.Flags().GetString("label")
+		c := newClient(documentSubmissionClientOptions(cmd)...)
+		if cmd.Flags().Changed("text-file") {
+			path, _ := cmd.Flags().GetString("text-file")
+			input := cmd.InOrStdin()
+			if path != "-" {
+				file, err := os.Open(path)
+				if err != nil {
+					return err
+				}
+				defer func() { _ = file.Close() }()
+				input = file
+			}
+			body, err := files.ReadAllBounded(input, c.MaxBatchBodyBytes())
+			if err != nil {
+				return fmt.Errorf("read document text: %w", err)
+			}
+			text = string(body)
+		}
+		if !utf8.ValidString(text) || !utf8.ValidString(title) || !utf8.ValidString(label) {
+			return errors.New("document title, text, and label must be valid UTF-8")
+		}
+		if strings.TrimSpace(title) == "" && strings.TrimSpace(text) == "" {
+			return errors.New("provide a nonblank title or text using --title, --text, or --text-file")
+		}
+		d := &client.Document{Type: client.Web, URL: rawURL, Title: title, Text: text, Label: label}
+		return c.AddDocumentJSONContext(cmd.Context(), d)
+	},
+}
 
 var listURLsCmd = &cobra.Command{
 	Use:   "list-urls",
